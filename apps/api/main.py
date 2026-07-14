@@ -23,7 +23,7 @@ from seeds import insert_seeds
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address)
 
-# ── Plages de référence par type d'installation ────────────────────────────
+# ── Reference ranges per installation type ─────────────────────────────────
 
 WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     ("piscine", "brome"): {
@@ -115,7 +115,7 @@ _apply_range_overrides()
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 class AuthError(HTTPException):
-    def __init__(self, detail: str = "Non autorise"):
+    def __init__(self, detail: str = "Not authorized"):
         super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
 
@@ -130,7 +130,7 @@ def _verify_password(plain: str, hashed: str) -> bool:
 def _require_session_secret() -> str:
     secret = os.getenv("SESSION_SECRET")
     if not secret:
-        raise RuntimeError("SESSION_SECRET manquant")
+        raise RuntimeError("SESSION_SECRET missing")
     return secret
 
 
@@ -178,7 +178,7 @@ def _migrate_installations(session: Session) -> None:
     if engine.dialect.name != "postgresql":
         return
 
-    # Ajouter installation_id sur action si absente
+    # Add installation_id on action if missing
     session.exec(text("""
         ALTER TABLE action
         ADD COLUMN IF NOT EXISTS installation_id INTEGER
@@ -186,13 +186,13 @@ def _migrate_installations(session: Session) -> None:
     """))
     session.commit()
 
-    # Index si absent
+    # Index if missing
     session.exec(text("""
         CREATE INDEX IF NOT EXISTS ix_action_installation_id ON action(installation_id)
     """))
     session.commit()
 
-    # Pour chaque utilisateur sans installation, en créer une par défaut
+    # For each user without an installation, create a default one
     users_without = session.exec(text("""
         SELECT u.id FROM "user" u
         WHERE NOT EXISTS (
@@ -219,7 +219,7 @@ def _migrate_installations(session: Session) -> None:
     if users_without:
         session.commit()
 
-    # Rattacher les actions orphelines à la première installation de leur utilisateur
+    # Reattach orphaned actions to the first installation of their user
     session.exec(text("""
         UPDATE action a
         SET installation_id = (
@@ -418,7 +418,7 @@ def _resolve_installation(
     user: User,
     session: Session,
 ) -> Optional[int]:
-    """Vérifie ownership si installation_id fourni, sinon retourne l'installation par défaut."""
+    """Checks ownership if installation_id is provided, otherwise returns the default installation."""
     if installation_id is not None:
         inst = session.get(Installation, installation_id)
         if not inst or inst.user_id != user.id:
@@ -428,7 +428,7 @@ def _resolve_installation(
     return default.id if default else None
 
 
-# ── Santé ──────────────────────────────────────────────────────────────────
+# ── Health ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -472,7 +472,7 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.add(user)
     session.commit()
     session.refresh(user)
-    # Créer une installation par défaut pour le nouvel utilisateur
+    # Create a default installation for the new user
     installation = Installation(user_id=user.id)
     session.add(installation)
     session.commit()
@@ -522,7 +522,7 @@ def reset_password(payload: ResetPasswordIn, session: Session = Depends(get_sess
     return {"ok": True}
 
 
-# ── Profil ─────────────────────────────────────────────────────────────────
+# ── Profile ────────────────────────────────────────────────────────────────
 
 @app.get("/me")
 def me(user: User = Depends(get_current_user)):
@@ -550,7 +550,7 @@ def update_me(
     return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
 
 
-# ── Produits ───────────────────────────────────────────────────────────────
+# ── Products ───────────────────────────────────────────────────────────────
 
 @app.get("/products")
 def list_products(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -641,7 +641,7 @@ def delete_installation(
     ).all())
     if count <= 1:
         raise HTTPException(status_code=400, detail="Vous devez conserver au moins une installation.")
-    # Suppression en cascade des actions rattachées
+    # Cascade delete of attached actions
     for action in session.exec(select(Action).where(Action.installation_id == installation_id)).all():
         session.delete(action)
     session.delete(installation)
@@ -684,7 +684,7 @@ def list_actions(
             .limit(limit)
         ).all()
 
-    # Compatibilité ascendante : filtre par user_id si installation_id absent
+    # Backward compatibility: filter by user_id if installation_id is absent
     return session.exec(
         select(Action)
         .where(Action.user_id == user.id, Action.date >= cutoff)
