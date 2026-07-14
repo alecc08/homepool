@@ -41,7 +41,7 @@ export function installationParamsToRanges(params: InstallationWaterParams, inst
   const salt = installation?.salt_unit === 'g/L' && params.salt ? convertRange(params.salt, ppmToGramsPerLiter) : params.salt
 
   const hardnessBase = params.durete ?? PARAM_RANGES.hardness
-  const hardnessUnit = installation?.durete_unit ?? 'ppm'
+  const hardnessUnit = installation?.hardness_unit ?? 'ppm'
   const hardness = hardnessUnit === '°dH'
     ? convertRange(hardnessBase, ppmToGermanDegrees)
     : hardnessUnit === '°f'

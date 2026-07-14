@@ -18,7 +18,7 @@ type InstallationCtx = {
     temp_unit?: TempUnit
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
-    durete_unit?: HardnessUnit
+    hardness_unit?: HardnessUnit
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
 }
@@ -94,7 +94,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     temp_unit?: TempUnit
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
-    durete_unit?: HardnessUnit
+    hardness_unit?: HardnessUnit
   }): Promise<Installation> => {
     const res = await fetch('/api/installations', {
       method: 'POST',

@@ -170,7 +170,7 @@ def _ensure_measurement_unit_columns(session: Session) -> None:
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS temp_unit VARCHAR NOT NULL DEFAULT 'C'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS salt_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS conc_unit VARCHAR NOT NULL DEFAULT 'mg/L'"))
-    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS durete_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
+    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS hardness_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
     session.commit()
 
 
@@ -211,7 +211,7 @@ def _migrate_installations(session: Session) -> None:
         session.exec(
             text("""
                 INSERT INTO installation
-                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, durete_unit, created_at)
+                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, hardness_unit, created_at)
                 VALUES
                     (:uid, 'My pool', 'pool', 'bromine', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
             """).bindparams(uid=uid)
@@ -346,7 +346,7 @@ class InstallationIn(BaseModel):
     temp_unit: str = "C"
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
-    durete_unit: str = "ppm"
+    hardness_unit: str = "ppm"
 
 
 class InstallationPatchIn(BaseModel):
@@ -358,7 +358,7 @@ class InstallationPatchIn(BaseModel):
     temp_unit: Optional[str] = None
     salt_unit: Optional[str] = None
     conc_unit: Optional[str] = None
-    durete_unit: Optional[str] = None
+    hardness_unit: Optional[str] = None
 
 
 class InstallationOut(BaseModel):
@@ -371,7 +371,7 @@ class InstallationOut(BaseModel):
     temp_unit: str = "C"
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
-    durete_unit: str = "ppm"
+    hardness_unit: str = "ppm"
     created_at: datetime
 
 
@@ -585,7 +585,7 @@ def create_installation(
         temp_unit=payload.temp_unit,
         salt_unit=payload.salt_unit,
         conc_unit=payload.conc_unit,
-        durete_unit=payload.durete_unit,
+        hardness_unit=payload.hardness_unit,
     )
     session.add(installation)
     session.commit()
@@ -619,8 +619,8 @@ def update_installation(
         installation.salt_unit = payload.salt_unit
     if payload.conc_unit is not None:
         installation.conc_unit = payload.conc_unit
-    if payload.durete_unit is not None:
-        installation.durete_unit = payload.durete_unit
+    if payload.hardness_unit is not None:
+        installation.hardness_unit = payload.hardness_unit
     session.add(installation)
     session.commit()
     session.refresh(installation)

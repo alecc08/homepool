@@ -23,7 +23,7 @@ export default function InstallationModal({ open, onClose }: Props) {
   const [tempUnit, setTempUnit] = useState<TempUnit>('C')
   const [saltUnit, setSaltUnit] = useState<SaltUnit>('ppm')
   const [concUnit, setConcUnit] = useState<ConcUnit>('mg/L')
-  const [dureteUnit, setDureteUnit] = useState<HardnessUnit>('ppm')
+  const [hardnessUnit, setHardnessUnit] = useState<HardnessUnit>('ppm')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +41,7 @@ export default function InstallationModal({ open, onClose }: Props) {
         temp_unit: tempUnit,
         salt_unit: saltUnit,
         conc_unit: concUnit,
-        durete_unit: dureteUnit,
+        hardness_unit: hardnessUnit,
         ...(parsedVolume !== undefined && !isNaN(parsedVolume) ? { volume: parsedVolume, volume_unit: volumeUnit } : {}),
       })
       setName('')
@@ -52,7 +52,7 @@ export default function InstallationModal({ open, onClose }: Props) {
       setTempUnit('C')
       setSaltUnit('ppm')
       setConcUnit('mg/L')
-      setDureteUnit('ppm')
+      setHardnessUnit('ppm')
       onClose()
     } catch {
       setError(t('modal_install_erreur_creation'))
@@ -228,7 +228,7 @@ export default function InstallationModal({ open, onClose }: Props) {
                 <span style={unitRowLabel}>{t('unit_durete')}</span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['ppm', '°dH', '°f'] as const).map(u => (
-                    <button key={u} type="button" onClick={() => setDureteUnit(u)} style={unitPillStyle(dureteUnit === u)}>
+                    <button key={u} type="button" onClick={() => setHardnessUnit(u)} style={unitPillStyle(hardnessUnit === u)}>
                       {u}
                     </button>
                   ))}

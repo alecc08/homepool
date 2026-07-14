@@ -297,15 +297,15 @@ describe('installationParamsToRanges — unit-aware temp/sel/durete', () => {
     expect(withoutInstallation.salt).toEqual(params.salt)
   })
 
-  it('synthesizes a durete range client-side, converted per durete_unit, even though the backend never returns durete', () => {
+  it('synthesizes a durete range client-side, converted per hardness_unit, even though the backend never returns durete', () => {
     const ppmRanges = installationParamsToRanges(params, makeInstallation())
     expect(ppmRanges.hardness).toEqual({ ideal: [100, 500], acceptable: [50, 1000] })
 
-    const dhRanges = installationParamsToRanges(params, makeInstallation({ durete_unit: '°dH' }))
+    const dhRanges = installationParamsToRanges(params, makeInstallation({ hardness_unit: '°dH' }))
     expect(dhRanges.hardness!.ideal[0]).toBeCloseTo(ppmToGermanDegrees(100), 5)
     expect(dhRanges.hardness!.ideal[1]).toBeCloseTo(ppmToGermanDegrees(500), 5)
 
-    const fRanges = installationParamsToRanges(params, makeInstallation({ durete_unit: '°f' }))
+    const fRanges = installationParamsToRanges(params, makeInstallation({ hardness_unit: '°f' }))
     expect(fRanges.hardness!.ideal).toEqual([10, 50])
   })
 
@@ -315,7 +315,7 @@ describe('installationParamsToRanges — unit-aware temp/sel/durete', () => {
     const ppmRanges = installationParamsToRanges(withDurete, makeInstallation())
     expect(ppmRanges.hardness).toEqual({ ideal: [10, 20], acceptable: [5, 30] })
 
-    const dhRanges = installationParamsToRanges(withDurete, makeInstallation({ durete_unit: '°dH' }))
+    const dhRanges = installationParamsToRanges(withDurete, makeInstallation({ hardness_unit: '°dH' }))
     expect(dhRanges.hardness!.ideal[0]).toBeCloseTo(ppmToGermanDegrees(10), 5)
     expect(dhRanges.hardness!.ideal[1]).toBeCloseTo(ppmToGermanDegrees(20), 5)
   })

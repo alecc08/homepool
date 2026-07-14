@@ -276,7 +276,7 @@ def test_create_installation_with_units(client: TestClient):
             "temp_unit": "F",
             "salt_unit": "g/L",
             "conc_unit": "ppm",
-            "durete_unit": "°dH",
+            "hardness_unit": "°dH",
         },
     )
     assert r.status_code == 200
@@ -284,7 +284,7 @@ def test_create_installation_with_units(client: TestClient):
     assert data["temp_unit"] == "F"
     assert data["salt_unit"] == "g/L"
     assert data["conc_unit"] == "ppm"
-    assert data["durete_unit"] == "°dH"
+    assert data["hardness_unit"] == "°dH"
 
 
 def test_create_installation_without_units_defaults(client: TestClient):
@@ -295,7 +295,7 @@ def test_create_installation_without_units_defaults(client: TestClient):
     assert data["temp_unit"] == "C"
     assert data["salt_unit"] == "ppm"
     assert data["conc_unit"] == "mg/L"
-    assert data["durete_unit"] == "ppm"
+    assert data["hardness_unit"] == "ppm"
 
 
 def test_patch_installation_units(client: TestClient):
@@ -304,14 +304,14 @@ def test_patch_installation_units(client: TestClient):
     installation_id = r.json()["id"]
     patch_r = client.patch(
         f"/installations/{installation_id}",
-        json={"temp_unit": "F", "salt_unit": "g/L", "conc_unit": "ppm", "durete_unit": "°f"},
+        json={"temp_unit": "F", "salt_unit": "g/L", "conc_unit": "ppm", "hardness_unit": "°f"},
     )
     assert patch_r.status_code == 200
     data = patch_r.json()
     assert data["temp_unit"] == "F"
     assert data["salt_unit"] == "g/L"
     assert data["conc_unit"] == "ppm"
-    assert data["durete_unit"] == "°f"
+    assert data["hardness_unit"] == "°f"
 
 
 def test_delete_installation(client: TestClient):

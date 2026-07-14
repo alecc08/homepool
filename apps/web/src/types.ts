@@ -38,7 +38,7 @@ export type Installation = {
   temp_unit?: TempUnit
   salt_unit?: SaltUnit
   conc_unit?: ConcUnit
-  durete_unit?: HardnessUnit
+  hardness_unit?: HardnessUnit
   created_at: string
 }
 

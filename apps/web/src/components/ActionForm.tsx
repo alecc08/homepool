@@ -522,7 +522,7 @@ function idealHint(t: (key: TranslationKey) => string, ideal: [number, number], 
 
 /**
  * Field defs are computed per-installation: unit/hint reflect the installation's chosen
- * units (conc_unit/temp_unit/salt_unit/durete_unit), and ideal-range numbers prefer the
+ * units (conc_unit/temp_unit/salt_unit/hardness_unit), and ideal-range numbers prefer the
  * installation's admin-configured `ranges` (fetched from the backend) over the hardcoded
  * PARAM_RANGES default — same fallback pattern as getPhStatus/getSaltStatus/etc, so the
  * hint text and the live border-color validation never contradict each other.
@@ -536,7 +536,7 @@ function getAppareilFields(
   const tempUnit = installation?.temp_unit ?? 'C'
   const concUnit = installation?.conc_unit ?? 'mg/L'
   const saltUnit = installation?.salt_unit ?? 'ppm'
-  const hardnessUnit = installation?.durete_unit ?? 'ppm'
+  const hardnessUnit = installation?.hardness_unit ?? 'ppm'
 
   const phIdeal = ranges?.ph ?? PARAM_RANGES.ph
   const tacIdeal = ranges?.tac ?? PARAM_RANGES.tac
