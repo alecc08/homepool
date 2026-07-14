@@ -192,20 +192,20 @@ function rowFromAction(action: Action, products: Product[]): ActionRow {
 
 // ── Mode toggle (localStorage) ─────────────────────────────────────────────
 
-type MeasureMode = 'bandelette' | 'appareil'
+type MeasureMode = 'strip' | 'device'
 
 function readMode(): MeasureMode {
   try {
-    const v = localStorage.getItem('pooly_mesure_mode')
-    return v === 'appareil' ? 'appareil' : 'bandelette'
-  } catch { return 'bandelette' }
+    const v = localStorage.getItem('pooly_measure_mode')
+    return v === 'device' ? 'device' : 'strip'
+  } catch { return 'strip' }
 }
 
 function saveMode(m: MeasureMode) {
-  try { localStorage.setItem('pooly_mesure_mode', m) } catch { /* ignore */ }
+  try { localStorage.setItem('pooly_measure_mode', m) } catch { /* ignore */ }
 }
 
-// ── Bandelette data ────────────────────────────────────────────────────────
+// ── Test-strip data ───────────────────────────────────────────────────────
 
 type SwatchDef = { value: number; bg: string; textColor: string; border?: string }
 type ZoneKind = 'low' | 'ok' | 'ideal' | 'high' | 'vhigh'
@@ -363,15 +363,15 @@ function pillStyle(kind: ZoneKind): { color: string; bg: string } {
   return ZONE_STYLE[kind]
 }
 
-// ── Bandelette mode component ──────────────────────────────────────────────
+// ── Test-strip mode component ────────────────────────────────────────────
 
-type BandeletteProps = {
+type StripProps = {
   row: ActionRow
   onChange: (key: string, updates: Partial<ActionRow>) => void
   sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
+function StripMode({ row, onChange, sanitizer }: StripProps) {
   const { t } = useT()
   const [hovered, setHovered] = useState<{ param: string; idx: number } | null>(null)
   const BAND_PARAMS = getBandParams(sanitizer, t)
@@ -505,7 +505,7 @@ function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
 
 // ── Digital device mode ─────────────────────────────────────────────────────
 
-type AppareilField = {
+type DeviceField = {
   key: keyof Pick<ActionRow, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness' | 'm_salt' | 'm_stabilizer' | 'm_cc' | 'm_temp'>
   label: string
   placeholder: string
@@ -527,12 +527,12 @@ function idealHint(t: (key: TranslationKey) => string, ideal: [number, number], 
  * PARAM_RANGES default — same fallback pattern as getPhStatus/getSaltStatus/etc, so the
  * hint text and the live border-color validation never contradict each other.
  */
-function getAppareilFields(
+function getDeviceFields(
   sanitizer: 'bromine' | 'chlorine' | 'salt',
   t: (key: TranslationKey) => string,
   installation?: Installation | null,
   ranges?: DynamicRanges,
-): AppareilField[] {
+): DeviceField[] {
   const tempUnit = installation?.temp_unit ?? 'C'
   const concUnit = installation?.conc_unit ?? 'mg/L'
   const saltUnit = installation?.salt_unit ?? 'ppm'
@@ -557,13 +557,13 @@ function getAppareilFields(
       ? convertRange(PARAM_RANGES.hardness, ppmToFrenchDegrees).ideal
       : PARAM_RANGES.hardness.ideal)
 
-  const phField: AppareilField = { key: 'm_ph', label: t('param_ph'), placeholder: '7.2', step: '0.1', hint: idealHint(t, phIdeal.ideal) }
-  const chlorineField: AppareilField = { key: 'm_chlorine', label: t('param_chlore'), placeholder: '1.5', step: '0.5', hint: idealHint(t, chlorineIdeal.ideal, concUnit), unit: concUnit }
-  const tacField: AppareilField = { key: 'm_tac', label: t('param_tac'), placeholder: '120', step: '5', hint: idealHint(t, tacIdeal.ideal, concUnit), unit: concUnit }
-  const hardnessField: AppareilField = { key: 'm_hardness', label: t('param_durete'), placeholder: '250', step: '10', hint: idealHint(t, hardnessIdeal, hardnessUnit), unit: hardnessUnit }
-  const ccField: AppareilField = { key: 'm_cc', label: t('param_cc'), placeholder: '0.1', step: '0.1', hint: idealHint(t, ccIdeal.ideal, concUnit), unit: concUnit }
+  const phField: DeviceField = { key: 'm_ph', label: t('param_ph'), placeholder: '7.2', step: '0.1', hint: idealHint(t, phIdeal.ideal) }
+  const chlorineField: DeviceField = { key: 'm_chlorine', label: t('param_chlore'), placeholder: '1.5', step: '0.5', hint: idealHint(t, chlorineIdeal.ideal, concUnit), unit: concUnit }
+  const tacField: DeviceField = { key: 'm_tac', label: t('param_tac'), placeholder: '120', step: '5', hint: idealHint(t, tacIdeal.ideal, concUnit), unit: concUnit }
+  const hardnessField: DeviceField = { key: 'm_hardness', label: t('param_durete'), placeholder: '250', step: '10', hint: idealHint(t, hardnessIdeal, hardnessUnit), unit: hardnessUnit }
+  const ccField: DeviceField = { key: 'm_cc', label: t('param_cc'), placeholder: '0.1', step: '0.1', hint: idealHint(t, ccIdeal.ideal, concUnit), unit: concUnit }
   const tempPlaceholder = tempUnit === 'F' ? String(Math.round(celsiusToFahrenheit(25))) : '25'
-  const tempField: AppareilField = { key: 'm_temp', label: t('param_temperature'), placeholder: tempPlaceholder, step: '0.5', hint: idealHint(t, tempIdeal, `°${tempUnit}`), unit: `°${tempUnit}` }
+  const tempField: DeviceField = { key: 'm_temp', label: t('param_temperature'), placeholder: tempPlaceholder, step: '0.5', hint: idealHint(t, tempIdeal, `°${tempUnit}`), unit: `°${tempUnit}` }
 
   if (sanitizer === 'bromine') {
     return [
@@ -598,7 +598,7 @@ function getAppareilFields(
 
 type FieldStatus = 'normal' | 'warn' | 'bad' | null
 
-function getAppareilStatus(key: AppareilField['key'], value: string, ranges?: DynamicRanges): FieldStatus {
+function getDeviceStatus(key: DeviceField['key'], value: string, ranges?: DynamicRanges): FieldStatus {
   if (!value.trim()) return null
   const n = parseFloat(value)
   if (isNaN(n)) return null
@@ -620,24 +620,24 @@ const STATUS_BORDER: Record<NonNullable<FieldStatus>, string> = {
   normal: 'var(--status-ok-text)', warn: 'var(--status-warn-text)', bad: 'var(--status-danger-text)',
 }
 
-type AppareilProps = {
+type DeviceProps = {
   row: ActionRow
   onChange: (key: string, updates: Partial<ActionRow>) => void
   sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function AppareilMode({ row, onChange, sanitizer }: AppareilProps) {
+function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
   const { t } = useT()
   const { active, ranges } = useInstallation()
-  const APPAREIL_FIELDS = getAppareilFields(sanitizer, t, active, ranges ?? undefined)
-  const [touched, setTouched] = useState<Partial<Record<AppareilField['key'], boolean>>>({})
-  const touch = (k: AppareilField['key']) => setTouched(prev => ({ ...prev, [k]: true }))
+  const DEVICE_FIELDS = getDeviceFields(sanitizer, t, active, ranges ?? undefined)
+  const [touched, setTouched] = useState<Partial<Record<DeviceField['key'], boolean>>>({})
+  const touch = (k: DeviceField['key']) => setTouched(prev => ({ ...prev, [k]: true }))
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      {APPAREIL_FIELDS.map(f => {
+      {DEVICE_FIELDS.map(f => {
         const val = row[f.key]
-        const status = touched[f.key] ? getAppareilStatus(f.key, val, ranges ?? undefined) : null
+        const status = touched[f.key] ? getDeviceStatus(f.key, val, ranges ?? undefined) : null
         const border = status ? STATUS_BORDER[status] : 'var(--border)'
         return (
           <div key={f.key}>
@@ -693,7 +693,7 @@ function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Toggle */}
       <div style={{ display: 'flex', background: 'var(--bg-surface-2)', borderRadius: 8, padding: 3, gap: 2 }}>
-        {([['bandelette', t('modal_bandelette')], ['appareil', t('modal_appareil')]] as [MeasureMode, string][]).map(([m, label]) => {
+        {([['strip', t('modal_bandelette')], ['device', t('modal_appareil')]] as [MeasureMode, string][]).map(([m, label]) => {
           const active = mode === m
           return (
             <button
@@ -721,9 +721,9 @@ function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
       </div>
 
       {/* Mode content */}
-      {mode === 'bandelette'
-        ? <BandeletteMode row={row} onChange={onChange} sanitizer={sanitizer} />
-        : <AppareilMode row={row} onChange={onChange} sanitizer={sanitizer} />
+      {mode === 'strip'
+        ? <StripMode row={row} onChange={onChange} sanitizer={sanitizer} />
+        : <DeviceMode row={row} onChange={onChange} sanitizer={sanitizer} />
       }
     </div>
   )

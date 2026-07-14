@@ -234,7 +234,7 @@ export const translations = {
     mon_spa: 'MON SPA',
     mon_installation: 'MON INSTALLATION',
 
-    // Bandelette — zones
+    // Test-strip — zones
     zone_low: 'LOW',
     zone_ok: 'OK',
     zone_high: 'HIGH',
@@ -548,7 +548,7 @@ export const translations = {
     mon_spa: 'MY SPA',
     mon_installation: 'MY INSTALLATION',
 
-    // Bandelette — zones
+    // Test-strip — zones
     zone_low: 'LOW',
     zone_ok: 'OK',
     zone_high: 'HIGH',
