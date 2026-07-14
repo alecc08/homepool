@@ -17,20 +17,36 @@ const mockActions = [
   },
 ]
 const mockProducts = [{ id: 1, name: 'Chlore', type: 'seed', unit_default: 'g' }]
+const mockInstallation = {
+  id: 1,
+  user_id: 1,
+  name: 'Piscine',
+  type: 'piscine' as const,
+  sanitizer: 'chlore' as const,
+  created_at: '2026-02-25T00:00:00',
+}
 
 describe('App', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-      if (url === '/api/me') {
+      const u = String(url)
+      if (u === '/api/me') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: mockUser }) } as Response)
       }
-      if (url === '/api/actions') {
+      if (u === '/api/installations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([mockInstallation]) } as Response)
+      }
+      if (u.startsWith('/api/installations/')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+      }
+      if (u.startsWith('/api/actions')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(mockActions) } as Response)
       }
-      if (url === '/api/products') {
+      if (u === '/api/products') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProducts) } as Response)
       }
-      return Promise.reject(new Error(`fetch inattendu : ${url}`))
+      return Promise.reject(new Error(`fetch inattendu : ${u}`))
     })
   })
 
@@ -42,7 +58,7 @@ describe('App', () => {
     render(<App />)
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/me', expect.any(Object))
-      expect(fetch).toHaveBeenCalledWith('/api/actions', expect.any(Object))
+      expect(fetch).toHaveBeenCalledWith(`/api/actions?installation_id=${mockInstallation.id}`, expect.any(Object))
       expect(fetch).toHaveBeenCalledWith('/api/products', expect.any(Object))
     })
   })
