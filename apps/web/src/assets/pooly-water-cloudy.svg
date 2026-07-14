@@ -7,7 +7,7 @@
   <path d="M110 52 L110 64 L60 88 L60 76 Z" fill="#407e84"/>
   <!-- eau bleu-vert trouble -->
   <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="#3a9aaa" opacity="0.9"/>
-  <!-- légère teinte verte naissante -->
+  <!-- slight emerging green tint -->
   <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="rgba(180,210,180,0.18)"/>
   <!-- particules -->
   <circle cx="35" cy="54" r="1.5" fill="rgba(255,255,255,0.35)"/>
@@ -15,9 +15,9 @@
   <circle cx="74" cy="58" r="1.5" fill="rgba(255,255,255,0.3)"/>
   <circle cx="88" cy="52" r="1" fill="rgba(255,255,255,0.35)"/>
   <circle cx="46" cy="66" r="1.5" fill="rgba(255,255,255,0.25)"/>
-  <!-- vague atténuée -->
+  <!-- faded wave -->
   <path d="M18 54 Q35 49 52 54 Q69 59 86 54" stroke="rgba(255,255,255,0.35)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-  <!-- échelle -->
+  <!-- scale -->
   <line x1="88" y1="42" x2="88" y2="58" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="93" y1="45" x2="93" y2="61" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="88" y1="47" x2="93" y2="49" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-linecap="round"/>

@@ -23,9 +23,9 @@ function formatDetail(action: Action, products: Product[]): string {
 
 function getActionBadgeClass(actionType: string): string {
   const t = actionType.toLowerCase()
-  if (t.includes('nettoyage') || t.includes('filtre') || t.includes('cartouche')) return 'badge-ok'
-  if (t.includes('ph') || t.includes('mesure') || t.includes('calibrage')) return 'badge-warn'
-  if (t.includes('ajout')) return 'badge-ok'
+  if (t.includes('cleaning') || t.includes('filter') || t.includes('cartridge')) return 'badge-ok'
+  if (t.includes('ph') || t.includes('measurement') || t.includes('calibration')) return 'badge-warn'
+  if (t.includes('add')) return 'badge-ok'
   return 'badge-ok'
 }
 
@@ -46,7 +46,7 @@ export default function ActionEntry({ action, products, onEdit }: Props) {
           <button
             type="button"
             onClick={() => onEdit(action)}
-            title={t('modal_modifier')}
+            title={t('modal_edit')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               padding: 4, borderRadius: 4, color: 'var(--pooly-muted)',

@@ -45,18 +45,18 @@ export default function InstallBanner() {
       <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>💧</div>
       <div style={{ flex: 1 }}>
         <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>
-          {t('install_banner_titre')}
+          {t('install_banner_title')}
         </div>
         <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, opacity: 0.65, marginTop: 2 }}>
-          {t('install_banner_sous_titre')}
+          {t('install_banner_subtitle')}
         </div>
       </div>
       <button className="install-banner-btn" onClick={handleInstall}>
-        {t('install_banner_bouton')}
+        {t('install_banner_button')}
       </button>
       <button
         onClick={handleDismiss}
-        aria-label={t('common_fermer')}
+        aria-label={t('common_close')}
         style={{
           background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)',
           fontSize: 18, cursor: 'pointer', padding: '4px 2px', lineHeight: 1, flexShrink: 0,
@@ -68,7 +68,7 @@ export default function InstallBanner() {
   )
 }
 
-// Extension du type BeforeInstallPromptEvent (non inclus dans lib.dom.d.ts standard)
+// Extension of the BeforeInstallPromptEvent type (not included in the standard lib.dom.d.ts)
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>

@@ -1,7 +1,7 @@
 const infos = [
-  { title: 'Historique propre', text: 'Chaque action est datée, recherchable et exportable.' },
-  { title: 'Adapté à ta piscine', text: 'Chlore, sel, brome, cartouche ou sable. Tout fonctionne.' },
-  { title: 'Ultra rapide', text: 'Un formulaire court, un seul écran, rien de superflu.' },
+  { title: 'Clean history', text: 'Every action is dated, searchable, and exportable.' },
+  { title: 'Fits your pool', text: 'Chlorine, salt, bromine, cartridge or sand. Everything works.' },
+  { title: 'Ultra fast', text: 'A short form, a single screen, nothing superfluous.' },
 ]
 
 export default function InfoGrid() {

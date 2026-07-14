@@ -1,4 +1,4 @@
-# API V1 (brouillon)
+# API V1 (draft)
 
 ## Entities
 - User: id, username, created_at
@@ -15,6 +15,6 @@
 - DELETE /actions/:id
 
 ## Notes
-- Token par appareil (bearer)
-- Tous les endpoints proteges sauf /auth/login
-- Seeds produits: chlore, brome, sel, pH+, pH-, anti-algue, floculant, nettoyage filtre, contre-lavage, nettoyage cartouche
+- Token per device (bearer)
+- All endpoints protected except /auth/login
+- Seed products: chlorine, bromine, salt, pH+, pH-, algaecide, flocculant, filter cleaning, backwash, cartridge cleaning

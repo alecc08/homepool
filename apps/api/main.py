@@ -23,52 +23,57 @@ from seeds import insert_seeds
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address)
 
-# ── Plages de référence par type d'installation ────────────────────────────
+# ── Reference ranges per installation type ─────────────────────────────────
 
 WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
-    ("piscine", "brome"): {
+    ("pool", "bromine"): {
         "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (2.0, 5.0), "acceptable": (1.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
-        "durete": {"ideal": (100, 500), "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
-    ("piscine", "chlore"): {
+    ("pool", "chlorine"): {
         "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (1.0, 3.0), "acceptable": (0.5, 4.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
-        "durete": {"ideal": (100, 500), "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
-    ("spa", "brome"): {
+    ("spa", "bromine"): {
         "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (3.0, 6.0), "acceptable": (2.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
-        "durete": {"ideal": (100, 500), "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
-    ("spa", "chlore"): {
+    ("spa", "chlorine"): {
         "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (3.0, 5.0), "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
-        "durete": {"ideal": (100, 500), "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
-    ("piscine", "sel"): {
+    # CYA and free-chlorine targets follow PoolMath/Trouble Free Pool guidance for
+    # salt water generator (SWG) pools: SWG cells run more efficiently -- and lose
+    # less chlorine to sunlight -- at a higher CYA (60-80 ppm) than a manually-dosed
+    # pool, which in turn means free chlorine needs to sit meaningfully higher than
+    # the traditional 1-3 ppm CDC-style band to stay effective at that CYA level.
+    ("pool", "salt"): {
         "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2700, 3400), "acceptable": (2500, 4500)},
         "cya":    {"ideal": (60, 80),     "acceptable": (30, 100)},
-        "cl":     {"ideal": (1.0, 3.0),   "acceptable": (0.5, 4.0)},
+        "cl":     {"ideal": (3.0, 5.0),   "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),    "acceptable": (60, 200)},
         "temp":   {"ideal": (24, 28),     "acceptable": (15, 35)},
-        "durete": {"ideal": (100, 500),   "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
     },
     # Salt spas are far less standardized than salt pools; this band is an
     # approximation pending better field data.
-    ("spa", "sel"): {
+    ("spa", "salt"): {
         "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2500, 3200), "acceptable": (2000, 4000)},
         "cya":    {"ideal": (30, 50),     "acceptable": (0, 80)},
@@ -76,7 +81,7 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),    "acceptable": (60, 200)},
         "temp":   {"ideal": (36, 40),     "acceptable": (30, 42)},
-        "durete": {"ideal": (100, 500),   "acceptable": (50, 1000)},
+        "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
     },
 }
 
@@ -115,7 +120,7 @@ _apply_range_overrides()
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 class AuthError(HTTPException):
-    def __init__(self, detail: str = "Non autorise"):
+    def __init__(self, detail: str = "Not authorized"):
         super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
 
@@ -130,7 +135,7 @@ def _verify_password(plain: str, hashed: str) -> bool:
 def _require_session_secret() -> str:
     secret = os.getenv("SESSION_SECRET")
     if not secret:
-        raise RuntimeError("SESSION_SECRET manquant")
+        raise RuntimeError("SESSION_SECRET missing")
     return secret
 
 
@@ -170,7 +175,7 @@ def _ensure_measurement_unit_columns(session: Session) -> None:
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS temp_unit VARCHAR NOT NULL DEFAULT 'C'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS salt_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS conc_unit VARCHAR NOT NULL DEFAULT 'mg/L'"))
-    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS durete_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
+    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS hardness_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
     session.commit()
 
 
@@ -178,7 +183,7 @@ def _migrate_installations(session: Session) -> None:
     if engine.dialect.name != "postgresql":
         return
 
-    # Ajouter installation_id sur action si absente
+    # Add installation_id on action if missing
     session.exec(text("""
         ALTER TABLE action
         ADD COLUMN IF NOT EXISTS installation_id INTEGER
@@ -186,13 +191,13 @@ def _migrate_installations(session: Session) -> None:
     """))
     session.commit()
 
-    # Index si absent
+    # Index if missing
     session.exec(text("""
         CREATE INDEX IF NOT EXISTS ix_action_installation_id ON action(installation_id)
     """))
     session.commit()
 
-    # Pour chaque utilisateur sans installation, en créer une par défaut
+    # For each user without an installation, create a default one
     users_without = session.exec(text("""
         SELECT u.id FROM "user" u
         WHERE NOT EXISTS (
@@ -211,15 +216,15 @@ def _migrate_installations(session: Session) -> None:
         session.exec(
             text("""
                 INSERT INTO installation
-                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, durete_unit, created_at)
+                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, hardness_unit, created_at)
                 VALUES
-                    (:uid, 'Ma piscine', 'piscine', 'brome', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
+                    (:uid, 'My pool', 'pool', 'bromine', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
             """).bindparams(uid=uid)
         )
     if users_without:
         session.commit()
 
-    # Rattacher les actions orphelines à la première installation de leur utilisateur
+    # Reattach orphaned actions to the first installation of their user
     session.exec(text("""
         UPDATE action a
         SET installation_id = (
@@ -276,7 +281,7 @@ app = FastAPI(title="Pooly API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(
     RateLimitExceeded,
-    lambda req, exc: JSONResponse({"detail": "Trop de tentatives, réessayez plus tard."}, status_code=429),
+    lambda req, exc: JSONResponse({"detail": "Too many attempts, please try again later."}, status_code=429),
 )
 
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8090")
@@ -338,15 +343,15 @@ class UpdateProfileIn(BaseModel):
 
 
 class InstallationIn(BaseModel):
-    name: str = "Ma piscine"
-    type: str = "piscine"
-    sanitizer: str = "brome"
+    name: str = "My pool"
+    type: str = "pool"
+    sanitizer: str = "bromine"
     volume: Optional[float] = None
     volume_unit: str = "L"
     temp_unit: str = "C"
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
-    durete_unit: str = "ppm"
+    hardness_unit: str = "ppm"
 
 
 class InstallationPatchIn(BaseModel):
@@ -358,7 +363,7 @@ class InstallationPatchIn(BaseModel):
     temp_unit: Optional[str] = None
     salt_unit: Optional[str] = None
     conc_unit: Optional[str] = None
-    durete_unit: Optional[str] = None
+    hardness_unit: Optional[str] = None
 
 
 class InstallationOut(BaseModel):
@@ -371,7 +376,7 @@ class InstallationOut(BaseModel):
     temp_unit: str = "C"
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
-    durete_unit: str = "ppm"
+    hardness_unit: str = "ppm"
     created_at: datetime
 
 
@@ -418,17 +423,17 @@ def _resolve_installation(
     user: User,
     session: Session,
 ) -> Optional[int]:
-    """Vérifie ownership si installation_id fourni, sinon retourne l'installation par défaut."""
+    """Checks ownership if installation_id is provided, otherwise returns the default installation."""
     if installation_id is not None:
         inst = session.get(Installation, installation_id)
         if not inst or inst.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Installation introuvable")
+            raise HTTPException(status_code=403, detail="Installation not found")
         return installation_id
     default = _get_default_installation(user.id, session)
     return default.id if default else None
 
 
-# ── Santé ──────────────────────────────────────────────────────────────────
+# ── Health ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -442,7 +447,7 @@ def health():
 def login(payload: LoginIn, request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if not user or not _verify_password(payload.password, user.password_hash):
-        raise AuthError("Email ou mot de passe invalide")
+        raise AuthError("Invalid email or password")
     request.session["user_id"] = user.id
     return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
 
@@ -455,7 +460,7 @@ def logout(request: Request):
 
 def _validate_password_strength(password: str) -> None:
     if len(password) < 8 or not any(c.isupper() for c in password) or not any(c.isdigit() for c in password):
-        raise HTTPException(status_code=422, detail="Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre")
+        raise HTTPException(status_code=422, detail="Password must contain at least 8 characters, one uppercase letter, and one digit")
 
 
 @app.post("/auth/register")
@@ -463,7 +468,7 @@ def _validate_password_strength(password: str) -> None:
 def register(payload: RegisterIn, request: Request, session: Session = Depends(get_session)):
     _validate_password_strength(payload.password)
     if session.exec(select(User).where(User.email == payload.email)).first():
-        raise HTTPException(status_code=409, detail="Email déjà utilisé")
+        raise HTTPException(status_code=409, detail="Email already in use")
     user = User(
         email=payload.email,
         first_name=payload.first_name.strip(),
@@ -472,7 +477,7 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.add(user)
     session.commit()
     session.refresh(user)
-    # Créer une installation par défaut pour le nouvel utilisateur
+    # Create a default installation for the new user
     installation = Installation(user_id=user.id)
     session.add(installation)
     session.commit()
@@ -505,12 +510,12 @@ def reset_password(payload: ResetPasswordIn, session: Session = Depends(get_sess
         select(PasswordResetToken).where(PasswordResetToken.token == payload.token)
     ).first()
     if not reset or reset.used:
-        raise HTTPException(status_code=400, detail="Token invalide ou expiré")
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
     exp = reset.expires_at
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Token invalide ou expiré")
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
     user = session.get(User, reset.user_id)
     if not user:
         raise HTTPException(status_code=404)
@@ -522,7 +527,7 @@ def reset_password(payload: ResetPasswordIn, session: Session = Depends(get_sess
     return {"ok": True}
 
 
-# ── Profil ─────────────────────────────────────────────────────────────────
+# ── Profile ────────────────────────────────────────────────────────────────
 
 @app.get("/me")
 def me(user: User = Depends(get_current_user)):
@@ -539,9 +544,9 @@ def update_me(
         user.first_name = payload.first_name.strip()
     if payload.new_password:
         if not payload.current_password:
-            raise HTTPException(status_code=400, detail="Mot de passe actuel requis")
+            raise HTTPException(status_code=400, detail="Current password required")
         if not _verify_password(payload.current_password, user.password_hash):
-            raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
         _validate_password_strength(payload.new_password)
         user.password_hash = _hash_password(payload.new_password)
     session.add(user)
@@ -550,7 +555,7 @@ def update_me(
     return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
 
 
-# ── Produits ───────────────────────────────────────────────────────────────
+# ── Products ───────────────────────────────────────────────────────────────
 
 @app.get("/products")
 def list_products(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -585,7 +590,7 @@ def create_installation(
         temp_unit=payload.temp_unit,
         salt_unit=payload.salt_unit,
         conc_unit=payload.conc_unit,
-        durete_unit=payload.durete_unit,
+        hardness_unit=payload.hardness_unit,
     )
     session.add(installation)
     session.commit()
@@ -602,7 +607,7 @@ def update_installation(
 ):
     installation = session.get(Installation, installation_id)
     if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation introuvable")
+        raise HTTPException(status_code=404, detail="Installation not found")
     if payload.name is not None:
         installation.name = payload.name
     if payload.type is not None:
@@ -619,8 +624,8 @@ def update_installation(
         installation.salt_unit = payload.salt_unit
     if payload.conc_unit is not None:
         installation.conc_unit = payload.conc_unit
-    if payload.durete_unit is not None:
-        installation.durete_unit = payload.durete_unit
+    if payload.hardness_unit is not None:
+        installation.hardness_unit = payload.hardness_unit
     session.add(installation)
     session.commit()
     session.refresh(installation)
@@ -635,13 +640,13 @@ def delete_installation(
 ):
     installation = session.get(Installation, installation_id)
     if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation introuvable")
+        raise HTTPException(status_code=404, detail="Installation not found")
     count = len(session.exec(
         select(Installation).where(Installation.user_id == user.id)
     ).all())
     if count <= 1:
-        raise HTTPException(status_code=400, detail="Vous devez conserver au moins une installation.")
-    # Suppression en cascade des actions rattachées
+        raise HTTPException(status_code=400, detail="You must keep at least one installation.")
+    # Cascade delete of attached actions
     for action in session.exec(select(Action).where(Action.installation_id == installation_id)).all():
         session.delete(action)
     session.delete(installation)
@@ -656,7 +661,7 @@ def get_installation_params(
 ):
     installation = session.get(Installation, installation_id)
     if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation introuvable")
+        raise HTTPException(status_code=404, detail="Installation not found")
     params = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     return params
 
@@ -676,7 +681,7 @@ def list_actions(
     if installation_id is not None:
         installation = session.get(Installation, installation_id)
         if not installation or installation.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Installation introuvable")
+            raise HTTPException(status_code=403, detail="Installation not found")
         return session.exec(
             select(Action)
             .where(Action.installation_id == installation_id, Action.date >= cutoff)
@@ -684,7 +689,7 @@ def list_actions(
             .limit(limit)
         ).all()
 
-    # Compatibilité ascendante : filtre par user_id si installation_id absent
+    # Backward compatibility: filter by user_id if installation_id is absent
     return session.exec(
         select(Action)
         .where(Action.user_id == user.id, Action.date >= cutoff)
@@ -726,7 +731,7 @@ def update_action(
 ):
     action = session.get(Action, action_id)
     if not action or action.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Action introuvable")
+        raise HTTPException(status_code=404, detail="Action not found")
     action.date = payload.date
     action.action_type = payload.action_type
     action.product_id = payload.product_id
@@ -780,6 +785,6 @@ def delete_action(
 ):
     action = session.get(Action, action_id)
     if not action or action.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Action introuvable")
+        raise HTTPException(status_code=404, detail="Action not found")
     session.delete(action)
     session.commit()

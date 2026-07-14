@@ -60,10 +60,10 @@ Designed for owners who want full control without complexity: one Docker command
 ### ✨ Features
 
 - **Full dashboard** — KPIs, real-time water parameters, visual water quality indicator
-- **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine and Hardness
+- **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
-- **Pool & Spa** — bromine or chlorine, differentiated ideal ranges
+- **Bromine, chlorine or salt** — differentiated ideal ranges per sanitizer, including salt water generator (SWG) pools, with free-chlorine targets set for the higher CYA a salt system runs at
 - **Full history** — monthly timeline, type filters, full-text search
 - **Measurements page** — track parameter trends over time
 - **Dark mode** — light, dark or automatic theme (system preference)
@@ -76,17 +76,17 @@ Designed for owners who want full control without complexity: one Docker command
 
 <div align="center">
 
-| Journal — Light mode | Journal — Dark mode |
+| Dashboard — Light mode | Dashboard — Dark mode |
 |---|---|
 | ![Dashboard light](docs/screenshots/dashboard-light.png) | ![Dashboard dark](docs/screenshots/dashboard-dark.png) |
 
 | Measurements | History |
 |---|---|
-| ![Measurements](docs/screenshots/mesures-light.png) | ![History](docs/screenshots/historique-light.png) |
+| ![Measurements](docs/screenshots/measurements-light.png) | ![History](docs/screenshots/history-light.png) |
 
 | New entry — Maintenance | New entry — AquaChek strip |
 |---|---|
-| ![Maintenance modal](docs/screenshots/modal-entretien.png) | ![Strip modal](docs/screenshots/modal-bandelette.png) |
+| ![Maintenance modal](docs/screenshots/modal-entry.png) | ![Strip modal](docs/screenshots/modal-strip.png) |
 
 </div>
 
@@ -129,6 +129,18 @@ Copy `.env.example` to `.env` and adjust the values:
 | `DEBUG` | Debug mode (logs reset links) | `false` |
 
 > ⚠️ **Never commit your `.env` file**. It is already in `.gitignore`.
+
+#### Overriding ideal water-parameter ranges
+
+Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm) and a matching free-chlorine band, following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. If your setup runs differently, you can override any band without touching code:
+
+```bash
+# Example: your salt cell runs happily at a higher salt level than the default
+RANGE_POOL_SALT_SALT_IDEAL_MIN=3600
+RANGE_POOL_SALT_SALT_IDEAL_MAX=4400
+```
+
+The naming convention is `RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}` — see the commented examples in `.env.example` for the full list of types, sanitizers and parameter codes.
 
 ---
 

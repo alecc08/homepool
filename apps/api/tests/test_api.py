@@ -52,7 +52,7 @@ def test_create_action_structured(client: TestClient):
     login(client)
     payload = {
         "date": TODAY,
-        "action_type": "Ajout de chlore",
+        "action_type": "Add chlorine",
         "product_id": None,
         "qty": "60",
         "unit": "g",
@@ -61,7 +61,7 @@ def test_create_action_structured(client: TestClient):
     r = client.post("/actions", json=payload)
     assert r.status_code == 200
     data = r.json()
-    assert data["action_type"] == "Ajout de chlore"
+    assert data["action_type"] == "Add chlorine"
     assert data["qty"] == "60"
     assert data["unit"] == "g"
     assert data["product_id"] is None
@@ -81,7 +81,7 @@ def test_list_actions_returns_structured(client: TestClient):
 
 def test_delete_action(client: TestClient):
     login(client)
-    r = client.post("/actions", json={"date": TODAY, "action_type": "A supprimer", "notes": ""})
+    r = client.post("/actions", json={"date": TODAY, "action_type": "To delete", "notes": ""})
     action_id = r.json()["id"]
     del_r = client.delete(f"/actions/{action_id}")
     assert del_r.status_code == 204
@@ -96,39 +96,39 @@ def test_delete_action_not_found(client: TestClient):
 
 # ── Installations / sanitizer ───────────────────────────────────────────────
 
-def test_create_installation_sel_sanitizer(client: TestClient):
+def test_create_installation_salt_sanitizer(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Piscine sel", "type": "piscine", "sanitizer": "sel"},
+        json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"},
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["sanitizer"] == "sel"
-    assert data["type"] == "piscine"
-    assert data["name"] == "Piscine sel"
+    assert data["sanitizer"] == "salt"
+    assert data["type"] == "pool"
+    assert data["name"] == "Salt pool"
 
 
-def test_patch_installation_sanitizer_to_sel(client: TestClient):
+def test_patch_installation_sanitizer_to_salt(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Ma piscine", "type": "piscine", "sanitizer": "chlore"},
+        json={"name": "My pool", "type": "pool", "sanitizer": "chlorine"},
     )
     installation_id = r.json()["id"]
     patch_r = client.patch(
         f"/installations/{installation_id}",
-        json={"sanitizer": "sel"},
+        json={"sanitizer": "salt"},
     )
     assert patch_r.status_code == 200
-    assert patch_r.json()["sanitizer"] == "sel"
+    assert patch_r.json()["sanitizer"] == "salt"
 
 
-def test_get_installation_params_piscine_sel(client: TestClient):
+def test_get_installation_params_pool_salt(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Piscine sel", "type": "piscine", "sanitizer": "sel"},
+        json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"},
     )
     installation_id = r.json()["id"]
     params_r = client.get(f"/installations/{installation_id}/params")
@@ -136,16 +136,16 @@ def test_get_installation_params_piscine_sel(client: TestClient):
     params = params_r.json()
     assert params["salt"]["ideal"] == [2700, 3400]
     assert params["cya"]["ideal"] == [60, 80]
-    assert params["cl"]["ideal"] == [1.0, 3.0]
-    assert params["durete"]["ideal"] == [100, 500]
+    assert params["cl"]["ideal"] == [3.0, 5.0]
+    assert params["hardness"]["ideal"] == [100, 500]
     assert "cc" in params
 
 
-def test_get_installation_params_spa_sel(client: TestClient):
+def test_get_installation_params_spa_salt(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Spa sel", "type": "spa", "sanitizer": "sel"},
+        json={"name": "Salt spa", "type": "spa", "sanitizer": "salt"},
     )
     installation_id = r.json()["id"]
     params_r = client.get(f"/installations/{installation_id}/params")
@@ -155,25 +155,25 @@ def test_get_installation_params_spa_sel(client: TestClient):
     assert params["salt"]["ideal"] == [2500, 3200]
     assert params["cya"]["ideal"] == [30, 50]
     assert params["cl"]["ideal"] == [3.0, 5.0]
-    assert params["durete"]["ideal"] == [100, 500]
+    assert params["hardness"]["ideal"] == [100, 500]
 
 
-def test_get_installation_params_chlore_includes_cc(client: TestClient):
+def test_get_installation_params_chlorine_includes_cc(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Piscine chlore", "type": "piscine", "sanitizer": "chlore"},
+        json={"name": "Chlorine pool", "type": "pool", "sanitizer": "chlorine"},
     )
     installation_id = r.json()["id"]
     params_r = client.get(f"/installations/{installation_id}/params")
     assert "cc" in params_r.json()
 
 
-def test_get_installation_params_brome_excludes_cc(client: TestClient):
+def test_get_installation_params_bromine_excludes_cc(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Piscine brome", "type": "piscine", "sanitizer": "brome"},
+        json={"name": "Bromine pool", "type": "pool", "sanitizer": "bromine"},
     )
     installation_id = r.json()["id"]
     params_r = client.get(f"/installations/{installation_id}/params")
@@ -186,7 +186,7 @@ def test_get_installation_params_unknown_sanitizer_returns_empty(client: TestCli
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Mystere", "type": "piscine", "sanitizer": "inconnu"},
+        json={"name": "Mystery", "type": "pool", "sanitizer": "unknown"},
     )
     installation_id = r.json()["id"]
     params_r = client.get(f"/installations/{installation_id}/params")
@@ -197,21 +197,21 @@ def test_get_installation_params_unknown_sanitizer_returns_empty(client: TestCli
 # ── Range overrides (RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}) ──
 
 def test_apply_range_overrides_full(monkeypatch, water_params_snapshot):
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_IDEAL_MIN", "3600")
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_IDEAL_MAX", "4400")
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_ACCEPTABLE_MIN", "3000")
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_ACCEPTABLE_MAX", "5000")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MIN", "3600")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MAX", "4400")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_ACCEPTABLE_MIN", "3000")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_ACCEPTABLE_MAX", "5000")
     _apply_range_overrides()
-    ranges = WATER_PARAMS[("piscine", "sel")]["salt"]
+    ranges = WATER_PARAMS[("pool", "salt")]["salt"]
     assert ranges["ideal"] == (3600.0, 4400.0)
     assert ranges["acceptable"] == (3000.0, 5000.0)
 
 
 def test_apply_range_overrides_partial_leaves_other_side_default(monkeypatch, water_params_snapshot):
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_IDEAL_MIN", "3600")
-    monkeypatch.setenv("RANGE_PISCINE_SEL_SALT_IDEAL_MAX", "4400")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MIN", "3600")
+    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MAX", "4400")
     _apply_range_overrides()
-    ranges = WATER_PARAMS[("piscine", "sel")]["salt"]
+    ranges = WATER_PARAMS[("pool", "salt")]["salt"]
     assert ranges["ideal"] == (3600.0, 4400.0)
     assert ranges["acceptable"] == (2500, 4500)
 
@@ -223,20 +223,20 @@ def test_apply_range_overrides_noop_without_env_vars(water_params_snapshot):
 
 
 def test_apply_range_overrides_ignores_param_not_present_for_combo(monkeypatch, water_params_snapshot):
-    # ("piscine", "brome") has no "cl" key — an override targeting it must be a no-op.
-    monkeypatch.setenv("RANGE_PISCINE_BROME_CL_IDEAL_MIN", "1.0")
-    monkeypatch.setenv("RANGE_PISCINE_BROME_CL_IDEAL_MAX", "3.0")
-    before = copy.deepcopy(WATER_PARAMS[("piscine", "brome")])
+    # ("pool", "bromine") has no "cl" key — an override targeting it must be a no-op.
+    monkeypatch.setenv("RANGE_POOL_BROMINE_CL_IDEAL_MIN", "1.0")
+    monkeypatch.setenv("RANGE_POOL_BROMINE_CL_IDEAL_MAX", "3.0")
+    before = copy.deepcopy(WATER_PARAMS[("pool", "bromine")])
     _apply_range_overrides()
-    assert WATER_PARAMS[("piscine", "brome")] == before
-    assert "cl" not in WATER_PARAMS[("piscine", "brome")]
+    assert WATER_PARAMS[("pool", "bromine")] == before
+    assert "cl" not in WATER_PARAMS[("pool", "bromine")]
 
 
 def test_create_installation_with_volume(client: TestClient):
     login(client)
     r = client.post(
         "/installations",
-        json={"name": "Ma piscine", "volume": 45000, "volume_unit": "L"},
+        json={"name": "My pool", "volume": 45000, "volume_unit": "L"},
     )
     assert r.status_code == 200
     data = r.json()
@@ -246,7 +246,7 @@ def test_create_installation_with_volume(client: TestClient):
 
 def test_create_installation_without_volume_defaults_null(client: TestClient):
     login(client)
-    r = client.post("/installations", json={"name": "Ma piscine"})
+    r = client.post("/installations", json={"name": "My pool"})
     assert r.status_code == 200
     data = r.json()
     assert data["volume"] is None
@@ -255,7 +255,7 @@ def test_create_installation_without_volume_defaults_null(client: TestClient):
 
 def test_patch_installation_volume(client: TestClient):
     login(client)
-    r = client.post("/installations", json={"name": "Ma piscine"})
+    r = client.post("/installations", json={"name": "My pool"})
     installation_id = r.json()["id"]
     patch_r = client.patch(
         f"/installations/{installation_id}",
@@ -272,11 +272,11 @@ def test_create_installation_with_units(client: TestClient):
     r = client.post(
         "/installations",
         json={
-            "name": "Ma piscine",
+            "name": "My pool",
             "temp_unit": "F",
             "salt_unit": "g/L",
             "conc_unit": "ppm",
-            "durete_unit": "°dH",
+            "hardness_unit": "°dH",
         },
     )
     assert r.status_code == 200
@@ -284,40 +284,40 @@ def test_create_installation_with_units(client: TestClient):
     assert data["temp_unit"] == "F"
     assert data["salt_unit"] == "g/L"
     assert data["conc_unit"] == "ppm"
-    assert data["durete_unit"] == "°dH"
+    assert data["hardness_unit"] == "°dH"
 
 
 def test_create_installation_without_units_defaults(client: TestClient):
     login(client)
-    r = client.post("/installations", json={"name": "Ma piscine"})
+    r = client.post("/installations", json={"name": "My pool"})
     assert r.status_code == 200
     data = r.json()
     assert data["temp_unit"] == "C"
     assert data["salt_unit"] == "ppm"
     assert data["conc_unit"] == "mg/L"
-    assert data["durete_unit"] == "ppm"
+    assert data["hardness_unit"] == "ppm"
 
 
 def test_patch_installation_units(client: TestClient):
     login(client)
-    r = client.post("/installations", json={"name": "Ma piscine"})
+    r = client.post("/installations", json={"name": "My pool"})
     installation_id = r.json()["id"]
     patch_r = client.patch(
         f"/installations/{installation_id}",
-        json={"temp_unit": "F", "salt_unit": "g/L", "conc_unit": "ppm", "durete_unit": "°f"},
+        json={"temp_unit": "F", "salt_unit": "g/L", "conc_unit": "ppm", "hardness_unit": "°f"},
     )
     assert patch_r.status_code == 200
     data = patch_r.json()
     assert data["temp_unit"] == "F"
     assert data["salt_unit"] == "g/L"
     assert data["conc_unit"] == "ppm"
-    assert data["durete_unit"] == "°f"
+    assert data["hardness_unit"] == "°f"
 
 
 def test_delete_installation(client: TestClient):
     login(client)
-    client.post("/installations", json={"name": "Ma piscine"})
-    r = client.post("/installations", json={"name": "Spa du jardin", "type": "spa"})
+    client.post("/installations", json={"name": "My pool"})
+    r = client.post("/installations", json={"name": "Garden spa", "type": "spa"})
     installation_id = r.json()["id"]
     delete_r = client.delete(f"/installations/{installation_id}")
     assert delete_r.status_code == 204
@@ -327,12 +327,12 @@ def test_delete_installation(client: TestClient):
 
 def test_delete_installation_removes_its_actions(client: TestClient):
     login(client)
-    client.post("/installations", json={"name": "Ma piscine"})
-    r = client.post("/installations", json={"name": "Spa du jardin", "type": "spa"})
+    client.post("/installations", json={"name": "My pool"})
+    r = client.post("/installations", json={"name": "Garden spa", "type": "spa"})
     installation_id = r.json()["id"]
     action_r = client.post(
         "/actions",
-        json={"date": TODAY, "action_type": "Mesure", "installation_id": installation_id},
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
     )
     action_id = action_r.json()["id"]
     client.delete(f"/installations/{installation_id}")
@@ -342,7 +342,7 @@ def test_delete_installation_removes_its_actions(client: TestClient):
 
 def test_delete_last_installation_rejected(client: TestClient):
     login(client)
-    r = client.post("/installations", json={"name": "Ma piscine"})
+    r = client.post("/installations", json={"name": "My pool"})
     installation_id = r.json()["id"]
     delete_r = client.delete(f"/installations/{installation_id}")
     assert delete_r.status_code == 400

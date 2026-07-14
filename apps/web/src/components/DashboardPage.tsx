@@ -15,9 +15,9 @@ function getIsDark(theme: Theme): boolean {
 import {
   extractMeasuredParams,
   getPhStatus,
-  getChloreStatus,
-  getBromeStatus,
-  getSelStatus,
+  getChlorineStatus,
+  getBromineStatus,
+  getSaltStatus,
   getTacStatus,
   getTempStatus,
   getPhHistory,
@@ -64,7 +64,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
   const { theme } = useTheme()
   const { t, locale } = useT()
   const isDark = getIsDark(theme)
-  const sanitizer = active?.sanitizer ?? 'chlore'
+  const sanitizer = active?.sanitizer ?? 'chlorine'
   const [showAll, setShowAll] = useState(false)
 
   const today = new Date()
@@ -81,10 +81,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
 
   function lastActionLabel(): string {
     if (actions.length === 0) return '—'
-    if (daysSince === 0) return t('kpi_aujourd_hui')
-    if (daysSince === 1) return t('kpi_hier')
-    const prefix = t('kpi_il_y_a')
-    return prefix ? `${prefix} ${daysSince} ${t('kpi_jour')}` : `${daysSince} ${t('kpi_jour')}`
+    if (daysSince === 0) return t('kpi_today')
+    if (daysSince === 1) return t('kpi_yesterday')
+    const prefix = t('kpi_ago')
+    return prefix ? `${prefix} ${daysSince} ${t('kpi_day_abbr')}` : `${daysSince} ${t('kpi_day_abbr')}`
   }
 
   function lastActionType(): string {
@@ -94,9 +94,9 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
   }
 
   function nextMeasureLabel(): string {
-    if (nextMeasure === null) return t('kpi_jamais_mesure')
-    if (nextMeasure < 0) return t('kpi_en_retard')
-    return `${t('kpi_dans')} ${nextMeasure} ${t('kpi_jours')}`
+    if (nextMeasure === null) return t('kpi_never_measured')
+    if (nextMeasure < 0) return t('kpi_overdue')
+    return `${t('kpi_in')} ${nextMeasure} ${t('kpi_days_abbr')}`
   }
 
   function nextMeasureColor(): string {
@@ -107,7 +107,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
 
   function vsLastMonth(): string {
     const diff = thisMonthActions.length - lastMonthActions.length
-    const vs = t('kpi_vs_mois')
+    const vs = t('kpi_vs_month')
     if (diff > 0) return `+${diff} ${vs}`
     if (diff < 0) return `${diff} ${vs}`
     return `= ${vs}`
@@ -153,10 +153,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
 
   return (
     <div>
-      {/* En-tête */}
+      {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
-          {t('page_journal_title')}
+          {t('page_log_title')}
         </div>
         <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
           {formatDateLong(today, locale)}
@@ -165,10 +165,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
 
       {/* KPI grid */}
       <div className="kpi-grid">
-        {/* Actions ce mois */}
+        {/* Actions this month */}
         <div style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            {t('kpi_actions_mois')}
+            {t('kpi_actions_month')}
           </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: '6px 0 4px' }}>
             {thisMonthActions.length}
@@ -178,47 +178,47 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
           </div>
         </div>
 
-        {/* Dernière action */}
+        {/* Last action */}
         <div style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            {t('kpi_derniere_action')}
+            {t('kpi_last_action')}
           </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: '6px 0 4px' }}>
             {lastActionLabel()}
           </div>
           <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-            {lastActionType() ? translateLabel(t, ACTION_TYPE_LABELS, lastActionType()) : t('kpi_aucune_action')}
+            {lastActionType() ? translateLabel(t, ACTION_TYPE_LABELS, lastActionType()) : t('kpi_no_action')}
           </div>
         </div>
 
-        {/* Prochaine mesure */}
+        {/* Next measurement */}
         <div style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            {t('kpi_prochaine_mesure')}
+            {t('kpi_next_measurement')}
           </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 22, fontWeight: 700, color: nextMeasureColor(), margin: '6px 0 4px' }}>
             {nextMeasureLabel()}
           </div>
           <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-            {t('kpi_recommande')}
+            {t('kpi_recommended')}
           </div>
         </div>
 
-        {/* Traitements ce mois */}
+        {/* Treatments this month */}
         <div style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            {t('kpi_traitements_mois')}
+            {t('kpi_treatments_month')}
           </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: '6px 0 4px' }}>
             {treatments.total}
           </div>
           <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-            {treatments.maintenance} {t('kpi_entretien')} · {treatments.additions} {t('kpi_ajouts')}
+            {treatments.maintenance} {t('kpi_maintenance')} · {treatments.additions} {t('kpi_additions')}
           </div>
         </div>
       </div>
 
-      {/* Bandeau paramètres */}
+      {/* Params banner */}
       <div className="params-banner" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 0', display: 'flex', marginBottom: 14 }}>
         <ParamBlock
           label={t('param_ph')}
@@ -227,37 +227,37 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
           status={params.ph !== null ? getPhStatus(params.ph, ranges ?? undefined) : null}
           showDivider={false}
         />
-        {sanitizer === 'brome' ? (
+        {sanitizer === 'bromine' ? (
           <ParamBlock
-            label={t('param_brome')}
-            value={params.brome !== null ? params.brome.toFixed(1) : '—'}
+            label={t('param_bromine')}
+            value={params.bromine !== null ? params.bromine.toFixed(1) : '—'}
             unit={active?.conc_unit ?? 'mg/L'}
-            status={params.brome !== null ? getBromeStatus(params.brome, ranges ?? undefined) : null}
+            status={params.bromine !== null ? getBromineStatus(params.bromine, ranges ?? undefined) : null}
             showDivider={true}
           />
-        ) : sanitizer === 'sel' ? (
+        ) : sanitizer === 'salt' ? (
           <>
             <ParamBlock
-              label={t('param_sel')}
+              label={t('param_salt')}
               value={params.salt !== null ? params.salt.toFixed(0) : '—'}
               unit={active?.salt_unit ?? 'ppm'}
-              status={params.salt !== null ? getSelStatus(params.salt, ranges ?? undefined) : null}
+              status={params.salt !== null ? getSaltStatus(params.salt, ranges ?? undefined) : null}
               showDivider={true}
             />
             <ParamBlock
-              label={t('param_chlore')}
-              value={params.chlore !== null ? params.chlore.toFixed(1) : '—'}
+              label={t('param_chlorine')}
+              value={params.chlorine !== null ? params.chlorine.toFixed(1) : '—'}
               unit={active?.conc_unit ?? 'mg/L'}
-              status={params.chlore !== null ? getChloreStatus(params.chlore, ranges ?? undefined) : null}
+              status={params.chlorine !== null ? getChlorineStatus(params.chlorine, ranges ?? undefined) : null}
               showDivider={true}
             />
           </>
         ) : (
           <ParamBlock
-            label={t('param_chlore')}
-            value={params.chlore !== null ? params.chlore.toFixed(1) : '—'}
+            label={t('param_chlorine')}
+            value={params.chlorine !== null ? params.chlorine.toFixed(1) : '—'}
             unit={active?.conc_unit ?? 'mg/L'}
-            status={params.chlore !== null ? getChloreStatus(params.chlore, ranges ?? undefined) : null}
+            status={params.chlorine !== null ? getChlorineStatus(params.chlorine, ranges ?? undefined) : null}
             showDivider={true}
           />
         )}
@@ -270,7 +270,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         />
         <div style={{ flex: 1, padding: '0 20px', borderLeft: '1px solid var(--border-subtle)', opacity: params.temp === null ? 0.5 : 1 }}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            {t('param_temperature')}
+            {t('param_temp_label')}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, margin: '6px 0 4px' }}>
             <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -285,21 +285,21 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
           )}
           {params.date && (
             <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
-              {t('param_mesure_du')} {formatShortDate(params.date)}
+              {t('param_measured_on')} {formatShortDate(params.date)}
             </div>
           )}
         </div>
       </div>
 
-      {/* Layout 2 colonnes */}
+      {/* 2-column layout */}
       <div className="dashboard-columns">
-        {/* Colonne gauche */}
+        {/* Left column */}
         <div>
-          {/* Carte Historique récent */}
+          {/* Recent history card */}
           <div style={sectionCardStyle}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {t('table_historique_recent')}
+                {t('table_recent_history')}
               </div>
               <button
                 onClick={() => setShowAll(v => !v)}
@@ -313,13 +313,13 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                   padding: 0,
                 }}
               >
-                {showAll ? t('kpi_reduire') : t('kpi_voir_tout')}
+                {showAll ? t('kpi_collapse') : t('kpi_see_all')}
               </button>
             </div>
 
             {actions.length === 0 ? (
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                {t('table_aucune_action')}
+                {t('table_no_actions')}
               </p>
             ) : (
               <table className="history-table" style={{ marginBottom: 0 }}>
@@ -327,7 +327,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                   <tr>
                     <th style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('table_date')}</th>
                     <th style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('table_type')}</th>
-                    <th className="history-col-params" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('table_parametres')}</th>
+                    <th className="history-col-params" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('table_parameters')}</th>
                     <th className="history-col-notes" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('table_notes')}</th>
                     <th></th>
                   </tr>
@@ -355,14 +355,14 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                         <div style={{ display: 'flex', gap: 2, opacity: hoveredRowId === action.id ? 1 : 0, transition: 'opacity 0.15s' }}>
                           <button
                             onClick={() => onEdit(action)}
-                            title={t('modal_modifier')}
+                            title={t('modal_edit')}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
                           >
                             <Pencil size={13} />
                           </button>
                           <button
                             onClick={() => onDelete(action)}
-                            title={t('modal_supprimer')}
+                            title={t('modal_delete')}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
                           >
                             <Trash2 size={13} />
@@ -376,14 +376,14 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             )}
           </div>
 
-          {/* Carte Évolution pH */}
+          {/* pH trend card */}
           <div style={sectionCardStyle}>
             <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              {t('graph_evolution_ph')}
+              {t('graph_ph_trend')}
             </div>
             {phHistory.length === 0 ? (
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                {t('graph_aucune_mesure_ph')}
+                {t('graph_no_ph_measurement')}
               </p>
             ) : (
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
@@ -412,21 +412,21 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
           </div>
         </div>
 
-        {/* Colonne droite */}
+        {/* Right column */}
         <div>
           {/* WaterStatusCard */}
           <div style={{ marginBottom: 14 }}>
             <WaterStatusCard actions={actions} />
           </div>
 
-          {/* Carte À faire */}
+          {/* To-do card */}
           <div style={sectionCardStyle}>
             <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
               {t('todo_title')}
             </div>
             {todoItems.length === 0 ? (
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-ok-text)', margin: 0, textAlign: 'center' }}>
-                {t('todo_tout_ok')}
+                {t('todo_all_ok')}
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -469,11 +469,11 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
       </div>
 
-      {/* Sauvegardes */}
+      {/* Backups */}
       {(onExport || onImport) && (
         <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginRight: 4 }}>
-            {t('sauvegardes')}
+            {t('backups')}
           </span>
           {onExport && (
             <button
@@ -486,7 +486,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              {t('exporter')}
+              {t('export_label')}
             </button>
           )}
           {onImport && (
@@ -499,7 +499,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {t('importer')}
+              {t('import_label')}
               <input
                 type="file"
                 accept=".json,application/json"
@@ -550,7 +550,7 @@ function ParamBlock({
 function StatusBadge({ status }: { status: ParamStatus }) {
   const { t } = useT()
   const { color, bg } = statusColors(status)
-  const label = status === 'normal' ? t('status_normal') : status === 'warn' ? t('status_surveiller') : t('status_hors_norme')
+  const label = status === 'normal' ? t('status_normal') : status === 'warn' ? t('status_watch') : t('status_out_of_range')
   return (
     <span style={{
       fontFamily: '"IBM Plex Mono", monospace',
@@ -566,13 +566,13 @@ function StatusBadge({ status }: { status: ParamStatus }) {
 function ActionTypeBadge({ actionType }: { actionType: string }) {
   const { t } = useT()
   let color = 'var(--text-muted)', bg = 'var(--bg-surface-2)'
-  if (actionType === 'Mesure' || actionType === 'Mesure de pH') {
+  if (actionType === 'Measurement' || actionType === 'pH Measurement') {
     color = 'var(--badge-orange-text)'; bg = 'var(--badge-orange-bg)'
-  } else if (actionType === 'Ajout de produit') {
+  } else if (actionType === 'Add product') {
     color = 'var(--badge-purple-text)'; bg = 'var(--badge-purple-bg)'
   } else if (
-    actionType === 'Nettoyage cartouche' || actionType === 'Nettoyage filtre skimmer' ||
-    actionType === 'Contre-lavage' || actionType === 'Calibrage pH'
+    actionType === 'Cartridge cleaning' || actionType === 'Skimmer filter cleaning' ||
+    actionType === 'Backwash' || actionType === 'pH calibration'
   ) {
     color = 'var(--badge-blue-text)'; bg = 'var(--badge-blue-bg)'
   }
@@ -590,7 +590,7 @@ function ActionTypeBadge({ actionType }: { actionType: string }) {
 }
 
 function ActionParamPills({ action }: { action: Action }) {
-  const { active } = useInstallation()
+  const { active, ranges } = useInstallation()
   const p = extractMeasuredParams([action])
   const pills: Array<{ label: string; color: string; bg: string }> = []
   const styleMap = {
@@ -599,19 +599,19 @@ function ActionParamPills({ action }: { action: Action }) {
     bad:    { color: 'var(--status-danger-text)', bg: 'var(--status-danger-bg)' },
   }
   if (p.ph !== null) {
-    const s = getPhStatus(p.ph)
+    const s = getPhStatus(p.ph, ranges ?? undefined)
     pills.push({ label: `pH ${p.ph.toFixed(1)}`, ...styleMap[s] })
   }
-  if (p.chlore !== null) {
-    const s = getChloreStatus(p.chlore)
-    pills.push({ label: `Cl ${p.chlore.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`, ...styleMap[s] })
+  if (p.chlorine !== null) {
+    const s = getChlorineStatus(p.chlorine, ranges ?? undefined)
+    pills.push({ label: `Cl ${p.chlorine.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`, ...styleMap[s] })
   }
   if (p.tac !== null) {
-    const s = getTacStatus(p.tac)
+    const s = getTacStatus(p.tac, ranges ?? undefined)
     pills.push({ label: `TAC ${Math.round(p.tac)} ${active?.conc_unit ?? 'mg/L'}`, ...styleMap[s] })
   }
   if (p.temp !== null) {
-    const s = getTempStatus(p.temp)
+    const s = getTempStatus(p.temp, ranges ?? undefined)
     pills.push({ label: `T° ${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, ...styleMap[s] })
   }
   if (pills.length === 0) {

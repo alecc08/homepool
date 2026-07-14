@@ -1,12 +1,12 @@
 services:
 
-  # ── Base de données ──────────────────────────────────────────────────────────
+  # ── Database ─────────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pooly}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?La variable POSTGRES_PASSWORD est requise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD variable is required}
       POSTGRES_DB: ${POSTGRES_DB:-pooly}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -31,7 +31,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pooly}:${POSTGRES_PASSWORD:?required}@db:5432/${POSTGRES_DB:-pooly}
-      SESSION_SECRET: ${SESSION_SECRET:?La variable SESSION_SECRET est requise}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET variable is required}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8090}

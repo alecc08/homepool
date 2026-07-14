@@ -7,7 +7,7 @@ import { translations } from '../i18n/translations'
 function renderEnglish() {
   return render(
     <LocaleContext.Provider value={{ locale: 'en', setLocale: vi.fn(), t: key => (translations.en as Record<string, string>)[key] ?? key }}>
-      <BottomNav page="journal" onNavigate={vi.fn()} onAdd={vi.fn()} />
+      <BottomNav page="log" onNavigate={vi.fn()} onAdd={vi.fn()} />
     </LocaleContext.Provider>
   )
 }

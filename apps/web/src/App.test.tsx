@@ -7,7 +7,7 @@ const mockActions = [
   {
     id: 1,
     date: '2026-02-23',
-    action_type: 'Nettoyage cartouche',
+    action_type: 'Cartridge cleaning',
     user_id: 1,
     product_id: null,
     qty: '',
@@ -16,13 +16,13 @@ const mockActions = [
     created_at: '2026-02-23T00:00:00',
   },
 ]
-const mockProducts = [{ id: 1, name: 'Chlore', type: 'seed', unit_default: 'g' }]
+const mockProducts = [{ id: 1, name: 'Chlorine', type: 'seed', unit_default: 'g' }]
 const mockInstallation = {
   id: 1,
   user_id: 1,
-  name: 'Piscine',
-  type: 'piscine' as const,
-  sanitizer: 'chlore' as const,
+  name: 'Pool',
+  type: 'pool' as const,
+  sanitizer: 'chlorine' as const,
   created_at: '2026-02-25T00:00:00',
 }
 

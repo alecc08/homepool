@@ -2,12 +2,12 @@
 @import "tailwindcss";
 
 :root {
-  /* Vars brand non-thémables (toujours fixe) */
+  /* Brand vars, not themeable (always fixed) */
   --pooly-primary: #1e3a5f;
   --pooly-cyan: #38bdf8;
   --pooly-indigo: #6366f1;
 
-  /* Vars thémables — valeurs light par défaut (remplacées par theme.css en dark) */
+  /* Themeable vars — light defaults (overridden by theme.css in dark) */
   --pooly-bg:           var(--bg-page);
   --pooly-surface:      var(--bg-surface);
   --pooly-border-color: var(--border);
@@ -23,7 +23,7 @@
   --pooly-bad-text:     var(--status-danger-text);
   --pooly-bad-bg:       var(--status-danger-bg);
 
-  /* Shadcn tokens hérités de theme.css + overrides locaux */
+  /* Shadcn tokens inherited from theme.css + local overrides */
   --accent-foreground: 215 52% 24%;
 }
 
@@ -447,19 +447,19 @@ input[type="checkbox"]:checked::after {
   gap: 14px;
 }
 
-/* ── Mesures table ───────────────────────────────────────── */
-.mesures-table {
+/* ── Measurements table ──────────────────────────────────── */
+.measurements-table {
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
 }
 
-.mesures-table th:nth-child(1) { width: 70px; }
-.mesures-table th:nth-child(2) { width: 70px; }
-.mesures-table th:nth-child(3) { width: 100px; }
-.mesures-table th:nth-child(4) { width: 100px; }
-.mesures-table th:nth-child(5) { width: 100px; }
-.mesures-table th:nth-child(6) { width: 80px; }
+.measurements-table th:nth-child(1) { width: 70px; }
+.measurements-table th:nth-child(2) { width: 70px; }
+.measurements-table th:nth-child(3) { width: 100px; }
+.measurements-table th:nth-child(4) { width: 100px; }
+.measurements-table th:nth-child(5) { width: 100px; }
+.measurements-table th:nth-child(6) { width: 80px; }
 
 /* ── Bar chart colors ────────────────────────────────────── */
 .bar-ok     { background: #a7f3d0; }
@@ -470,8 +470,8 @@ input[type="checkbox"]:checked::after {
 [data-theme="dark"] .bar-warn   { background: rgba(245, 158, 11, 0.3); }
 [data-theme="dark"] .bar-danger { background: rgba(239, 68, 68, 0.3); }
 
-/* ── Mesures charts 2-column layout ─────────────────────── */
-.mesures-charts {
+/* ── Measurements charts 2-column layout ─────────────────── */
+.measurements-charts {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
@@ -484,7 +484,7 @@ input[type="checkbox"]:checked::after {
   .dashboard-columns {
     grid-template-columns: 1fr;
   }
-  .mesures-charts {
+  .measurements-charts {
     grid-template-columns: 1fr;
   }
 }
@@ -775,14 +775,14 @@ input[type="checkbox"]:checked::after {
     border-bottom: none;
   }
 
-  /* Sel installations have 5 param blocks (odd) once Chlore is added — the lone
+  /* Salt installations have 5 param blocks (odd) once Chlorine is added — the lone
      trailing block would otherwise sit half-width with a stray left border. */
   .params-banner > *:nth-last-child(1):nth-child(5) {
     flex-basis: 100% !important;
     border-left: none !important;
   }
 
-  /* History table: hide Paramètres & Notes columns on mobile */
+  /* History table: hide Parameters & Notes columns on mobile */
   .history-col-params,
   .history-col-notes {
     display: none;

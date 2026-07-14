@@ -1,11 +1,11 @@
-# Environnement
+# Environment
 .env
 .env.local
 .env.*.local
 *.env
 **/.env
 
-# Dépendances
+# Dependencies
 **/node_modules/
 **/__pycache__/
 **/*.pyc
@@ -20,7 +20,7 @@ build/
 **/.vite/
 apps/web/dist/
 
-# Base de données locale
+# Local database
 *.db
 *.sqlite
 
@@ -37,7 +37,7 @@ yarn-error.log*
 # Tests
 .pytest_cache/
 
-# Claude Code & développement interne
+# Claude Code & internal development
 CLAUDE.md
 .claude/
 *.private

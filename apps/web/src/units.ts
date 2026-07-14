@@ -1,7 +1,7 @@
 export type TempUnit = 'C' | 'F'
 export type SaltUnit = 'ppm' | 'g/L'
 export type ConcUnit = 'mg/L' | 'ppm'
-export type DureteUnit = 'ppm' | '°dH' | '°f'
+export type HardnessUnit = 'ppm' | '°dH' | '°f'
 
 export const celsiusToFahrenheit = (c: number) => c * 9 / 5 + 32
 export const fahrenheitToCelsius = (f: number) => (f - 32) * 5 / 9

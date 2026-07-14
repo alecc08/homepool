@@ -12,9 +12,9 @@
   <ellipse cx="70" cy="48" rx="6" ry="3" fill="#3a6a2a" opacity="0.5"/>
   <ellipse cx="85" cy="62" rx="7" ry="3.5" fill="#3a6a2a" opacity="0.55"/>
   <ellipse cx="52" cy="68" rx="5" ry="2.5" fill="#3a6a2a" opacity="0.45"/>
-  <!-- vague très atténuée -->
+  <!-- very faded wave -->
   <path d="M18 54 Q35 51 52 54 Q69 57 86 54" stroke="rgba(255,255,255,0.15)" stroke-width="1" fill="none" stroke-linecap="round"/>
-  <!-- échelle quasi invisible -->
+  <!-- nearly invisible scale -->
   <line x1="88" y1="42" x2="88" y2="58" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="93" y1="45" x2="93" y2="61" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="88" y1="47" x2="93" y2="49" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linecap="round"/>

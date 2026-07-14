@@ -7,7 +7,7 @@ import { useT } from '../context/LocaleContext'
 import type { Locale } from '../i18n/translations'
 import BottomNav from './BottomNav'
 
-type Page = 'journal' | 'mesures' | 'historique'
+type Page = 'log' | 'measurements' | 'history'
 
 function getIsDark(theme: Theme): boolean {
   if (theme === 'dark') return true
@@ -122,23 +122,23 @@ type Props = {
   setTheme?: (t: Theme) => void
 }
 
-export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, page = 'journal', onNavigate, user, theme = 'auto', setTheme }: Props) {
+export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
   const { installations, active, setActive, deleteInstallation } = useInstallation()
   const { t, locale, setLocale } = useT()
 
   const installationLabel = active?.type === 'spa'
-    ? t('mon_spa')
-    : active?.type === 'piscine'
-    ? t('ma_piscine')
-    : t('mon_installation')
+    ? t('my_spa')
+    : active?.type === 'pool'
+    ? t('my_pool')
+    : t('my_installation')
 
   const handleDeleteInstallation = async () => {
     if (!active) return
-    if (!window.confirm(t('installation_confirmer_suppression').replace('{name}', active.name))) return
+    if (!window.confirm(t('installation_confirm_delete').replace('{name}', active.name))) return
     try {
       await deleteInstallation(active.id)
     } catch {
-      alert(t('installation_erreur_suppression'))
+      alert(t('installation_delete_error'))
     }
   }
 
@@ -178,7 +178,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
               marginTop: '3px',
               letterSpacing: '0.04em',
             }}>
-              {user?.first_name ? `${t('bonjour')} ${user.first_name.toUpperCase()}` : installationLabel}
+              {user?.first_name ? `${t('hello')} ${user.first_name.toUpperCase()}` : installationLabel}
             </div>
           </div>
         </div>
@@ -221,8 +221,8 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
                 <button
                   type="button"
                   onClick={handleDeleteInstallation}
-                  aria-label={t('installation_supprimer')}
-                  title={t('installation_supprimer')}
+                  aria-label={t('installation_delete')}
+                  title={t('installation_delete')}
                   style={{
                     flexShrink: 0, width: 26, height: 26, borderRadius: 6,
                     background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)',
@@ -246,7 +246,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
                   cursor: 'pointer', textAlign: 'left', padding: '2px 0',
                 }}
               >
-                {t('nav_ajouter_installation')}
+                {t('nav_add_installation')}
               </button>
             )}
           </div>
@@ -254,42 +254,42 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
 
         <nav className="sidebar-nav">
           <button
-            className={`sidebar-nav-item${page === 'journal' ? ' active' : ''}`}
-            onClick={() => onNavigate?.('journal')}
+            className={`sidebar-nav-item${page === 'log' ? ' active' : ''}`}
+            onClick={() => onNavigate?.('log')}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
-            {t('nav_journal')}
+            {t('nav_log')}
           </button>
 
           <button
-            className={`sidebar-nav-item${page === 'mesures' ? ' active' : ''}`}
-            onClick={() => onNavigate?.('mesures')}
+            className={`sidebar-nav-item${page === 'measurements' ? ' active' : ''}`}
+            onClick={() => onNavigate?.('measurements')}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
             </svg>
-            {t('nav_mesures')}
+            {t('nav_measurements')}
           </button>
 
           <button
-            className={`sidebar-nav-item${page === 'historique' ? ' active' : ''}`}
-            onClick={() => onNavigate?.('historique')}
+            className={`sidebar-nav-item${page === 'history' ? ' active' : ''}`}
+            onClick={() => onNavigate?.('history')}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            {t('nav_historique')}
+            {t('nav_history')}
           </button>
         </nav>
 
         <div className="sidebar-footer">
           {onAdd && (
             <button className="btn-sidebar-add" onClick={onAdd}>
-              {t('nav_nouvelle_entree')}
+              {t('nav_new_entry')}
             </button>
           )}
           {setTheme && <ThemeSwitch theme={theme} setTheme={setTheme} />}
@@ -300,12 +300,12 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              {t('nav_mon_profil')}
+              {t('nav_my_profile')}
             </button>
           )}
           {onLogout && (
             <button className="btn-sidebar-logout" onClick={onLogout}>
-              {t('nav_deconnexion')}
+              {t('nav_logout')}
             </button>
           )}
           <div style={{
@@ -332,7 +332,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              {t('nav_deconnexion_courte')}
+              {t('nav_logout_short')}
             </button>
           )}
         </div>

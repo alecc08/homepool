@@ -22,7 +22,7 @@ export function useTheme() {
     localStorage.setItem('pooly_theme', theme)
   }, [theme])
 
-  // Écouter les changements système quand on est en mode auto
+  // Listen for system changes while in auto mode
   useEffect(() => {
     if (theme !== 'auto') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')

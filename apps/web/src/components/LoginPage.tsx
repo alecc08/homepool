@@ -157,7 +157,7 @@ function StrengthBar({ password }: { password: string }) {
   if (!password) return null
   const s = pwStrength(password)
   const colors = ['var(--status-danger-text)', 'var(--status-warn-text)', 'var(--status-ok-text)']
-  const labels = [t('auth_mdp_faible_label'), t('auth_mdp_moyen_label'), t('auth_mdp_fort_label')]
+  const labels = [t('auth_password_weak_label'), t('auth_password_medium_label'), t('auth_password_strong_label')]
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 4 }}>
@@ -241,10 +241,10 @@ export default function LoginPage({ onLogin }: Props) {
   }
 
   const SUBTITLE: Record<AuthView, string> = {
-    login: t('auth_connectez'),
-    register: t('auth_creer_compte'),
-    forgot: t('auth_reinit_mdp'),
-    reset: t('auth_nouveau_mdp'),
+    login: t('auth_sign_in_prompt'),
+    register: t('auth_create_account'),
+    forgot: t('auth_reset_password'),
+    reset: t('auth_new_password'),
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -258,18 +258,18 @@ export default function LoginPage({ onLogin }: Props) {
         credentials: 'same-origin',
         body: JSON.stringify({ email: lEmail, password: lPw }),
       })
-      if (!res.ok) { setLError(t('auth_erreur')); return }
+      if (!res.ok) { setLError(t('auth_error')); return }
       const data = await res.json()
       onLogin(data.user)
-    } catch { setLError(t('auth_erreur_connexion')) }
+    } catch { setLError(t('auth_connection_error')) }
     finally { setLLoading(false) }
   }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setRPwError(null); setRConfirmError(null); setRError(null)
-    if (pwStrength(rPw) < 2) { setRPwError(t('auth_mdp_faible')); return }
-    if (rPw !== rPwConfirm) { setRConfirmError(t('auth_mdp_mismatch')); return }
+    if (pwStrength(rPw) < 2) { setRPwError(t('auth_password_weak')); return }
+    if (rPw !== rPwConfirm) { setRConfirmError(t('auth_password_mismatch')); return }
     setRLoading(true)
     try {
       const res = await fetch('/api/auth/register', {
@@ -280,12 +280,12 @@ export default function LoginPage({ onLogin }: Props) {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setRError((d as { detail?: string }).detail ?? t('auth_erreur_compte'))
+        setRError((d as { detail?: string }).detail ?? t('auth_account_error'))
         return
       }
       const data = await res.json()
       onLogin(data.user)
-    } catch { setRError(t('auth_erreur_connexion')) }
+    } catch { setRError(t('auth_connection_error')) }
     finally { setRLoading(false) }
   }
 
@@ -305,8 +305,8 @@ export default function LoginPage({ onLogin }: Props) {
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
     setResetError(null)
-    if (resetPw.length < 8) { setResetError(t('auth_min_8')); return }
-    if (resetPw !== resetConfirm) { setResetError(t('auth_mdp_mismatch')); return }
+    if (resetPw.length < 8) { setResetError(t('auth_min_8_chars')); return }
+    if (resetPw !== resetConfirm) { setResetError(t('auth_password_mismatch')); return }
     setResetLoading(true)
     try {
       const res = await fetch('/api/auth/reset-password', {
@@ -314,9 +314,9 @@ export default function LoginPage({ onLogin }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken, password: resetPw }),
       })
-      if (!res.ok) { setResetError(t('auth_lien_expire')); return }
+      if (!res.ok) { setResetError(t('auth_link_expired')); return }
       setResetSuccess(true)
-    } catch { setResetError(t('auth_erreur_connexion')) }
+    } catch { setResetError(t('auth_connection_error')) }
     finally { setResetLoading(false) }
   }
 
@@ -339,7 +339,7 @@ export default function LoginPage({ onLogin }: Props) {
                 <span style={{ color: 'var(--accent)' }}>y</span>
               </div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: "'IBM Plex Mono', monospace", marginTop: 3, letterSpacing: '0.04em' }}>
-                {t('auth_ma_piscine')}
+                {t('auth_my_pool')}
               </div>
             </div>
           </div>
@@ -352,7 +352,7 @@ export default function LoginPage({ onLogin }: Props) {
             {SUBTITLE[view]}
           </p>
 
-          {/* ── CONNEXION ── */}
+          {/* ── LOGIN ── */}
           {view === 'login' && (
             <form onSubmit={handleLogin} style={{ display: 'grid', gap: 14 }}>
               <div>
@@ -367,26 +367,26 @@ export default function LoginPage({ onLogin }: Props) {
                 <PwField value={lPw} onChange={setLPw} show={lShowPw} onToggle={() => setLShowPw(p => !p)} />
               </div>
               {lError && <AlertBand>{lError}</AlertBand>}
-              <PrimaryBtn loading={lLoading}>{lLoading ? t('auth_connexion_loading') : t('auth_connexion')}</PrimaryBtn>
+              <PrimaryBtn loading={lLoading}>{lLoading ? t('auth_login_loading') : t('auth_login')}</PrimaryBtn>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button type="button" onClick={() => setView('register')} style={linkStyle}>
-                  {t('auth_pas_compte')}
+                  {t('auth_no_account')}
                 </button>
                 <button type="button" onClick={() => setView('forgot')} style={linkStyle}>
-                  {t('auth_oublie')}
+                  {t('auth_forgot')}
                 </button>
               </div>
             </form>
           )}
 
-          {/* ── CRÉATION DE COMPTE ── */}
+          {/* ── ACCOUNT CREATION ── */}
           {view === 'register' && (
             <form onSubmit={handleRegister} style={{ display: 'grid', gap: 14 }}>
               <div>
-                <FieldLabel>{t('auth_prenom')}</FieldLabel>
+                <FieldLabel>{t('auth_first_name')}</FieldLabel>
                 <FieldInput
                   type="text" value={rName} onChange={e => setRName(e.target.value)}
-                  placeholder={t('auth_prenom_placeholder')} required
+                  placeholder={t('auth_first_name_placeholder')} required
                 />
               </div>
               <div>
@@ -416,24 +416,24 @@ export default function LoginPage({ onLogin }: Props) {
                 {rConfirmError && <FieldError>{rConfirmError}</FieldError>}
               </div>
               {rError && <AlertBand>{rError}</AlertBand>}
-              <PrimaryBtn loading={rLoading}>{rLoading ? t('auth_creer_loading') : t('auth_creer')}</PrimaryBtn>
+              <PrimaryBtn loading={rLoading}>{rLoading ? t('auth_create_loading') : t('auth_create')}</PrimaryBtn>
               <div>
                 <button type="button" onClick={() => setView('login')} style={linkStyle}>
-                  {t('auth_deja_compte')}
+                  {t('auth_have_account')}
                 </button>
               </div>
             </form>
           )}
 
-          {/* ── MOT DE PASSE OUBLIÉ ── */}
+          {/* ── FORGOT PASSWORD ── */}
           {view === 'forgot' && (
             fSuccess ? (
               <div style={{ display: 'grid', gap: 20 }}>
                 <AlertBand variant="success">
-                  {t('auth_reset_envoye')}
+                  {t('auth_reset_sent')}
                 </AlertBand>
                 <button type="button" onClick={goLogin} style={linkStyle}>
-                  {t('auth_retour')}
+                  {t('auth_back')}
                 </button>
               </div>
             ) : (
@@ -446,33 +446,33 @@ export default function LoginPage({ onLogin }: Props) {
                   />
                 </div>
                 <PrimaryBtn loading={fLoading}>
-                  {fLoading ? t('auth_envoyer_loading') : t('auth_envoyer')}
+                  {fLoading ? t('auth_send_loading') : t('auth_send')}
                 </PrimaryBtn>
                 <button type="button" onClick={goLogin} style={linkStyle}>
-                  {t('auth_retour')}
+                  {t('auth_back')}
                 </button>
               </form>
             )
           )}
 
-          {/* ── RÉINITIALISATION ── */}
+          {/* ── PASSWORD RESET ── */}
           {view === 'reset' && (
             resetSuccess ? (
               <div style={{ display: 'grid', gap: 20 }}>
                 <AlertBand variant="success">
-                  {t('auth_mdp_modifie')}
+                  {t('auth_password_changed')}
                 </AlertBand>
                 <button type="button" onClick={goLogin} style={linkStyle}>
-                  {t('auth_se_connecter')}
+                  {t('auth_sign_in_link')}
                 </button>
               </div>
             ) : (
               <form onSubmit={handleReset} style={{ display: 'grid', gap: 14 }}>
                 {!resetToken && (
-                  <AlertBand>{t('auth_lien_invalide')}</AlertBand>
+                  <AlertBand>{t('auth_link_invalid')}</AlertBand>
                 )}
                 <div>
-                  <FieldLabel>{t('auth_nouveau_mdp')}</FieldLabel>
+                  <FieldLabel>{t('auth_new_password')}</FieldLabel>
                   <PwField
                     value={resetPw} onChange={setResetPw}
                     show={resetShowPw} onToggle={() => setResetShowPw(p => !p)}
@@ -488,10 +488,10 @@ export default function LoginPage({ onLogin }: Props) {
                 </div>
                 {resetError && <AlertBand>{resetError}</AlertBand>}
                 <PrimaryBtn loading={resetLoading} disabled={!resetToken}>
-                  {resetLoading ? t('auth_enregistrer_mdp_loading') : t('auth_enregistrer_mdp')}
+                  {resetLoading ? t('auth_save_password_loading') : t('auth_save_password')}
                 </PrimaryBtn>
                 <button type="button" onClick={goLogin} style={linkStyle}>
-                  {t('auth_retour')}
+                  {t('auth_back')}
                 </button>
               </form>
             )

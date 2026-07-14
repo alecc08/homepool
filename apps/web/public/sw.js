@@ -26,10 +26,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Ne jamais intercepter les routes d'auth
+  // Never intercept auth routes
   if (url.pathname.startsWith('/auth/')) return;
 
-  // API : Network First
+  // API: Network First
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request)
@@ -43,7 +43,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets statiques : Cache First
+  // Static assets: Cache First
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );

@@ -12,22 +12,22 @@ import {
 } from '@/components/ui/select'
 import {
   getPhStatus,
-  getBromeStatus,
-  getChloreStatus,
+  getBromineStatus,
+  getChlorineStatus,
   getTacStatus,
-  getDureteStatus,
-  getSelStatus,
-  getStabilisantStatus,
-  getCcStatus,
+  getHardnessStatus,
+  getSaltStatus,
+  getStabilizerStatus,
+  getCombinedChlorineStatus,
   getTempStatus,
   translateLabel,
   PARAM_RANGES,
-  RX_BROME,
-  RX_CHLORE,
+  RX_BROMINE,
+  RX_CHLORINE,
   RX_TAC,
-  RX_DURETE,
-  RX_SEL,
-  RX_STABILISANT,
+  RX_HARDNESS,
+  RX_SALT,
+  RX_STABILIZER,
   RX_CC,
   RX_TEMP,
   type DynamicRanges,
@@ -39,76 +39,76 @@ import type { TranslationKey } from '../i18n/translations'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const ACTION_TYPES_PISCINE = [
-  'Nettoyage cartouche',
-  'Nettoyage filtre skimmer',
-  'Mesure',
-  'Calibrage pH',
-  'Ajout de produit',
+const ACTION_TYPES_POOL = [
+  'Cartridge cleaning',
+  'Skimmer filter cleaning',
+  'Measurement',
+  'pH calibration',
+  'Add product',
 ]
 const ACTION_TYPES_SPA = [
-  'Nettoyage cartouche',
+  'Cartridge cleaning',
   'Purge',
-  'Changement d\'eau',
-  'Mesure',
-  'Calibrage pH',
-  'Ajout de produit',
+  'Water change',
+  'Measurement',
+  'pH calibration',
+  'Add product',
 ]
 
 /** DB-stored/matched raw action-type strings never change — only the rendered label does. */
 export const ACTION_TYPE_LABELS: Record<string, TranslationKey> = {
-  'Nettoyage cartouche': 'action_type_nettoyage_cartouche',
-  'Nettoyage filtre skimmer': 'action_type_nettoyage_filtre_skimmer',
-  'Contre-lavage': 'action_type_contre_lavage',
-  'Mesure': 'action_type_mesure',
-  'Calibrage pH': 'action_type_calibrage_ph',
-  'Ajout de produit': 'action_type_ajout_produit',
+  'Cartridge cleaning': 'action_type_cartridge_cleaning',
+  'Skimmer filter cleaning': 'action_type_skimmer_filter_cleaning',
+  'Backwash': 'action_type_backwash',
+  'Measurement': 'action_type_measurement',
+  'pH calibration': 'action_type_ph_calibration',
+  'Add product': 'action_type_add_product',
   'Purge': 'action_type_purge',
-  'Changement d\'eau': 'action_type_changement_eau',
+  'Water change': 'action_type_water_change',
 }
 
 const UNITS = ['g', 'ml', 'pastille', 'L']
 const PRODUCT_OPTIONS = [
-  'Chlore', 'Brome', 'pH -', 'pH +', 'Sel',
-  'Floculant', 'Anti-algue', 'Chlore-choc', 'Brome-choc',
+  'Chlorine', 'Bromine', 'pH -', 'pH +', 'Salt',
+  'Flocculant', 'Algaecide', 'Chlorine shock', 'Bromine shock',
 ]
 
 /** DB-stored/matched raw product names never change — only the rendered label does. */
 export const PRODUCT_LABELS: Record<string, TranslationKey> = {
-  'Chlore': 'modal_install_chlore',
-  'Brome': 'modal_install_brome',
-  'pH -': 'product_ph_moins',
+  'Chlorine': 'modal_install_chlorine',
+  'Bromine': 'modal_install_bromine',
+  'pH -': 'product_ph_minus',
   'pH +': 'product_ph_plus',
-  'Sel': 'modal_install_sel',
-  'Floculant': 'product_floculant',
-  'Anti-algue': 'product_anti_algue',
-  'Chlore-choc': 'product_chlore_choc',
-  'Brome-choc': 'product_brome_choc',
+  'Salt': 'modal_install_salt',
+  'Flocculant': 'product_flocculant',
+  'Algaecide': 'product_algaecide',
+  'Chlorine shock': 'product_chlorine_shock',
+  'Bromine shock': 'product_bromine_shock',
 }
 
-const QUICK_TAGS_PISCINE = [
-  'Eau claire', 'Niveau OK', 'Skimmer propre', 'Panier vidé',
-  'Robot passé', 'Backwash fait', 'Aspirateur passé', 'Épuisette passée',
+const QUICK_TAGS_POOL = [
+  'Clear water', 'Level OK', 'Skimmer clean', 'Basket emptied',
+  'Robot run', 'Backwash done', 'Vacuumed', 'Skimmed',
 ]
 const QUICK_TAGS_SPA = [
-  'Eau claire', 'Niveau OK', 'Filtres propres', 'Panier vidé',
-  'Couvercle remis', 'Purge faite', 'Nettoyage coque', 'Épuisette passée',
+  'Clear water', 'Level OK', 'Filters clean', 'Basket emptied',
+  'Cover replaced', 'Purge done', 'Shell cleaning', 'Skimmed',
 ]
 
 /** DB-stored/matched raw quick-tag strings (stored in notes free-text) never change — only the rendered label does. */
 export const QUICK_TAG_LABELS: Record<string, TranslationKey> = {
-  'Eau claire': 'eau_claire',
-  'Niveau OK': 'tag_niveau_ok',
-  'Skimmer propre': 'tag_skimmer_propre',
-  'Panier vidé': 'tag_panier_vide',
-  'Robot passé': 'tag_robot_passe',
-  'Backwash fait': 'tag_backwash_fait',
-  'Aspirateur passé': 'tag_aspirateur_passe',
-  'Épuisette passée': 'tag_epuisette_passee',
-  'Filtres propres': 'tag_filtres_propres',
-  'Couvercle remis': 'tag_couvercle_remis',
-  'Purge faite': 'tag_purge_faite',
-  'Nettoyage coque': 'tag_nettoyage_coque',
+  'Clear water': 'water_clear',
+  'Level OK': 'tag_level_ok',
+  'Skimmer clean': 'tag_skimmer_clean',
+  'Basket emptied': 'tag_basket_emptied',
+  'Robot run': 'tag_robot_run',
+  'Backwash done': 'tag_backwash_done',
+  'Vacuumed': 'tag_vacuumed',
+  'Skimmed': 'tag_skimmed',
+  'Filters clean': 'tag_filters_clean',
+  'Cover replaced': 'tag_cover_replaced',
+  'Purge done': 'tag_drain_done',
+  'Shell cleaning': 'tag_shell_cleaned',
 }
 
 // ── ActionRow type ─────────────────────────────────────────────────────────
@@ -120,12 +120,12 @@ type ActionRow = {
   qty: string
   unit: string
   m_ph: string
-  m_brome: string
-  m_chlore: string
+  m_bromine: string
+  m_chlorine: string
   m_tac: string
-  m_durete: string
-  m_sel: string
-  m_stabilisant: string
+  m_hardness: string
+  m_salt: string
+  m_stabilizer: string
   m_cc: string
   m_temp: string
 }
@@ -138,12 +138,12 @@ function makeRow(actionTypes: string[]): ActionRow {
     qty: '',
     unit: UNITS[0],
     m_ph: '',
-    m_brome: '',
-    m_chlore: '',
+    m_bromine: '',
+    m_chlorine: '',
     m_tac: '',
-    m_durete: '',
-    m_sel: '',
-    m_stabilisant: '',
+    m_hardness: '',
+    m_salt: '',
+    m_stabilizer: '',
     m_cc: '',
     m_temp: '',
   }
@@ -158,30 +158,30 @@ function rowFromAction(action: Action, products: Product[]): ActionRow {
     qty: action.qty,
     unit: action.unit || UNITS[0],
     m_ph: '',
-    m_brome: '',
-    m_chlore: '',
+    m_bromine: '',
+    m_chlorine: '',
     m_tac: '',
-    m_durete: '',
-    m_sel: '',
-    m_stabilisant: '',
+    m_hardness: '',
+    m_salt: '',
+    m_stabilizer: '',
     m_cc: '',
     m_temp: '',
   }
-  if (action.action_type === 'Mesure' || action.action_type === 'Mesure de pH') {
-    base.action_type = 'Mesure'
+  if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') {
+    base.action_type = 'Measurement'
     base.m_ph = action.qty
-    const bromeM = action.notes.match(RX_BROME)
-    if (bromeM) base.m_brome = bromeM[1]
-    const chloreM = action.notes.match(RX_CHLORE)
-    if (chloreM) base.m_chlore = chloreM[1]
+    const bromeM = action.notes.match(RX_BROMINE)
+    if (bromeM) base.m_bromine = bromeM[1]
+    const chloreM = action.notes.match(RX_CHLORINE)
+    if (chloreM) base.m_chlorine = chloreM[1]
     const tacM = action.notes.match(RX_TAC)
     if (tacM) base.m_tac = tacM[1]
-    const dureteM = action.notes.match(RX_DURETE)
-    if (dureteM) base.m_durete = dureteM[1]
-    const selM = action.notes.match(RX_SEL)
-    if (selM) base.m_sel = selM[1]
-    const stabilisantM = action.notes.match(RX_STABILISANT)
-    if (stabilisantM) base.m_stabilisant = stabilisantM[1]
+    const dureteM = action.notes.match(RX_HARDNESS)
+    if (dureteM) base.m_hardness = dureteM[1]
+    const selM = action.notes.match(RX_SALT)
+    if (selM) base.m_salt = selM[1]
+    const stabilisantM = action.notes.match(RX_STABILIZER)
+    if (stabilisantM) base.m_stabilizer = stabilisantM[1]
     const ccM = action.notes.match(RX_CC)
     if (ccM) base.m_cc = ccM[1]
     const tempM = action.notes.match(RX_TEMP)
@@ -192,27 +192,27 @@ function rowFromAction(action: Action, products: Product[]): ActionRow {
 
 // ── Mode toggle (localStorage) ─────────────────────────────────────────────
 
-type MesureMode = 'bandelette' | 'appareil'
+type MeasureMode = 'strip' | 'device'
 
-function readMode(): MesureMode {
+function readMode(): MeasureMode {
   try {
-    const v = localStorage.getItem('pooly_mesure_mode')
-    return v === 'appareil' ? 'appareil' : 'bandelette'
-  } catch { return 'bandelette' }
+    const v = localStorage.getItem('pooly_measure_mode')
+    return v === 'device' ? 'device' : 'strip'
+  } catch { return 'strip' }
 }
 
-function saveMode(m: MesureMode) {
-  try { localStorage.setItem('pooly_mesure_mode', m) } catch { /* ignore */ }
+function saveMode(m: MeasureMode) {
+  try { localStorage.setItem('pooly_measure_mode', m) } catch { /* ignore */ }
 }
 
-// ── Bandelette data ────────────────────────────────────────────────────────
+// ── Test-strip data ───────────────────────────────────────────────────────
 
 type SwatchDef = { value: number; bg: string; textColor: string; border?: string }
 type ZoneKind = 'low' | 'ok' | 'ideal' | 'high' | 'vhigh'
 type ZoneDef = { label: string; flex: number; kind: ZoneKind }
 
 type BandParam = {
-  key: keyof Pick<ActionRow, 'm_ph' | 'm_brome' | 'm_chlore' | 'm_tac' | 'm_durete'>
+  key: keyof Pick<ActionRow, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness'>
   label: string
   summaryFmt: (v: number) => string
   swatches: SwatchDef[]
@@ -261,7 +261,7 @@ const BAND_PH_BASE: BandParamBase = {
 }
 
 const BAND_TAC_BASE: BandParamBase = {
-  key: 'm_tac', labelKey: 'band_tac_alcalinite',
+  key: 'm_tac', labelKey: 'band_tac_alkalinity',
   summaryFmt: v => `TAC ${v} mg/L`,
   swatches: [
     { value: 0,   bg: '#e8e050', textColor: 'rgba(0,0,0,0.45)' },
@@ -278,9 +278,9 @@ const BAND_TAC_BASE: BandParamBase = {
   ],
 }
 
-const BAND_BROME_BASE: BandParamBase = {
-  key: 'm_brome', labelKey: 'param_brome',
-  summaryFmt: v => `Brome ${v} mg/L`,
+const BAND_BROMINE_BASE: BandParamBase = {
+  key: 'm_bromine', labelKey: 'param_bromine',
+  summaryFmt: v => `Bromine ${v} mg/L`,
   swatches: [
     { value: 0,  bg: '#f4f0e0', textColor: 'rgba(0,0,0,0.35)', border: '1px solid #e2e8f0' },
     { value: 1,  bg: '#e8e898', textColor: 'rgba(0,0,0,0.45)' },
@@ -297,9 +297,9 @@ const BAND_BROME_BASE: BandParamBase = {
   ],
 }
 
-const BAND_CHLORE_BASE: BandParamBase = {
-  key: 'm_chlore', labelKey: 'param_chlore',
-  summaryFmt: v => `Chlore ${v} mg/L`,
+const BAND_CHLORINE_BASE: BandParamBase = {
+  key: 'm_chlorine', labelKey: 'param_chlorine',
+  summaryFmt: v => `Chlorine ${v} mg/L`,
   swatches: [
     { value: 0,   bg: '#f4f0e0', textColor: 'rgba(0,0,0,0.35)', border: '1px solid #e2e8f0' },
     { value: 0.5, bg: '#e8f898', textColor: 'rgba(0,0,0,0.45)' },
@@ -316,9 +316,21 @@ const BAND_CHLORE_BASE: BandParamBase = {
   ],
 }
 
-const BAND_DURETE_BASE: BandParamBase = {
-  key: 'm_durete', labelKey: 'param_durete',
-  summaryFmt: v => `Dureté ${v} ppm`,
+// Salt pools are kept at a meaningfully higher CYA (60-80 ppm) than a manually-dosed
+// chlorine pool, so the same AquaChek strip readings map to different zones: 3-5 ppm
+// reads as low/borderline on a low-CYA pool but is the actual target here.
+const BAND_CHLORINE_SALT_BASE: BandParamBase = {
+  ...BAND_CHLORINE_BASE,
+  zoneDefs: [
+    { flex: 3, kind: 'low' },
+    { flex: 2, kind: 'ideal' },
+    { flex: 1, kind: 'vhigh' },
+  ],
+}
+
+const BAND_HARDNESS_BASE: BandParamBase = {
+  key: 'm_hardness', labelKey: 'param_hardness',
+  summaryFmt: v => `Hardness ${v} ppm`,
   swatches: [
     { value: 0,    bg: '#a8c8e8', textColor: 'rgba(0,0,0,0.4)' },
     { value: 100,  bg: '#9090d0', textColor: 'rgba(255,255,255,0.8)' },
@@ -333,9 +345,9 @@ const BAND_DURETE_BASE: BandParamBase = {
   ],
 }
 
-function getBandParams(sanitizer: 'brome' | 'chlore' | 'sel', t: (key: TranslationKey) => string): BandParam[] {
-  const sanitizerBase = sanitizer === 'brome' ? BAND_BROME_BASE : BAND_CHLORE_BASE
-  return [BAND_PH_BASE, BAND_TAC_BASE, sanitizerBase, BAND_DURETE_BASE].map(b => buildBandParam(b, t))
+function getBandParams(sanitizer: 'bromine' | 'chlorine' | 'salt', t: (key: TranslationKey) => string): BandParam[] {
+  const sanitizerBase = sanitizer === 'bromine' ? BAND_BROMINE_BASE : sanitizer === 'salt' ? BAND_CHLORINE_SALT_BASE : BAND_CHLORINE_BASE
+  return [BAND_PH_BASE, BAND_TAC_BASE, sanitizerBase, BAND_HARDNESS_BASE].map(b => buildBandParam(b, t))
 }
 
 const ZONE_STYLE: Record<ZoneKind, { bg: string; color: string }> = {
@@ -346,7 +358,7 @@ const ZONE_STYLE: Record<ZoneKind, { bg: string; color: string }> = {
   vhigh: { bg: 'var(--status-danger-bg)', color: 'var(--status-danger-text)' },
 }
 
-/** Get the zone kind for a given swatch value on a bandelette param. */
+/** Get the zone kind for a given swatch value on a test-strip param. */
 function swatchZone(param: BandParam, value: number): ZoneKind {
   const idx = param.swatches.findIndex(s => s.value === value)
   if (idx === -1) return 'ok'
@@ -363,15 +375,15 @@ function pillStyle(kind: ZoneKind): { color: string; bg: string } {
   return ZONE_STYLE[kind]
 }
 
-// ── Bandelette mode component ──────────────────────────────────────────────
+// ── Test-strip mode component ────────────────────────────────────────────
 
-type BandeletteProps = {
+type StripProps = {
   row: ActionRow
   onChange: (key: string, updates: Partial<ActionRow>) => void
-  sanitizer: 'brome' | 'chlore' | 'sel'
+  sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
+function StripMode({ row, onChange, sanitizer }: StripProps) {
   const { t } = useT()
   const [hovered, setHovered] = useState<{ param: string; idx: number } | null>(null)
   const BAND_PARAMS = getBandParams(sanitizer, t)
@@ -387,7 +399,7 @@ function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
     <div style={{ display: 'grid', gap: 14 }}>
       {/* Instruction */}
       <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-        {t('modal_comparez')}
+        {t('modal_compare')}
       </div>
 
       {BAND_PARAMS.map(p => {
@@ -396,7 +408,7 @@ function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
 
         return (
           <div key={p.key}>
-            {/* Titre + valeur sélectionnée */}
+            {/* Title + selected value */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
               <span style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
                 {p.label}
@@ -476,11 +488,11 @@ function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
         )
       })}
 
-      {/* Résumé */}
+      {/* Summary */}
       {summaryItems.length > 0 && (
         <div style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 6 }}>
-            {t('modal_resume')}
+            {t('modal_summary')}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {summaryItems.map(item => (
@@ -503,10 +515,10 @@ function BandeletteMode({ row, onChange, sanitizer }: BandeletteProps) {
   )
 }
 
-// ── Appareil numérique mode ────────────────────────────────────────────────
+// ── Digital device mode ─────────────────────────────────────────────────────
 
-type AppareilField = {
-  key: keyof Pick<ActionRow, 'm_ph' | 'm_brome' | 'm_chlore' | 'm_tac' | 'm_durete' | 'm_sel' | 'm_stabilisant' | 'm_cc' | 'm_temp'>
+type DeviceField = {
+  key: keyof Pick<ActionRow, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness' | 'm_salt' | 'm_stabilizer' | 'm_cc' | 'm_temp'>
   label: string
   placeholder: string
   step: string
@@ -514,7 +526,7 @@ type AppareilField = {
   unit?: string
 }
 
-/** Builds the `Idéal : X – Y [unit]` hint, trimming the trailing space when there's no unit. */
+/** Builds the `Ideal: X – Y [unit]` hint, trimming the trailing space when there's no unit. */
 function idealHint(t: (key: TranslationKey) => string, ideal: [number, number], unit?: string): string {
   const range = formatUnitRange(ideal)
   return unit ? `${t('modal_ideal_prefix')} ${range} ${unit}` : `${t('modal_ideal_prefix')} ${range}`
@@ -522,75 +534,75 @@ function idealHint(t: (key: TranslationKey) => string, ideal: [number, number], 
 
 /**
  * Field defs are computed per-installation: unit/hint reflect the installation's chosen
- * units (conc_unit/temp_unit/salt_unit/durete_unit), and ideal-range numbers prefer the
+ * units (conc_unit/temp_unit/salt_unit/hardness_unit), and ideal-range numbers prefer the
  * installation's admin-configured `ranges` (fetched from the backend) over the hardcoded
- * PARAM_RANGES default — same fallback pattern as getPhStatus/getSelStatus/etc, so the
+ * PARAM_RANGES default — same fallback pattern as getPhStatus/getSaltStatus/etc, so the
  * hint text and the live border-color validation never contradict each other.
  */
-function getAppareilFields(
-  sanitizer: 'brome' | 'chlore' | 'sel',
+function getDeviceFields(
+  sanitizer: 'bromine' | 'chlorine' | 'salt',
   t: (key: TranslationKey) => string,
   installation?: Installation | null,
   ranges?: DynamicRanges,
-): AppareilField[] {
+): DeviceField[] {
   const tempUnit = installation?.temp_unit ?? 'C'
   const concUnit = installation?.conc_unit ?? 'mg/L'
   const saltUnit = installation?.salt_unit ?? 'ppm'
-  const dureteUnit = installation?.durete_unit ?? 'ppm'
+  const hardnessUnit = installation?.hardness_unit ?? 'ppm'
 
   const phIdeal = ranges?.ph ?? PARAM_RANGES.ph
   const tacIdeal = ranges?.tac ?? PARAM_RANGES.tac
   const ccIdeal = ranges?.cc ?? PARAM_RANGES.cc
-  const bromeIdeal = ranges?.brome ?? PARAM_RANGES.brome
-  const chloreIdeal = ranges?.chlore ?? PARAM_RANGES.chlore
-  const stabilisantIdeal = ranges?.stabilisant ?? PARAM_RANGES.stabilisant
+  const bromineIdeal = ranges?.bromine ?? PARAM_RANGES.bromine
+  const chlorineIdeal = ranges?.chlorine ?? PARAM_RANGES.chlorine
+  const stabilizerIdeal = ranges?.stabilizer ?? PARAM_RANGES.stabilizer
 
   const tempIdeal: [number, number] = ranges?.temp?.ideal ?? (tempUnit === 'F'
     ? convertRange(PARAM_RANGES.temp, celsiusToFahrenheit).ideal
     : PARAM_RANGES.temp.ideal)
-  const saltIdeal: [number, number] = ranges?.sel?.ideal ?? (saltUnit === 'g/L'
-    ? convertRange(PARAM_RANGES.sel, ppmToGramsPerLiter).ideal
-    : PARAM_RANGES.sel.ideal)
-  const dureteIdeal: [number, number] = ranges?.durete?.ideal ?? (dureteUnit === '°dH'
-    ? convertRange(PARAM_RANGES.durete, ppmToGermanDegrees).ideal
-    : dureteUnit === '°f'
-      ? convertRange(PARAM_RANGES.durete, ppmToFrenchDegrees).ideal
-      : PARAM_RANGES.durete.ideal)
+  const saltIdeal: [number, number] = ranges?.salt?.ideal ?? (saltUnit === 'g/L'
+    ? convertRange(PARAM_RANGES.salt, ppmToGramsPerLiter).ideal
+    : PARAM_RANGES.salt.ideal)
+  const hardnessIdeal: [number, number] = ranges?.hardness?.ideal ?? (hardnessUnit === '°dH'
+    ? convertRange(PARAM_RANGES.hardness, ppmToGermanDegrees).ideal
+    : hardnessUnit === '°f'
+      ? convertRange(PARAM_RANGES.hardness, ppmToFrenchDegrees).ideal
+      : PARAM_RANGES.hardness.ideal)
 
-  const phField: AppareilField = { key: 'm_ph', label: t('param_ph'), placeholder: '7.2', step: '0.1', hint: idealHint(t, phIdeal.ideal) }
-  const chloreField: AppareilField = { key: 'm_chlore', label: t('param_chlore'), placeholder: '1.5', step: '0.5', hint: idealHint(t, chloreIdeal.ideal, concUnit), unit: concUnit }
-  const tacField: AppareilField = { key: 'm_tac', label: t('param_tac'), placeholder: '120', step: '5', hint: idealHint(t, tacIdeal.ideal, concUnit), unit: concUnit }
-  const dureteField: AppareilField = { key: 'm_durete', label: t('param_durete'), placeholder: '250', step: '10', hint: idealHint(t, dureteIdeal, dureteUnit), unit: dureteUnit }
-  const ccField: AppareilField = { key: 'm_cc', label: t('param_cc'), placeholder: '0.1', step: '0.1', hint: idealHint(t, ccIdeal.ideal, concUnit), unit: concUnit }
+  const phField: DeviceField = { key: 'm_ph', label: t('param_ph'), placeholder: '7.2', step: '0.1', hint: idealHint(t, phIdeal.ideal) }
+  const chlorineField: DeviceField = { key: 'm_chlorine', label: t('param_chlorine'), placeholder: '1.5', step: '0.5', hint: idealHint(t, chlorineIdeal.ideal, concUnit), unit: concUnit }
+  const tacField: DeviceField = { key: 'm_tac', label: t('param_tac'), placeholder: '120', step: '5', hint: idealHint(t, tacIdeal.ideal, concUnit), unit: concUnit }
+  const hardnessField: DeviceField = { key: 'm_hardness', label: t('param_hardness'), placeholder: '250', step: '10', hint: idealHint(t, hardnessIdeal, hardnessUnit), unit: hardnessUnit }
+  const ccField: DeviceField = { key: 'm_cc', label: t('param_cc'), placeholder: '0.1', step: '0.1', hint: idealHint(t, ccIdeal.ideal, concUnit), unit: concUnit }
   const tempPlaceholder = tempUnit === 'F' ? String(Math.round(celsiusToFahrenheit(25))) : '25'
-  const tempField: AppareilField = { key: 'm_temp', label: t('param_temperature'), placeholder: tempPlaceholder, step: '0.5', hint: idealHint(t, tempIdeal, `°${tempUnit}`), unit: `°${tempUnit}` }
+  const tempField: DeviceField = { key: 'm_temp', label: t('param_temp_label'), placeholder: tempPlaceholder, step: '0.5', hint: idealHint(t, tempIdeal, `°${tempUnit}`), unit: `°${tempUnit}` }
 
-  if (sanitizer === 'brome') {
+  if (sanitizer === 'bromine') {
     return [
       phField,
-      { key: 'm_brome', label: t('param_brome'), placeholder: '3.0', step: '0.5', hint: idealHint(t, bromeIdeal.ideal, concUnit), unit: concUnit },
+      { key: 'm_bromine', label: t('param_bromine'), placeholder: '3.0', step: '0.5', hint: idealHint(t, bromineIdeal.ideal, concUnit), unit: concUnit },
       tacField,
-      dureteField,
+      hardnessField,
       tempField,
     ]
   }
-  if (sanitizer === 'sel') {
+  if (sanitizer === 'salt') {
     return [
       phField,
-      { key: 'm_sel', label: t('param_sel'), placeholder: '3000', step: '50', hint: idealHint(t, saltIdeal, saltUnit), unit: saltUnit },
-      chloreField,
+      { key: 'm_salt', label: t('param_salt'), placeholder: '3000', step: '50', hint: idealHint(t, saltIdeal, saltUnit), unit: saltUnit },
+      chlorineField,
       tacField,
-      dureteField,
-      { key: 'm_stabilisant', label: t('param_stabilisant'), placeholder: '70', step: '5', hint: idealHint(t, stabilisantIdeal.ideal, 'ppm'), unit: 'ppm' },
+      hardnessField,
+      { key: 'm_stabilizer', label: t('param_stabilizer'), placeholder: '70', step: '5', hint: idealHint(t, stabilizerIdeal.ideal, 'ppm'), unit: 'ppm' },
       ccField,
       tempField,
     ]
   }
   return [
     phField,
-    chloreField,
+    chlorineField,
     tacField,
-    dureteField,
+    hardnessField,
     ccField,
     tempField,
   ]
@@ -598,19 +610,19 @@ function getAppareilFields(
 
 type FieldStatus = 'normal' | 'warn' | 'bad' | null
 
-function getAppareilStatus(key: AppareilField['key'], value: string, ranges?: DynamicRanges): FieldStatus {
+function getDeviceStatus(key: DeviceField['key'], value: string, ranges?: DynamicRanges): FieldStatus {
   if (!value.trim()) return null
   const n = parseFloat(value)
   if (isNaN(n)) return null
   const fn = {
     m_ph: getPhStatus,
-    m_brome: getBromeStatus,
-    m_chlore: getChloreStatus,
+    m_bromine: getBromineStatus,
+    m_chlorine: getChlorineStatus,
     m_tac: getTacStatus,
-    m_durete: getDureteStatus,
-    m_sel: getSelStatus,
-    m_stabilisant: getStabilisantStatus,
-    m_cc: getCcStatus,
+    m_hardness: getHardnessStatus,
+    m_salt: getSaltStatus,
+    m_stabilizer: getStabilizerStatus,
+    m_cc: getCombinedChlorineStatus,
     m_temp: getTempStatus,
   }[key]
   return fn(n, ranges)
@@ -620,24 +632,24 @@ const STATUS_BORDER: Record<NonNullable<FieldStatus>, string> = {
   normal: 'var(--status-ok-text)', warn: 'var(--status-warn-text)', bad: 'var(--status-danger-text)',
 }
 
-type AppareilProps = {
+type DeviceProps = {
   row: ActionRow
   onChange: (key: string, updates: Partial<ActionRow>) => void
-  sanitizer: 'brome' | 'chlore' | 'sel'
+  sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function AppareilMode({ row, onChange, sanitizer }: AppareilProps) {
+function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
   const { t } = useT()
   const { active, ranges } = useInstallation()
-  const APPAREIL_FIELDS = getAppareilFields(sanitizer, t, active, ranges ?? undefined)
-  const [touched, setTouched] = useState<Partial<Record<AppareilField['key'], boolean>>>({})
-  const touch = (k: AppareilField['key']) => setTouched(prev => ({ ...prev, [k]: true }))
+  const DEVICE_FIELDS = getDeviceFields(sanitizer, t, active, ranges ?? undefined)
+  const [touched, setTouched] = useState<Partial<Record<DeviceField['key'], boolean>>>({})
+  const touch = (k: DeviceField['key']) => setTouched(prev => ({ ...prev, [k]: true }))
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      {APPAREIL_FIELDS.map(f => {
+      {DEVICE_FIELDS.map(f => {
         const val = row[f.key]
-        const status = touched[f.key] ? getAppareilStatus(f.key, val, ranges ?? undefined) : null
+        const status = touched[f.key] ? getDeviceStatus(f.key, val, ranges ?? undefined) : null
         const border = status ? STATUS_BORDER[status] : 'var(--border)'
         return (
           <div key={f.key}>
@@ -666,7 +678,7 @@ function AppareilMode({ row, onChange, sanitizer }: AppareilProps) {
               )}
             </div>
             <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: status === 'bad' ? 'var(--status-danger-text)' : 'var(--text-muted)', marginTop: 4, marginBottom: 0 }}>
-              {status === 'bad' ? t('modal_valeur_hors_norme') : f.hint}
+              {status === 'bad' ? t('modal_value_out_of_range') : f.hint}
             </p>
           </div>
         )
@@ -680,20 +692,20 @@ function AppareilMode({ row, onChange, sanitizer }: AppareilProps) {
 type MeasureSectionProps = {
   row: ActionRow
   onChange: (key: string, updates: Partial<ActionRow>) => void
-  sanitizer: 'brome' | 'chlore' | 'sel'
+  sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
 function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
   const { t } = useT()
-  const [mode, setMode] = useState<MesureMode>(readMode)
+  const [mode, setMode] = useState<MeasureMode>(readMode)
 
-  const switchMode = (m: MesureMode) => { setMode(m); saveMode(m) }
+  const switchMode = (m: MeasureMode) => { setMode(m); saveMode(m) }
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Toggle */}
       <div style={{ display: 'flex', background: 'var(--bg-surface-2)', borderRadius: 8, padding: 3, gap: 2 }}>
-        {([['bandelette', t('modal_bandelette')], ['appareil', t('modal_appareil')]] as [MesureMode, string][]).map(([m, label]) => {
+        {([['strip', t('modal_strip')], ['device', t('modal_device')]] as [MeasureMode, string][]).map(([m, label]) => {
           const active = mode === m
           return (
             <button
@@ -721,9 +733,9 @@ function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
       </div>
 
       {/* Mode content */}
-      {mode === 'bandelette'
-        ? <BandeletteMode row={row} onChange={onChange} sanitizer={sanitizer} />
-        : <AppareilMode row={row} onChange={onChange} sanitizer={sanitizer} />
+      {mode === 'strip'
+        ? <StripMode row={row} onChange={onChange} sanitizer={sanitizer} />
+        : <DeviceMode row={row} onChange={onChange} sanitizer={sanitizer} />
       }
     </div>
   )
@@ -738,13 +750,13 @@ type RowItemProps = {
   canRemove: boolean
   products: Product[]
   actionTypes: string[]
-  sanitizer: 'brome' | 'chlore' | 'sel'
+  sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
 function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, sanitizer }: RowItemProps) {
   const { t } = useT()
-  const showProduct = row.action_type === 'Ajout de produit'
-  const showMeasure = row.action_type === 'Mesure'
+  const showProduct = row.action_type === 'Add product'
+  const showMeasure = row.action_type === 'Measurement'
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', background: 'var(--bg-surface-2)', display: 'grid', gap: 10 }}>
@@ -755,8 +767,8 @@ function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, saniti
           onValueChange={v => onChange(row.key, {
             action_type: v,
             product_name: null, qty: '', unit: UNITS[0],
-            m_ph: '', m_brome: '', m_chlore: '', m_tac: '', m_durete: '',
-            m_sel: '', m_stabilisant: '', m_cc: '', m_temp: '',
+            m_ph: '', m_bromine: '', m_chlorine: '', m_tac: '', m_hardness: '',
+            m_salt: '', m_stabilizer: '', m_cc: '', m_temp: '',
           })}
         >
           <SelectTrigger style={{ flex: 1 }}><SelectValue /></SelectTrigger>
@@ -768,7 +780,7 @@ function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, saniti
           <button
             type="button"
             onClick={() => onRemove(row.key)}
-            aria-label={t('modal_supprimer_action_aria')}
+            aria-label={t('modal_delete_action_aria')}
             style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}
           >×</button>
         )}
@@ -782,16 +794,16 @@ function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, saniti
             value={row.product_name ?? 'none'}
             onValueChange={v => {
               const next = v === 'none' ? null : v
-              onChange(row.key, { product_name: next, unit: next === 'Brome' ? 'pastille' : row.unit === 'pastille' ? UNITS[0] : row.unit })
+              onChange(row.key, { product_name: next, unit: next === 'Bromine' ? 'pastille' : row.unit === 'pastille' ? UNITS[0] : row.unit })
             }}
           >
-            <SelectTrigger><SelectValue placeholder={t('modal_produit_placeholder')} /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={t('modal_product_placeholder')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">{t('modal_produit_placeholder')}</SelectItem>
+              <SelectItem value="none">{t('modal_product_placeholder')}</SelectItem>
               {PRODUCT_OPTIONS.map(p => <SelectItem key={p} value={p}>{translateLabel(t, PRODUCT_LABELS, p)}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Input type="number" value={row.qty} onChange={e => onChange(row.key, { qty: e.target.value })} placeholder={t('modal_qte_placeholder')} />
+          <Input type="number" value={row.qty} onChange={e => onChange(row.key, { qty: e.target.value })} placeholder={t('modal_qty_placeholder')} />
           <Select value={row.unit} onValueChange={v => onChange(row.key, { unit: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -817,10 +829,10 @@ type Props = {
 export default function ActionForm({ onAdd, products: _products, onClose, editAction, onEdit }: Props) {
   const { t } = useT()
   const { active } = useInstallation()
-  const sanitizer = active?.sanitizer ?? 'chlore'
-  const installationType = active?.type ?? 'piscine'
-  const actionTypes = installationType === 'spa' ? ACTION_TYPES_SPA : ACTION_TYPES_PISCINE
-  const quickTags = installationType === 'spa' ? QUICK_TAGS_SPA : QUICK_TAGS_PISCINE
+  const sanitizer = active?.sanitizer ?? 'chlorine'
+  const installationType = active?.type ?? 'pool'
+  const actionTypes = installationType === 'spa' ? ACTION_TYPES_SPA : ACTION_TYPES_POOL
+  const quickTags = installationType === 'spa' ? QUICK_TAGS_SPA : QUICK_TAGS_POOL
 
   const isEditMode = !!editAction
   const today = new Date().toISOString().slice(0, 10)
@@ -831,16 +843,16 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   )
   const [notes, setNotes] = useState(() => {
     if (!editAction) return ''
-    if (editAction.action_type === 'Mesure' || editAction.action_type === 'Mesure de pH') {
+    if (editAction.action_type === 'Measurement' || editAction.action_type === 'pH Measurement') {
       return editAction.notes
-        .replace(/brome\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/chlore?\s*(?:libre)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
         .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/dur[eé]t[eé]\s*(?:totale?)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/sel\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/stabilisant\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/combin[ée]?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/temp[eé]rature?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
         .replace(/^[\s.]+/, '')
         .trim()
     }
@@ -860,7 +872,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   const removeRow = (key: string) => setRows(prev => prev.filter(r => r.key !== key))
 
   const updateNotesWithTags = (selected: string[]) => {
-    const allTags = [...QUICK_TAGS_PISCINE, ...QUICK_TAGS_SPA]
+    const allTags = [...QUICK_TAGS_POOL, ...QUICK_TAGS_SPA]
     let remaining = notes
     allTags.forEach(tag => {
       const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -878,21 +890,21 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   }
 
   const toPayload = (row: ActionRow) => {
-    if (row.action_type === 'Mesure') {
+    if (row.action_type === 'Measurement') {
       const parts: string[] = []
-      if (row.m_brome)  parts.push(`brome: ${row.m_brome}`)
-      if (row.m_chlore) parts.push(`chlore: ${row.m_chlore}`)
+      if (row.m_bromine)  parts.push(`bromine: ${row.m_bromine}`)
+      if (row.m_chlorine) parts.push(`chlorine: ${row.m_chlorine}`)
       if (row.m_tac)    parts.push(`TAC: ${row.m_tac}`)
-      if (row.m_durete) parts.push(`dureté: ${row.m_durete}`)
-      if (row.m_sel)    parts.push(`sel: ${row.m_sel}`)
-      if (row.m_stabilisant) parts.push(`stabilisant: ${row.m_stabilisant}`)
-      if (row.m_cc)     parts.push(`combiné: ${row.m_cc}`)
-      if (row.m_temp)   parts.push(`température: ${row.m_temp}`)
+      if (row.m_hardness) parts.push(`hardness: ${row.m_hardness}`)
+      if (row.m_salt)    parts.push(`salt: ${row.m_salt}`)
+      if (row.m_stabilizer) parts.push(`stabilizer: ${row.m_stabilizer}`)
+      if (row.m_cc)     parts.push(`combined: ${row.m_cc}`)
+      if (row.m_temp)   parts.push(`temperature: ${row.m_temp}`)
       const fullNotes = [parts.join('. '), notes].filter(Boolean).join('. ')
-      return { date, action_type: 'Mesure', product_id: null, installation_id: active?.id ?? null, qty: row.m_ph, unit: '', notes: fullNotes }
+      return { date, action_type: 'Measurement', product_id: null, installation_id: active?.id ?? null, qty: row.m_ph, unit: '', notes: fullNotes }
     }
     const productId =
-      row.action_type === 'Ajout de produit' && row.product_name
+      row.action_type === 'Add product' && row.product_name
         ? _products.find(p => p.name.toLowerCase() === row.product_name!.toLowerCase())?.id ?? null
         : null
     return { date, action_type: row.action_type, product_id: productId, installation_id: active?.id ?? null, qty: row.qty, unit: row.unit, notes }
@@ -901,10 +913,10 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     for (const row of rows) {
-      if (row.action_type === 'Mesure') {
+      if (row.action_type === 'Measurement') {
         if (
-          !row.m_ph && !row.m_brome && !row.m_chlore && !row.m_tac && !row.m_durete &&
-          !row.m_sel && !row.m_stabilisant && !row.m_cc && !row.m_temp
+          !row.m_ph && !row.m_bromine && !row.m_chlorine && !row.m_tac && !row.m_hardness &&
+          !row.m_salt && !row.m_stabilizer && !row.m_cc && !row.m_temp
         ) {
           setMeasureError(true)
           return
@@ -922,7 +934,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   return (
     <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
 
-      {/* Corps scrollable */}
+      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4">
 
         {/* Date */}
@@ -952,7 +964,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
           ))}
           {measureError && (
             <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
-              {t('modal_au_moins_un')}
+              {t('modal_at_least_one')}
             </p>
           )}
           {!isEditMode && (
@@ -961,14 +973,14 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
               onClick={addRow}
               style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: '8px 14px', background: 'none', color: 'var(--pooly-primary)', fontSize: 13, fontFamily: '"Sora", sans-serif', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'left' }}
             >
-              {t('modal_ajouter_action')}
+              {t('modal_add_action')}
             </button>
           )}
         </div>
 
         {/* Quick tags */}
         <div className="grid gap-2">
-          <Label>{t('modal_statut_rapide')}</Label>
+          <Label>{t('modal_quick_status')}</Label>
           <div className="grid grid-cols-2 gap-2">
             {quickTags.map(tag => (
               <label key={tag} className="flex items-center gap-2" style={{ fontFamily: '"Sora", sans-serif', color: 'var(--pooly-body)', fontSize: 13, textTransform: 'none', letterSpacing: 'normal' }}>
@@ -987,7 +999,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
 
       </div>
 
-      {/* Footer fixe — toujours visible */}
+      {/* Fixed footer — always visible */}
       <div style={{
         flexShrink: 0,
         padding: '14px 0 0',
@@ -1012,7 +1024,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
             fontFamily: 'Sora, sans-serif',
           }}
         >
-          {t('modal_annuler')}
+          {t('modal_cancel')}
         </button>
         <button
           type="submit"
@@ -1028,7 +1040,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
             fontFamily: 'Sora, sans-serif',
           }}
         >
-          {isEditMode ? t('modal_enregistrer_modifs') : rows.length > 1 ? `${t('modal_enregistrer')} (${rows.length})` : t('modal_enregistrer')}
+          {isEditMode ? t('modal_save_changes') : rows.length > 1 ? `${t('modal_save')} (${rows.length})` : t('modal_save')}
         </button>
       </div>
 

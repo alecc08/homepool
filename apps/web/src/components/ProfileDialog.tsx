@@ -28,11 +28,11 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
     e.preventDefault()
     setError('')
     if (changingPassword) {
-      if (!currentPw) { setError(t('profil_mdp_actuel_requis')); return }
-      if (!newPw) { setError(t('profil_nouveau_mdp_requis')); return }
-      if (newPw !== confirmPw) { setError(t('profil_mdp_mismatch')); return }
+      if (!currentPw) { setError(t('profile_current_password_required')); return }
+      if (!newPw) { setError(t('profile_new_password_required')); return }
+      if (newPw !== confirmPw) { setError(t('profile_password_mismatch')); return }
       if (newPw.length < 8 || !/[A-Z]/.test(newPw) || !/[0-9]/.test(newPw)) {
-        setError(t('profil_mdp_faible'))
+        setError(t('profile_password_weak'))
         return
       }
     }
@@ -42,7 +42,7 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
       setSuccess(true)
       setTimeout(onClose, 900)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('erreur_generique'))
+      setError(err instanceof Error ? err.message : t('generic_error'))
     } finally {
       setLoading(false)
     }
@@ -51,28 +51,28 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
-      {/* Corps scrollable */}
+      {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
-          <Label htmlFor="prof-firstName">{t('profil_prenom')}</Label>
+          <Label htmlFor="prof-firstName">{t('profile_first_name')}</Label>
           <Input
             id="prof-firstName"
             value={firstName}
             onChange={e => setFirstName(e.target.value)}
             className="mt-1"
-            placeholder={t('profil_prenom_placeholder')}
+            placeholder={t('profile_first_name_placeholder')}
           />
         </div>
 
         <Separator />
 
         <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-          {t('profil_changer_mdp')}{' '}
-          <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{t('profil_optionnel')}</span>
+          {t('profile_change_password')}{' '}
+          <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{t('profile_optional')}</span>
         </div>
 
         <div>
-          <Label htmlFor="prof-currentPw">{t('profil_mdp_actuel')}</Label>
+          <Label htmlFor="prof-currentPw">{t('profile_current_password')}</Label>
           <Input
             id="prof-currentPw"
             type="password"
@@ -84,26 +84,26 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
           />
         </div>
         <div>
-          <Label htmlFor="prof-newPw">{t('profil_nouveau_mdp')}</Label>
+          <Label htmlFor="prof-newPw">{t('profile_new_password')}</Label>
           <Input
             id="prof-newPw"
             type="password"
             value={newPw}
             onChange={e => setNewPw(e.target.value)}
             className="mt-1"
-            placeholder={t('profil_nouveau_mdp_placeholder')}
+            placeholder={t('profile_new_password_placeholder')}
             autoComplete="new-password"
           />
         </div>
         <div>
-          <Label htmlFor="prof-confirmPw">{t('profil_confirmer')}</Label>
+          <Label htmlFor="prof-confirmPw">{t('profile_confirm')}</Label>
           <Input
             id="prof-confirmPw"
             type="password"
             value={confirmPw}
             onChange={e => setConfirmPw(e.target.value)}
             className="mt-1"
-            placeholder={t('profil_confirmer_placeholder')}
+            placeholder={t('profile_confirm_placeholder')}
             autoComplete="new-password"
           />
         </div>
@@ -115,16 +115,16 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
         )}
         {success && (
           <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--status-ok-text)', margin: 0 }}>
-            {t('profil_enregistre')}
+            {t('profile_saved')}
           </p>
         )}
       </div>
 
-      {/* Footer fixe — toujours visible */}
+      {/* Fixed footer — always visible */}
       <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Button type="button" variant="ghost" onClick={onClose}>{t('modal_annuler')}</Button>
+        <Button type="button" variant="ghost" onClick={onClose}>{t('modal_cancel')}</Button>
         <Button type="submit" disabled={loading}>
-          {loading ? t('profil_enregistrement') : t('profil_enregistrer')}
+          {loading ? t('profile_saving') : t('profile_save')}
         </Button>
       </div>
 

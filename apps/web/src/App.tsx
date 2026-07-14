@@ -8,8 +8,8 @@ import Topbar from './components/Topbar'
 import ActionForm from './components/ActionForm'
 import ProfileDialog from './components/ProfileDialog'
 import DashboardPage from './components/DashboardPage'
-import MesuresPage from './components/MesuresPage'
-import HistoriquePage from './components/HistoriquePage'
+import MeasurementsPage from './components/MeasurementsPage'
+import HistoryPage from './components/HistoryPage'
 import LoginPage from './components/LoginPage'
 import InstallationModal from './components/InstallationModal'
 import InstallBanner from './components/InstallBanner'
@@ -20,13 +20,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-type Page = 'journal' | 'mesures' | 'historique'
+type Page = 'log' | 'measurements' | 'history'
 
 function getPageFromHash(): Page {
   const hash = window.location.hash.replace(/^#\/?/, '')
-  if (hash === 'mesures') return 'mesures'
-  if (hash === 'historique') return 'historique'
-  return 'journal'
+  if (hash === 'measurements') return 'measurements'
+  if (hash === 'history') return 'history'
+  return 'log'
 }
 
 // ── Authenticated main app (inside InstallationProvider) ───────────────────
@@ -60,7 +60,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   }, [])
 
   const navigate = (p: Page) => {
-    window.location.hash = p === 'journal' ? '' : p
+    window.location.hash = p === 'log' ? '' : p
     setPage(p)
   }
 
@@ -76,7 +76,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
       setActions(actionsData)
       setProducts(productsData)
     } catch {
-      setError(t('impossible_charger'))
+      setError(t('unable_to_load'))
     } finally {
       setLoading(false)
     }
@@ -131,18 +131,18 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
       if (!res.ok) throw new Error()
       await loadData()
     } catch {
-      alert(t('import_erreur'))
+      alert(t('import_error'))
     }
   }
 
   const handleDelete = async (id: number) => {
     try {
       const res = await fetch(`/api/actions/${id}`, { method: 'DELETE', credentials: 'same-origin' })
-      if (!res.ok) throw new Error('Erreur lors de la suppression')
+      if (!res.ok) throw new Error('Error deleting entry')
       setActions(prev => prev.filter(a => a.id !== id))
       setDeletingAction(null)
     } catch {
-      alert(t('app_erreur_suppression'))
+      alert(t('app_delete_error'))
     }
   }
 
@@ -155,7 +155,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
     })
     if (!res.ok) {
       const data = await res.json()
-      throw new Error(data.detail || t('erreur_generique'))
+      throw new Error(data.detail || t('generic_error'))
     }
     const data = await res.json()
     onUserUpdate(data.user)
@@ -169,16 +169,16 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         credentials: 'same-origin',
         body: JSON.stringify({ ...data, installation_id: active?.id ?? null }),
       })
-      if (!res.ok) throw new Error('Erreur lors de la modification')
+      if (!res.ok) throw new Error('Error updating entry')
       const updated: Action = await res.json()
       setActions(prev => prev.map(a => a.id === id ? updated : a).sort((a, b) => b.date.localeCompare(a.date)))
       setEditingAction(null)
     } catch {
-      alert(t('app_erreur_modification'))
+      alert(t('app_update_error'))
     }
   }
 
-  if (loading && actions.length === 0) return <div className="page-loading">{t('chargement')}</div>
+  if (loading && actions.length === 0) return <div className="page-loading">{t('loading')}</div>
   if (error) return <div className="page-loading" style={{ color: 'var(--pooly-bad-text)' }}>{error}</div>
 
   return (
@@ -196,15 +196,15 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
       />
 
       <main className="main-content">
-        {page === 'mesures'
-          ? <MesuresPage actions={actions} />
-          : page === 'historique'
-          ? <HistoriquePage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} />
+        {page === 'measurements'
+          ? <MeasurementsPage actions={actions} />
+          : page === 'history'
+          ? <HistoryPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} />
           : <DashboardPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} onExport={handleExport} onImport={handleImport} />
         }
       </main>
 
-      {/* Dialog — nouvelle saisie */}
+      {/* Dialog — new entry */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader>
@@ -216,12 +216,12 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         </DialogContent>
       </Dialog>
 
-      {/* Dialog — édition */}
+      {/* Dialog — edit */}
       <Dialog open={!!editingAction} onOpenChange={open => { if (!open) setEditingAction(null) }}>
         <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
-              {t('modal_modifier')}
+              {t('modal_edit')}
             </DialogTitle>
           </DialogHeader>
           {editingAction && (
@@ -235,33 +235,33 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         </DialogContent>
       </Dialog>
 
-      {/* Dialog — confirmation suppression */}
+      {/* Dialog — delete confirmation */}
       <Dialog open={!!deletingAction} onOpenChange={open => { if (!open) setDeletingAction(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
-              {t('modal_supprimer_title')}
+              {t('modal_delete_title')}
             </DialogTitle>
           </DialogHeader>
           {deletingAction && (
             <div>
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 20px' }}>
-                <strong>{deletingAction.action_type}</strong> {t('modal_supprimer_du')}{' '}
+                <strong>{deletingAction.action_type}</strong> {t('modal_delete_on')}{' '}
                 {deletingAction.date.split('-').reverse().join('/')}.{' '}
-                {t('modal_supprimer_irrev')}
+                {t('modal_delete_irreversible')}
               </p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => setDeletingAction(null)}
                   style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-surface)', cursor: 'pointer', color: 'var(--text-secondary)' }}
                 >
-                  {t('modal_annuler')}
+                  {t('modal_cancel')}
                 </button>
                 <button
                   onClick={() => handleDelete(deletingAction.id)}
                   style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 7, border: 'none', background: 'var(--status-danger-text)', cursor: 'pointer', color: 'var(--bg-surface)' }}
                 >
-                  {t('modal_supprimer')}
+                  {t('modal_delete')}
                 </button>
               </div>
             </div>
@@ -269,12 +269,12 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         </DialogContent>
       </Dialog>
 
-      {/* Dialog — profil */}
+      {/* Dialog — profile */}
       <Dialog open={showProfile} onOpenChange={setShowProfile}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
-              {t('profil_title')}
+              {t('profile_title')}
             </DialogTitle>
           </DialogHeader>
           <ProfileDialog
@@ -285,7 +285,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         </DialogContent>
       </Dialog>
 
-      {/* Modal — nouvelle installation */}
+      {/* Modal — new installation */}
       <InstallationModal
         open={showInstallationModal}
         onClose={() => setShowInstallationModal(false)}
@@ -323,7 +323,7 @@ export default function App() {
     setUser(null)
   }
 
-  if (authLoading) return <div className="page-loading">{localeValue.t('chargement')}</div>
+  if (authLoading) return <div className="page-loading">{localeValue.t('loading')}</div>
 
   return (
     <LocaleContext.Provider value={localeValue}>

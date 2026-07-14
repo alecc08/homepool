@@ -6,7 +6,7 @@ import { translations } from '../i18n/translations'
 import { PARAM_RANGES, type DynamicRanges } from '../utils'
 import { convertRange, celsiusToFahrenheit } from '../units'
 
-const products = [{ id: 1, name: 'Chlore', type: 'seed', unit_default: 'g' }]
+const products = [{ id: 1, name: 'Chlorine', type: 'seed', unit_default: 'g' }]
 
 // Mocked directly rather than mounted via real providers: LocaleContext and
 // InstallationContext are both unconditionally required by ActionForm, and the
@@ -29,9 +29,9 @@ function makeInstallation(overrides: Partial<Installation> = {}): Installation {
   return {
     id: 1,
     user_id: 1,
-    name: 'Ma piscine',
-    type: 'piscine',
-    sanitizer: 'chlore',
+    name: 'My pool',
+    type: 'pool',
+    sanitizer: 'chlorine',
     created_at: '2026-01-01T00:00:00',
     ...overrides,
   }
@@ -52,7 +52,7 @@ function makeMesureAction(overrides: Partial<Action> = {}): Action {
   return {
     id: 1,
     date: '2026-02-24',
-    action_type: 'Mesure',
+    action_type: 'Measurement',
     user_id: 1,
     product_id: null,
     qty: '7.4',
@@ -66,7 +66,7 @@ function makeMesureAction(overrides: Partial<Action> = {}): Action {
 beforeEach(() => {
   mockUseInstallation.mockReset()
   localStorage.clear()
-  localStorage.setItem('pooly_mesure_mode', 'appareil')
+  localStorage.setItem('pooly_measure_mode', 'device')
 })
 
 describe('ActionForm', () => {
@@ -99,8 +99,8 @@ describe('ActionForm', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('sel installation, appareil mode: renders Sel, Chlore libre, Stabilisant and Chlore combiné fields', () => {
-    setActiveInstallation(makeInstallation({ sanitizer: 'sel' }))
+  it('sel installation, device mode: renders Sel, Chlore libre, Stabilisant and Chlore combiné fields', () => {
+    setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
     render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -110,16 +110,16 @@ describe('ActionForm', () => {
     expect(screen.getByText('Chlore combiné (CC)')).toBeInTheDocument()
   })
 
-  it('chlore installation, appareil mode: renders Chlore combiné field', () => {
-    setActiveInstallation(makeInstallation({ sanitizer: 'chlore' }))
+  it('chlore installation, device mode: renders Chlore combiné field', () => {
+    setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
     const editAction = makeMesureAction()
     render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
     expect(screen.getByText('Chlore combiné (CC)')).toBeInTheDocument()
   })
 
-  it('brome installation, appareil mode: does not render Chlore combiné field', () => {
-    setActiveInstallation(makeInstallation({ sanitizer: 'brome' }))
+  it('brome installation, device mode: does not render Chlore combiné field', () => {
+    setActiveInstallation(makeInstallation({ sanitizer: 'bromine' }))
     const editAction = makeMesureAction()
     render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -127,7 +127,7 @@ describe('ActionForm', () => {
   })
 
   it('filling sel/stabilisant/cc fields and submitting includes them in the payload notes', () => {
-    setActiveInstallation(makeInstallation({ sanitizer: 'sel' }))
+    setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
     const onEdit = vi.fn()
     render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
@@ -140,14 +140,14 @@ describe('ActionForm', () => {
 
     expect(onEdit).toHaveBeenCalledTimes(1)
     const [, payload] = onEdit.mock.calls[0]
-    expect(payload.notes).toContain('sel: 3000')
-    expect(payload.notes).toContain('stabilisant: 70')
-    expect(payload.notes).toContain('combiné: 0.3')
+    expect(payload.notes).toContain('salt: 3000')
+    expect(payload.notes).toContain('stabilizer: 70')
+    expect(payload.notes).toContain('combined: 0.3')
   })
 
-  it('bandelette mode for a sel installation does not render a salt/CYA/CC swatch panel, but does render Chlore', () => {
-    localStorage.setItem('pooly_mesure_mode', 'bandelette')
-    setActiveInstallation(makeInstallation({ sanitizer: 'sel' }))
+  it('strip mode for a sel installation does not render a salt/CYA/CC swatch panel, but does render Chlore', () => {
+    localStorage.setItem('pooly_measure_mode', 'strip')
+    setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
     render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -158,7 +158,7 @@ describe('ActionForm', () => {
   })
 
   describe('température (unit-aware temperature field)', () => {
-    it.each(['brome', 'chlore', 'sel'] as const)('appareil mode renders a Température field for %s installations', (sanitizer) => {
+    it.each(['bromine', 'chlorine', 'salt'] as const)('device mode renders a Température field for %s installations', (sanitizer) => {
       setActiveInstallation(makeInstallation({ sanitizer }))
       const editAction = makeMesureAction()
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
@@ -168,7 +168,7 @@ describe('ActionForm', () => {
 
     it('shows a Fahrenheit-range hint and correct in-range status for an installation with temp_unit F', () => {
       const ranges: DynamicRanges = { temp: convertRange(PARAM_RANGES.temp, celsiusToFahrenheit) }
-      setActiveInstallation(makeInstallation({ sanitizer: 'chlore', temp_unit: 'F' }), ranges)
+      setActiveInstallation(makeInstallation({ sanitizer: 'chlorine', temp_unit: 'F' }), ranges)
       const editAction = makeMesureAction()
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -185,7 +185,7 @@ describe('ActionForm', () => {
     })
 
     it('submitting with the temperature field filled includes it in the payload notes', () => {
-      setActiveInstallation(makeInstallation({ sanitizer: 'chlore' }))
+      setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
       const editAction = makeMesureAction()
       const onEdit = vi.fn()
       render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
@@ -195,22 +195,22 @@ describe('ActionForm', () => {
 
       expect(onEdit).toHaveBeenCalledTimes(1)
       const [, payload] = onEdit.mock.calls[0]
-      expect(payload.notes).toContain('température: 26')
+      expect(payload.notes).toContain('temperature: 26')
     })
 
     it('edit mode does not leak an existing température note into the visible Notes textarea', () => {
-      setActiveInstallation(makeInstallation({ sanitizer: 'chlore' }))
-      const editAction = makeMesureAction({ notes: 'température: 26. Eau claire' })
+      setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
+      const editAction = makeMesureAction({ notes: 'temperature: 26. Clear water' })
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
       expect(notes.value).not.toContain('température')
-      expect(notes.value).toContain('Eau claire')
+      expect(notes.value).toContain('Clear water')
     })
 
-    it('bandelette mode renders no temperature swatch panel, for any sanitizer', () => {
-      localStorage.setItem('pooly_mesure_mode', 'bandelette')
-      setActiveInstallation(makeInstallation({ sanitizer: 'sel' }))
+    it('strip mode renders no temperature swatch panel, for any sanitizer', () => {
+      localStorage.setItem('pooly_measure_mode', 'strip')
+      setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
       const editAction = makeMesureAction()
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -219,13 +219,13 @@ describe('ActionForm', () => {
   })
 
   describe('edit mode round-trip (regression: rowFromAction must re-fill every field, not just pH)', () => {
-    it('re-populates every appareil-mode field with its real saved value, not the placeholder', () => {
-      setActiveInstallation(makeInstallation({ sanitizer: 'sel', temp_unit: 'F' }))
+    it('re-populates every device-mode field with its real saved value, not the placeholder', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'salt', temp_unit: 'F' }))
       // Notes built the same way toPayload (ActionForm.tsx) would for a sel installation
       // with every field filled — this is the exact shape a real save produces.
       const editAction = makeMesureAction({
         qty: '7',
-        notes: 'chlore: 1.5. TAC: 120. dureté: 250. sel: 3200. stabilisant: 65. combiné: 0.1. température: 82. Eau claire. Niveau OK',
+        notes: 'chlorine: 1.5. TAC: 120. hardness: 250. salt: 3200. stabilizer: 65. combined: 0.1. temperature: 82. Clear water. Level OK',
       })
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -240,7 +240,7 @@ describe('ActionForm', () => {
       expect((screen.getByPlaceholderText('77') as HTMLInputElement).value).toBe('82')
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
-      expect(notes.value).toBe('Eau claire. Niveau OK')
+      expect(notes.value).toBe('Clear water. Level OK')
     })
   })
 })

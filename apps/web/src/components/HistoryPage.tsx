@@ -4,7 +4,7 @@ import type { Action, Product } from '../types'
 import {
   getWaterStatus,
   getPhStatus,
-  getChloreStatus,
+  getChlorineStatus,
   getTacStatus,
   getTempStatus,
   extractMeasuredParams,
@@ -17,8 +17,8 @@ import { ACTION_TYPE_LABELS, PRODUCT_LABELS } from './ActionForm'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type FilterType = 'all' | 'mesure' | 'traitement' | 'entretien'
-type Category = 'mesure' | 'traitement' | 'entretien'
+type FilterType = 'all' | 'measurement' | 'treatment' | 'maintenance'
+type Category = 'measurement' | 'treatment' | 'maintenance'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -35,25 +35,25 @@ function formatDate(dateStr: string): string {
 
 function getCategory(action: Action): Category {
   const t = action.action_type
-  if (t === 'Mesure' || t === 'Mesure de pH') return 'mesure'
-  if (t === 'Ajout de produit') return 'traitement'
-  return 'entretien'
+  if (t === 'Measurement' || t === 'pH Measurement') return 'measurement'
+  if (t === 'Add product') return 'treatment'
+  return 'maintenance'
 }
 
 function getTitle(action: Action, products: Product[], t: (key: TranslationKey) => string): string {
-  if (action.action_type === 'Mesure' || action.action_type === 'Mesure de pH') return t('action_type_mesure')
-  if (action.action_type === 'Ajout de produit') {
+  if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') return t('action_type_measurement')
+  if (action.action_type === 'Add product') {
     const p = products.find(p => p.id === action.product_id)
     if (p) return translateLabel(t, PRODUCT_LABELS, p.name)
-    return t('action_type_ajout_produit')
+    return t('action_type_add_product')
   }
   return translateLabel(t, ACTION_TYPE_LABELS, action.action_type)
 }
 
 const CATEGORY_ICON: Record<Category, { emoji: string; bg: string }> = {
-  mesure:      { emoji: '🧪', bg: '#eef2ff' },
-  traitement:  { emoji: '🧴', bg: '#f3e8ff' },
-  entretien:   { emoji: '🔧', bg: '#e0f2fe' },
+  measurement: { emoji: '🧪', bg: '#eef2ff' },
+  treatment:   { emoji: '🧴', bg: '#f3e8ff' },
+  maintenance: { emoji: '🔧', bg: '#e0f2fe' },
 }
 
 const PARAM_STATUS_STYLE: Record<'normal' | 'warn' | 'bad', { color: string; bg: string }> = {
@@ -79,21 +79,21 @@ function Pill({ label, color, bg }: { label: string; color: string; bg: string }
 }
 
 function ParamPills({ action }: { action: Action }) {
-  const { active } = useInstallation()
+  const { active, ranges } = useInstallation()
   const p = extractMeasuredParams([action])
   const pills: { label: string; status: 'normal' | 'warn' | 'bad' }[] = []
 
   if (p.ph !== null) {
-    pills.push({ label: `pH ${p.ph.toFixed(1)}`, status: getPhStatus(p.ph) })
+    pills.push({ label: `pH ${p.ph.toFixed(1)}`, status: getPhStatus(p.ph, ranges ?? undefined) })
   }
-  if (p.chlore !== null) {
-    pills.push({ label: `Cl ${p.chlore.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`, status: getChloreStatus(p.chlore) })
+  if (p.chlorine !== null) {
+    pills.push({ label: `Cl ${p.chlorine.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`, status: getChlorineStatus(p.chlorine, ranges ?? undefined) })
   }
   if (p.tac !== null) {
-    pills.push({ label: `TAC ${Math.round(p.tac)} ${active?.conc_unit ?? 'mg/L'}`, status: getTacStatus(p.tac) })
+    pills.push({ label: `TAC ${Math.round(p.tac)} ${active?.conc_unit ?? 'mg/L'}`, status: getTacStatus(p.tac, ranges ?? undefined) })
   }
   if (p.temp !== null) {
-    pills.push({ label: `${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, status: getTempStatus(p.temp) })
+    pills.push({ label: `${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, status: getTempStatus(p.temp, ranges ?? undefined) })
   }
 
   if (pills.length === 0) return null
@@ -115,6 +115,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
   onDelete?: (action: Action) => void
 }) {
   const { t } = useT()
+  const { ranges } = useInstallation()
   const [hovered, setHovered] = useState(false)
   const cat = getCategory(action)
   const title = getTitle(action, products, t)
@@ -122,20 +123,20 @@ function EntryCard({ action, products, onEdit, onDelete }: {
 
   const STATUS_CFG = {
     clear:  { label: t('status_normal'),     color: 'var(--status-ok-text)',     bg: 'var(--status-ok-bg)'     },
-    cloudy: { label: t('status_surveiller'), color: 'var(--status-warn-text)',   bg: 'var(--status-warn-bg)'   },
-    green:  { label: t('status_hors_norme'), color: 'var(--status-danger-text)', bg: 'var(--status-danger-bg)' },
+    cloudy: { label: t('status_watch'), color: 'var(--status-warn-text)',   bg: 'var(--status-warn-bg)'   },
+    green:  { label: t('status_out_of_range'), color: 'var(--status-danger-text)', bg: 'var(--status-danger-bg)' },
   }
 
-  const TYPE_PILL: Record<'traitement' | 'entretien', { label: string; color: string; bg: string }> = {
-    traitement: { label: t('historique_traitement_badge'), color: 'var(--badge-purple-text)', bg: 'var(--badge-purple-bg)' },
-    entretien:  { label: t('historique_entretien_badge'),  color: 'var(--badge-blue-text)',   bg: 'var(--badge-blue-bg)'   },
+  const TYPE_PILL: Record<'treatment' | 'maintenance', { label: string; color: string; bg: string }> = {
+    treatment: { label: t('history_treatment_badge'), color: 'var(--badge-purple-text)', bg: 'var(--badge-purple-bg)' },
+    maintenance: { label: t('history_maintenance_badge'),  color: 'var(--badge-blue-text)',   bg: 'var(--badge-blue-bg)'   },
   }
 
-  // Status badge (mesure) or type pill (traitement/entretien)
+  // Status badge (measurement) or type pill (treatment/maintenance)
   let badge: React.ReactNode = null
-  if (cat === 'mesure') {
+  if (cat === 'measurement') {
     const p = extractMeasuredParams([action])
-    const { status, hasData } = getWaterStatus({ ph: p.ph, chlore: p.chlore, tac: p.tac })
+    const { status, hasData } = getWaterStatus({ ph: p.ph, chlorine: p.chlorine, tac: p.tac }, ranges ?? undefined)
     if (hasData) {
       const c = STATUS_CFG[status]
       badge = <Pill label={c.label} color={c.color} bg={c.bg} />
@@ -145,16 +146,16 @@ function EntryCard({ action, products, onEdit, onDelete }: {
     badge = <Pill label={c.label} color={c.color} bg={c.bg} />
   }
 
-  const noteText = cat === 'mesure'
+  const noteText = cat === 'measurement'
     ? action.notes
-      .replace(/chlore?\s*(?:libre)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
       .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/temp[eé]rature\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/brome\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/dur[eé]t[eé]\s*(?:totale?)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/sel\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/stabilisant\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/combin[ée]?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
       .replace(/^[\s.]+/, '')
       .trim()
     : action.notes.trim()
@@ -186,7 +187,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
 
       {/* Body */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Ligne 1: titre + badge */}
+        {/* Line 1: title + badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{
             fontFamily: '"Sora", sans-serif',
@@ -197,7 +198,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
           {badge}
         </div>
 
-        {/* Ligne 2: note */}
+        {/* Line 2: note */}
         {noteText ? (
           <div style={{
             fontFamily: '"Sora", sans-serif',
@@ -209,8 +210,8 @@ function EntryCard({ action, products, onEdit, onDelete }: {
           </div>
         ) : null}
 
-        {/* Ligne 3: pills paramètres (mesures uniquement) */}
-        {cat === 'mesure' && <ParamPills action={action} />}
+        {/* Line 3: param pills (measurements only) */}
+        {cat === 'measurement' && <ParamPills action={action} />}
       </div>
 
       {/* Date + actions */}
@@ -225,7 +226,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
           {onEdit && (
             <button
               onClick={() => onEdit(action)}
-              title={t('modal_modifier')}
+              title={t('modal_edit')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
             >
               <Pencil size={13} />
@@ -234,7 +235,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
           {onDelete && (
             <button
               onClick={() => onDelete(action)}
-              title={t('modal_supprimer')}
+              title={t('modal_delete')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
             >
               <Trash2 size={13} />
@@ -255,16 +256,16 @@ type Props = {
   onDelete?: (action: Action) => void
 }
 
-export default function HistoriquePage({ actions, products, onEdit, onDelete }: Props) {
+export default function HistoryPage({ actions, products, onEdit, onDelete }: Props) {
   const { t, locale } = useT()
   const [filter, setFilter] = useState<FilterType>('all')
   const [search, setSearch] = useState('')
 
   const FILTER_BTNS: { label: string; value: FilterType }[] = [
-    { label: t('historique_tout'),         value: 'all' },
-    { label: t('historique_mesures'),      value: 'mesure' },
-    { label: t('historique_traitements'),  value: 'traitement' },
-    { label: t('historique_entretiens'),   value: 'entretien' },
+    { label: t('history_all'),         value: 'all' },
+    { label: t('history_measurements'),      value: 'measurement' },
+    { label: t('history_treatments'),  value: 'treatment' },
+    { label: t('history_maintenance'),   value: 'maintenance' },
   ]
 
   const filtered = useMemo(() => {
@@ -296,19 +297,19 @@ export default function HistoriquePage({ actions, products, onEdit, onDelete }: 
 
   return (
     <div>
-      {/* En-tête */}
+      {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
-          {t('page_historique_title')}
+          {t('page_history_title')}
         </div>
         <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-          {t('page_historique_sub')}
+          {t('page_history_sub')}
         </div>
       </div>
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-        {/* Filtres type */}
+        {/* Type filters */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FILTER_BTNS.map(btn => {
             const active = btn.value === filter
@@ -332,12 +333,12 @@ export default function HistoriquePage({ actions, products, onEdit, onDelete }: 
           })}
         </div>
 
-        {/* Recherche */}
+        {/* Search */}
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder={t('historique_rechercher')}
+          placeholder={t('history_search')}
           style={{
             fontFamily: '"Sora", sans-serif',
             fontSize: 11, color: 'var(--text-primary)',
@@ -358,12 +359,12 @@ export default function HistoriquePage({ actions, products, onEdit, onDelete }: 
           minHeight: 120,
           fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-muted)',
         }}>
-          {t('historique_aucune_entree')}
+          {t('history_no_entries')}
         </div>
       ) : (
         grouped.map(({ ym, list }) => (
           <div key={ym} style={{ marginBottom: 20 }}>
-            {/* Séparateur mois */}
+            {/* Month separator */}
             <div style={{
               fontFamily: '"IBM Plex Mono", monospace',
               fontSize: 10, textTransform: 'uppercase',

@@ -15,19 +15,19 @@ RUN npm run build
 # ── Stage 2 : Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS production
 
-# Sécurité : utilisateur non-root
+# Security: non-root user
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
-# Copie du build
+# Copy the build
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copie du template nginx et de l'entrypoint
+# Copy the nginx template and the entrypoint
 COPY nginx/nginx.conf.template /etc/nginx/templates/nginx.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Supprime la config Nginx par défaut
+# Remove the default Nginx config
 RUN rm -f /etc/nginx/conf.d/default.conf
 
 # Permissions

@@ -3,16 +3,16 @@ from sqlmodel import Session, select
 from models import Product
 
 SEED_PRODUCTS = [
-    {"name": "Chlore", "unit_default": "g"},
-    {"name": "Brome", "unit_default": "g"},
-    {"name": "Sel", "unit_default": "kg"},
+    {"name": "Chlorine", "unit_default": "g"},
+    {"name": "Bromine", "unit_default": "g"},
+    {"name": "Salt", "unit_default": "kg"},
     {"name": "pH+", "unit_default": "g"},
     {"name": "pH-", "unit_default": "ml"},
-    {"name": "Anti-algue", "unit_default": "ml"},
-    {"name": "Floculant", "unit_default": "ml"},
-    {"name": "Nettoyage filtre", "unit_default": ""},
-    {"name": "Contre-lavage", "unit_default": ""},
-    {"name": "Nettoyage cartouche", "unit_default": ""},
+    {"name": "Algaecide", "unit_default": "ml"},
+    {"name": "Flocculant", "unit_default": "ml"},
+    {"name": "Filter cleaning", "unit_default": ""},
+    {"name": "Backwash", "unit_default": ""},
+    {"name": "Cartridge cleaning", "unit_default": ""},
 ]
 
 

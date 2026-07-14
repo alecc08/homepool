@@ -116,39 +116,39 @@ function PoolGreenSvg({ isDark, opacity }: SvgProps) {
 function SpaClearSvg({ opacity }: SvgProps) {
   return (
     <svg width="140" height="125" viewBox="0 0 140 125" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity, width: '100%', height: 'auto', maxWidth: 140 }}>
-      {/* vapeur */}
+      {/* steam */}
       <path d="M54 24 Q52 18 54 12 Q56 18 54 24" stroke="rgba(56,189,248,0.4)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
       <path d="M70 20 Q68 14 70 8 Q72 14 70 20" stroke="rgba(56,189,248,0.35)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
       <path d="M86 24 Q84 18 86 12 Q88 18 86 24" stroke="rgba(56,189,248,0.3)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-      {/* face avant-gauche */}
+      {/* front-left face */}
       <path d="M22 65 L22 79 L46 99 L46 85 Z" fill="#9ac4d8"/>
-      {/* face avant */}
+      {/* front face */}
       <path d="M46 85 L46 99 L94 99 L94 85 Z" fill="#88b8cc"/>
-      {/* face avant-droite */}
+      {/* front-right face */}
       <path d="M94 85 L94 99 L118 79 L118 65 Z" fill="#7aacc0"/>
-      {/* surface eau hexagonale */}
+      {/* hexagonal water surface */}
       <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#38bdf8" opacity="0.9"/>
-      {/* reflet */}
+      {/* reflection */}
       <path d="M22 65 L38 57 L54 65 L38 73 Z" fill="rgba(255,255,255,0.15)"/>
-      {/* vague 1 */}
+      {/* wave 1 */}
       <path d="M30 66 Q50 59 68 66 Q86 73 104 66 Q114 62 116 65" stroke="rgba(255,255,255,0.65)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      {/* vague 2 */}
+      {/* wave 2 */}
       <path d="M34 74 Q52 68 70 74 Q88 80 106 74" stroke="rgba(255,255,255,0.3)" strokeWidth="1" fill="none" strokeLinecap="round"/>
-      {/* jets paroi gauche */}
+      {/* left-wall jets */}
       <circle cx="26" cy="67" r="2.5" fill="rgba(255,255,255,0.55)"/>
       <circle cx="26" cy="74" r="2" fill="rgba(255,255,255,0.4)"/>
-      {/* jets paroi droite */}
+      {/* right-wall jets */}
       <circle cx="114" cy="67" r="2.5" fill="rgba(255,255,255,0.55)"/>
       <circle cx="114" cy="74" r="2" fill="rgba(255,255,255,0.4)"/>
-      {/* jets coins */}
+      {/* corner jets */}
       <circle cx="34" cy="56" r="2" fill="rgba(255,255,255,0.4)"/>
       <circle cx="106" cy="56" r="2" fill="rgba(255,255,255,0.4)"/>
-      {/* bulles */}
+      {/* bubbles */}
       <circle cx="52" cy="74" r="2" fill="rgba(255,255,255,0.45)"/>
       <circle cx="68" cy="68" r="1.5" fill="rgba(255,255,255,0.4)"/>
       <circle cx="84" cy="75" r="2" fill="rgba(255,255,255,0.4)"/>
       <circle cx="96" cy="70" r="1.5" fill="rgba(255,255,255,0.35)"/>
-      {/* statut */}
+      {/* status */}
       <circle cx="126" cy="44" r="6" fill="#10b981"/>
       <circle cx="126" cy="44" r="3" style={{ fill: 'var(--bg-surface)' }}/>
     </svg>
@@ -158,30 +158,30 @@ function SpaClearSvg({ opacity }: SvgProps) {
 function SpaClouddySvg({ opacity }: SvgProps) {
   return (
     <svg width="140" height="125" viewBox="0 0 140 125" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity, width: '100%', height: 'auto', maxWidth: 140 }}>
-      {/* vapeur atténuée */}
+      {/* faded steam */}
       <path d="M54 24 Q52 18 54 12 Q56 18 54 24" stroke="rgba(56,150,170,0.25)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
       <path d="M70 20 Q68 14 70 8 Q72 14 70 20" stroke="rgba(56,150,170,0.2)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
       {/* faces */}
       <path d="M22 65 L22 79 L46 99 L46 85 Z" fill="#4a8490"/>
       <path d="M46 85 L46 99 L94 99 L94 85 Z" fill="#407880"/>
       <path d="M94 85 L94 99 L118 79 L118 65 Z" fill="#386c74"/>
-      {/* surface eau trouble */}
+      {/* cloudy water surface */}
       <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#3a9aaa" opacity="0.9"/>
       <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="rgba(180,210,180,0.18)"/>
-      {/* particules turbidité */}
+      {/* turbidity particles */}
       <circle cx="44" cy="66" r="1.5" fill="rgba(255,255,255,0.28)"/>
       <circle cx="62" cy="60" r="1" fill="rgba(255,255,255,0.25)"/>
       <circle cx="80" cy="68" r="1.5" fill="rgba(255,255,255,0.28)"/>
       <circle cx="98" cy="62" r="1" fill="rgba(255,255,255,0.22)"/>
       <circle cx="58" cy="76" r="1.5" fill="rgba(255,255,255,0.2)"/>
-      {/* vague atténuée */}
+      {/* faded wave */}
       <path d="M30 66 Q50 60 68 66 Q86 72 104 66" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
       {/* jets */}
       <circle cx="26" cy="67" r="2.5" fill="rgba(255,255,255,0.28)"/>
       <circle cx="114" cy="67" r="2.5" fill="rgba(255,255,255,0.28)"/>
       <circle cx="34" cy="56" r="2" fill="rgba(255,255,255,0.22)"/>
       <circle cx="106" cy="56" r="2" fill="rgba(255,255,255,0.22)"/>
-      {/* statut */}
+      {/* status */}
       <circle cx="126" cy="44" r="6" fill="#f59e0b"/>
       <circle cx="126" cy="44" r="3" style={{ fill: 'var(--bg-surface)' }}/>
     </svg>
@@ -195,19 +195,19 @@ function SpaGreenSvg({ opacity }: SvgProps) {
       <path d="M22 65 L22 79 L46 99 L46 85 Z" fill="#3a6a3a"/>
       <path d="M46 85 L46 99 L94 99 L94 85 Z" fill="#345e34"/>
       <path d="M94 85 L94 99 L118 79 L118 65 Z" fill="#2e5430"/>
-      {/* surface eau verte */}
+      {/* green water surface */}
       <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#4a7a3a" opacity="0.95"/>
-      {/* algues */}
+      {/* algae */}
       <ellipse cx="50" cy="68" rx="9" ry="4" fill="#3a6a2a" opacity="0.6"/>
       <ellipse cx="76" cy="60" rx="7" ry="3" fill="#3a6a2a" opacity="0.5"/>
       <ellipse cx="94" cy="72" rx="8" ry="3.5" fill="#3a6a2a" opacity="0.55"/>
       <ellipse cx="64" cy="78" rx="5" ry="2.5" fill="#3a6a2a" opacity="0.45"/>
-      {/* vague quasi invisible */}
+      {/* nearly invisible wave */}
       <path d="M30 66 Q50 63 68 66 Q86 69 104 66" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" strokeLinecap="round"/>
-      {/* jets quasi invisibles */}
+      {/* nearly invisible jets */}
       <circle cx="26" cy="67" r="2.5" fill="rgba(255,255,255,0.12)"/>
       <circle cx="114" cy="67" r="2.5" fill="rgba(255,255,255,0.12)"/>
-      {/* statut */}
+      {/* status */}
       <circle cx="126" cy="44" r="6" fill="#ef4444"/>
       <circle cx="126" cy="44" r="3" style={{ fill: 'var(--bg-surface)' }}/>
     </svg>
@@ -217,9 +217,9 @@ function SpaGreenSvg({ opacity }: SvgProps) {
 // ── Config ─────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-  clear:  { labelKey: 'eau_claire',  statusKey: 'status_normal',     color: 'var(--status-ok-text)'     },
-  cloudy: { labelKey: 'eau_trouble', statusKey: 'status_surveiller', color: 'var(--status-warn-text)'   },
-  green:  { labelKey: 'eau_verte',   statusKey: 'status_hors_norme', color: 'var(--status-danger-text)' },
+  clear:  { labelKey: 'water_clear',  statusKey: 'status_normal',        color: 'var(--status-ok-text)'     },
+  cloudy: { labelKey: 'water_cloudy', statusKey: 'status_watch',         color: 'var(--status-warn-text)'   },
+  green:  { labelKey: 'water_green',  statusKey: 'status_out_of_range',  color: 'var(--status-danger-text)' },
 } as const
 
 // ── Component ──────────────────────────────────────────────────────────────

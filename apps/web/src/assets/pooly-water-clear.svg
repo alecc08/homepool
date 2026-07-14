@@ -13,7 +13,7 @@
   <path d="M18 54 Q35 48 52 54 Q69 60 86 54 Q100 49 106 53" stroke="rgba(255,255,255,0.65)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
   <!-- vague 2 -->
   <path d="M22 62 Q38 57 54 62 Q70 67 86 62" stroke="rgba(255,255,255,0.35)" stroke-width="1" fill="none" stroke-linecap="round"/>
-  <!-- échelle -->
+  <!-- scale -->
   <line x1="88" y1="42" x2="88" y2="58" stroke="rgba(255,255,255,0.8)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="93" y1="45" x2="93" y2="61" stroke="rgba(255,255,255,0.8)" stroke-width="1.5" stroke-linecap="round"/>
   <line x1="88" y1="47" x2="93" y2="49" stroke="rgba(255,255,255,0.7)" stroke-width="1" stroke-linecap="round"/>

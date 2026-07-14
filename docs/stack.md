@@ -1,19 +1,19 @@
-# Stack V1 (proposition)
+# Stack V1 (proposal)
 
 ## Frontend
 - Vite + React + TypeScript
-- PWA: manifest + service worker minimal (vite-plugin-pwa)
-- Styling: CSS (fichier global) + variables
+- PWA: manifest + minimal service worker (vite-plugin-pwa)
+- Styling: CSS (global file) + variables
 
 ## Backend
 - FastAPI (Python) + PostgreSQL
-- ORM: SQLModel ou SQLAlchemy
+- ORM: SQLModel or SQLAlchemy
 
 ## Auth V1
-- Username unique + token par appareil (bearer token)
-- Pas d'email / pas de password
+- Unique username + token per device (bearer token)
+- No email / no password
 
 ## Rationale
-- Rapidite d'iteration
-- Stack stable pour PWA
-- API claire pour future integration Home Assistant
+- Fast iteration
+- Stable stack for PWA
+- Clear API for future Home Assistant integration

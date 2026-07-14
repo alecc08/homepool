@@ -6,13 +6,13 @@ import type { TranslationKey } from './i18n/translations'
 
 export type WaterStatus = 'clear' | 'cloudy' | 'green'
 
-// Sel, stabilisant (CYA), CC and dureté are tracked/displayed but deliberately
-// excluded from the clear/cloudy/green heuristic below (same precedent as durete).
+// Salt, stabilizer (CYA), CC and hardness are tracked/displayed but deliberately
+// excluded from the clear/cloudy/green heuristic below (same precedent as hardness).
 export type WaterParams = {
   ph: number | null
-  chlore: number | null
+  chlorine: number | null
   tac: number | null
-  brome?: number | null
+  bromine?: number | null
 }
 
 /**
@@ -20,96 +20,96 @@ export type WaterParams = {
  */
 export type DynamicRanges = {
   ph?: { ideal: [number, number]; acceptable: [number, number] }
-  chlore?: { ideal: [number, number]; acceptable: [number, number] }
-  brome?: { ideal: [number, number]; acceptable: [number, number] }
+  chlorine?: { ideal: [number, number]; acceptable: [number, number] }
+  bromine?: { ideal: [number, number]; acceptable: [number, number] }
   tac?: { ideal: [number, number]; acceptable: [number, number] }
   temp?: { ideal: [number, number]; acceptable: [number, number] }
-  sel?: { ideal: [number, number]; acceptable: [number, number] }
-  stabilisant?: { ideal: [number, number]; acceptable: [number, number] }
+  salt?: { ideal: [number, number]; acceptable: [number, number] }
+  stabilizer?: { ideal: [number, number]; acceptable: [number, number] }
   cc?: { ideal: [number, number]; acceptable: [number, number] }
-  durete?: { ideal: [number, number]; acceptable: [number, number] }
+  hardness?: { ideal: [number, number]; acceptable: [number, number] }
 }
 
 /**
- * Convert API InstallationWaterParams to DynamicRanges (cl→chlore, br→brome, salt→sel, cya→stabilisant).
- * When an installation is provided, temp/sel/durete ranges are converted to the installation's
- * chosen unit ("store as entered" model — chlore/brome/tac/cc are display-label-only, no math).
- * durete falls back to PARAM_RANGES.durete only for combos that don't return one from the backend.
+ * Convert API InstallationWaterParams to DynamicRanges (cl→chlorine, br→bromine, salt→salt, cya→stabilizer).
+ * When an installation is provided, temp/salt/hardness ranges are converted to the installation's
+ * chosen unit ("store as entered" model — chlorine/bromine/tac/cc are display-label-only, no math).
+ * hardness falls back to PARAM_RANGES.hardness only for combos that don't return one from the backend.
  */
 export function installationParamsToRanges(params: InstallationWaterParams, installation?: Installation): DynamicRanges {
   const temp = installation?.temp_unit === 'F' ? convertRange(params.temp, celsiusToFahrenheit) : params.temp
-  const sel = installation?.salt_unit === 'g/L' && params.salt ? convertRange(params.salt, ppmToGramsPerLiter) : params.salt
+  const salt = installation?.salt_unit === 'g/L' && params.salt ? convertRange(params.salt, ppmToGramsPerLiter) : params.salt
 
-  const dureteBase = params.durete ?? PARAM_RANGES.durete
-  const dureteUnit = installation?.durete_unit ?? 'ppm'
-  const durete = dureteUnit === '°dH'
-    ? convertRange(dureteBase, ppmToGermanDegrees)
-    : dureteUnit === '°f'
-      ? convertRange(dureteBase, ppmToFrenchDegrees)
-      : dureteBase
+  const hardnessBase = params.hardness ?? PARAM_RANGES.hardness
+  const hardnessUnit = installation?.hardness_unit ?? 'ppm'
+  const hardness = hardnessUnit === '°dH'
+    ? convertRange(hardnessBase, ppmToGermanDegrees)
+    : hardnessUnit === '°f'
+      ? convertRange(hardnessBase, ppmToFrenchDegrees)
+      : hardnessBase
 
   return {
     ph: params.ph,
     tac: params.tac,
     temp,
-    chlore: params.cl,
-    brome: params.br,
-    sel,
-    stabilisant: params.cya,
+    chlorine: params.cl,
+    bromine: params.br,
+    salt,
+    stabilizer: params.cya,
     cc: params.cc,
-    durete,
+    hardness,
   }
 }
 
 /** Centralised reference ranges. Use these everywhere — never duplicate. */
 export const PARAM_RANGES = {
-  ph:          { ideal: [7.0, 7.6]     as [number, number], acceptable: [6.8, 7.8]     as [number, number] },
-  chlore:      { ideal: [0.5, 3.0]     as [number, number], acceptable: [0.3, 4.0]     as [number, number] },
-  tac:         { ideal: [80, 180]      as [number, number], acceptable: [60, 200]      as [number, number] },
-  temp:        { ideal: [24, 28]       as [number, number], acceptable: [15, 35]       as [number, number] },
-  brome:       { ideal: [2, 5]         as [number, number], acceptable: [1, 10]        as [number, number] },
-  durete:      { ideal: [100, 500]     as [number, number], acceptable: [50, 1000]     as [number, number] },
-  sel:         { ideal: [2700, 3400]   as [number, number], acceptable: [2500, 4500]   as [number, number] },
-  stabilisant: { ideal: [60, 80]       as [number, number], acceptable: [30, 100]      as [number, number] },
-  cc:          { ideal: [0, 0.2]       as [number, number], acceptable: [0, 0.5]       as [number, number] },
+  ph:         { ideal: [7.0, 7.6]     as [number, number], acceptable: [6.8, 7.8]     as [number, number] },
+  chlorine:   { ideal: [0.5, 3.0]     as [number, number], acceptable: [0.3, 4.0]     as [number, number] },
+  tac:        { ideal: [80, 180]      as [number, number], acceptable: [60, 200]      as [number, number] },
+  temp:       { ideal: [24, 28]       as [number, number], acceptable: [15, 35]       as [number, number] },
+  bromine:    { ideal: [2, 5]         as [number, number], acceptable: [1, 10]        as [number, number] },
+  hardness:   { ideal: [100, 500]     as [number, number], acceptable: [50, 1000]     as [number, number] },
+  salt:       { ideal: [2700, 3400]   as [number, number], acceptable: [2500, 4500]   as [number, number] },
+  stabilizer: { ideal: [60, 80]       as [number, number], acceptable: [30, 100]      as [number, number] },
+  cc:         { ideal: [0, 0.2]       as [number, number], acceptable: [0, 0.5]       as [number, number] },
 }
 
 /**
- * Bandelette-specific OK thresholds — used for summary pills.
+ * Test-strip-specific OK thresholds — used for summary pills.
  * Source of truth shared between the form and getWaterStatus.
  */
-export const BANDELETTE_OK_RANGES = {
-  ph:     PARAM_RANGES.ph.acceptable,
-  tac:    PARAM_RANGES.tac.ideal,
-  brome:  PARAM_RANGES.brome.ideal,
-  durete: PARAM_RANGES.durete.ideal,
+export const STRIP_OK_RANGES = {
+  ph:       PARAM_RANGES.ph.acceptable,
+  tac:      PARAM_RANGES.tac.ideal,
+  bromine:  PARAM_RANGES.bromine.ideal,
+  hardness: PARAM_RANGES.hardness.ideal,
 }
 
 /** Action types that carry water-quality measurements. */
-const MEASURE_ACTION_TYPES = ['Mesure de pH', 'Mesure']
+const MEASURE_ACTION_TYPES = ['pH Measurement', 'Measurement']
 
 // ── Measurement-parsing regexes ─────────────────────────────────────────────
 // Single source of truth for parsing the `key: value` measurement fields that
 // toPayload (ActionForm.tsx) writes into `notes`. (\d+(?:\.\d+)?) — not [\d.]+ —
 // so a value immediately followed by a sentence period (as toPayload always
-// produces, e.g. "chlore: 1.5. TAC: ...") captures cleanly without swallowing
+// produces, e.g. "chlorine: 1.5. TAC: ...") captures cleanly without swallowing
 // the trailing dot. RX_TEMP requires a literal ° for its shorthand branch (not
-// an optional one) so it can't hijack the "t" in "stabilisant: 65".
+// an optional one) so it can't hijack the "t" in "stabilizer: 65".
 const NUM = String.raw`(\d+(?:\.\d+)?)`
-export const RX_CHLORE = new RegExp(String.raw`chlore?\s*(?:libre)?\s*:?\s*${NUM}`, 'i')
+export const RX_CHLORINE = new RegExp(String.raw`chlorine?\s*(?:free)?\s*:?\s*${NUM}`, 'i')
 export const RX_TAC = new RegExp(String.raw`TAC\s*:?\s*${NUM}`, 'i')
-export const RX_DURETE = new RegExp(String.raw`dur[eé]t[eé]\s*(?:totale?)?\s*:?\s*${NUM}`, 'i')
-export const RX_BROME = new RegExp(String.raw`brome\s*(?:total)?\s*:?\s*${NUM}`, 'i')
-export const RX_SEL = new RegExp(String.raw`(?:sel|salt)\s*:?\s*${NUM}`, 'i')
-export const RX_STABILISANT = new RegExp(String.raw`(?:stabilisant|acide cyanurique|cya)\s*:?\s*${NUM}`, 'i')
-export const RX_CC = new RegExp(String.raw`combin[ée]?\s*:?\s*${NUM}`, 'i')
-export const RX_TEMP = new RegExp(String.raw`(?:temp[eé]rature?|\bT°)\s*:?\s*${NUM}`, 'i')
+export const RX_HARDNESS = new RegExp(String.raw`hardness\s*(?:total)?\s*:?\s*${NUM}`, 'i')
+export const RX_BROMINE = new RegExp(String.raw`bromine\s*(?:total)?\s*:?\s*${NUM}`, 'i')
+export const RX_SALT = new RegExp(String.raw`salt\s*:?\s*${NUM}`, 'i')
+export const RX_STABILIZER = new RegExp(String.raw`(?:stabilizer|cyanuric acid|cya)\s*:?\s*${NUM}`, 'i')
+export const RX_CC = new RegExp(String.raw`combined\s*:?\s*${NUM}`, 'i')
+export const RX_TEMP = new RegExp(String.raw`(?:temperature?|\bT°)\s*:?\s*${NUM}`, 'i')
 
-/** Extracts the most recent pH, chlore libre and TAC values from actions. */
+/** Extracts the most recent pH, free chlorine and TAC values from actions. */
 export function extractWaterParams(actions: Action[]): WaterParams {
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date))
   let ph: number | null = null
-  let chlore: number | null = null
+  let chlorine: number | null = null
   let tac: number | null = null
 
   for (const action of sorted) {
@@ -123,20 +123,20 @@ export function extractWaterParams(actions: Action[]): WaterParams {
       const m = action.notes.match(/pH\s*([\d.]+)/i)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) ph = v }
     }
-    // Chlore libre: parse from notes (e.g. "chlore libre: 1.5")
-    if (chlore === null && action.notes) {
-      const m = action.notes.match(RX_CHLORE)
-      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) chlore = v }
+    // Free chlorine: parse from notes (e.g. "chlorine free: 1.5")
+    if (chlorine === null && action.notes) {
+      const m = action.notes.match(RX_CHLORINE)
+      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) chlorine = v }
     }
     // TAC: parse from notes (e.g. "TAC: 120")
     if (tac === null && action.notes) {
       const m = action.notes.match(RX_TAC)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) tac = v }
     }
-    if (ph !== null && chlore !== null && tac !== null) break
+    if (ph !== null && chlorine !== null && tac !== null) break
   }
 
-  return { ph, chlore, tac }
+  return { ph, chlorine, tac }
 }
 
 /**
@@ -145,24 +145,24 @@ export function extractWaterParams(actions: Action[]): WaterParams {
  * hasData is false when no measurement has been recorded yet.
  */
 export function getWaterStatus(params: WaterParams, ranges?: DynamicRanges): { status: WaterStatus; hasData: boolean } {
-  const { ph, chlore, tac, brome = null } = params
-  const hasData = ph !== null || chlore !== null || tac !== null || brome !== null
+  const { ph, chlorine, tac, bromine = null } = params
+  const hasData = ph !== null || chlorine !== null || tac !== null || bromine !== null
 
   if (!hasData) return { status: 'clear', hasData: false }
 
-  const rph    = ranges?.ph     ?? PARAM_RANGES.ph
-  const rcl    = ranges?.chlore ?? PARAM_RANGES.chlore
-  const rbr    = ranges?.brome  ?? PARAM_RANGES.brome
-  const rtac   = ranges?.tac    ?? PARAM_RANGES.tac
+  const rph    = ranges?.ph       ?? PARAM_RANGES.ph
+  const rcl    = ranges?.chlorine ?? PARAM_RANGES.chlorine
+  const rbr    = ranges?.bromine  ?? PARAM_RANGES.bromine
+  const rtac   = ranges?.tac      ?? PARAM_RANGES.tac
 
   // Green — most severe, checked first. TAC/alkalinity is deliberately excluded here:
   // an out-of-range TAC doesn't cause visually green/algae water (it's a balance
   // parameter, not a sanitizer), so it can only push status down to 'cloudy', never
   // trigger this tier. It's still surfaced via its own status pill on the Dashboard.
   if (
-    (ph     !== null && !inRange(ph,     rph.acceptable))  ||
-    (chlore !== null && !inRange(chlore, rcl.acceptable))  ||
-    (brome  !== null && !inRange(brome,  rbr.acceptable))
+    (ph       !== null && !inRange(ph,       rph.acceptable))  ||
+    (chlorine !== null && !inRange(chlorine, rcl.acceptable))  ||
+    (bromine  !== null && !inRange(bromine,  rbr.acceptable))
   ) {
     return { status: 'green', hasData: true }
   }
@@ -170,10 +170,10 @@ export function getWaterStatus(params: WaterParams, ranges?: DynamicRanges): { s
   // Cloudy — TAC outside its ideal band lands here (this also covers a TAC outside its
   // acceptable band, since acceptable is always a superset of ideal).
   if (
-    (ph     !== null && !inRange(ph,     rph.ideal))  ||
-    (chlore !== null && !inRange(chlore, rcl.ideal))  ||
-    (brome  !== null && !inRange(brome,  rbr.ideal))  ||
-    (tac    !== null && !inRange(tac,    rtac.ideal))
+    (ph       !== null && !inRange(ph,       rph.ideal))  ||
+    (chlorine !== null && !inRange(chlorine, rcl.ideal))  ||
+    (bromine  !== null && !inRange(bromine,  rbr.ideal))  ||
+    (tac      !== null && !inRange(tac,      rtac.ideal))
   ) {
     return { status: 'cloudy', hasData: true }
   }
@@ -214,13 +214,13 @@ export function extractLastPh(actions: Action[]): string {
 
 export type MeasuredParams = {
   ph: number | null
-  chlore: number | null
+  chlorine: number | null
   tac: number | null
   temp: number | null
-  brome: number | null
-  durete: number | null
+  bromine: number | null
+  hardness: number | null
   salt: number | null
-  stabilisant: number | null
+  stabilizer: number | null
   cc: number | null
   date: string | null
 }
@@ -240,19 +240,19 @@ export type TodoItem = {
 }
 
 /**
- * Extracts the most recent measured values for pH, chlore, TAC and temperature
+ * Extracts the most recent measured values for pH, chlorine, TAC and temperature
  * from the action log. Also returns the date of the most recent contributing entry.
  */
 export function extractMeasuredParams(actions: Action[]): MeasuredParams {
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date))
   let ph: number | null = null
-  let chlore: number | null = null
+  let chlorine: number | null = null
   let tac: number | null = null
   let temp: number | null = null
-  let brome: number | null = null
-  let durete: number | null = null
+  let bromine: number | null = null
+  let hardness: number | null = null
   let salt: number | null = null
-  let stabilisant: number | null = null
+  let stabilizer: number | null = null
   let cc: number | null = null
   let date: string | null = null
 
@@ -269,43 +269,43 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
       const m = action.notes.match(/pH\s*([\d.]+)/i)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { ph = v; contributed = true } }
     }
-    // Chlore libre
-    if (chlore === null && action.notes) {
-      const m = action.notes.match(RX_CHLORE)
-      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { chlore = v; contributed = true } }
+    // Free chlorine
+    if (chlorine === null && action.notes) {
+      const m = action.notes.match(RX_CHLORINE)
+      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { chlorine = v; contributed = true } }
     }
     // TAC
     if (tac === null && action.notes) {
       const m = action.notes.match(RX_TAC)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { tac = v; contributed = true } }
     }
-    // Température
+    // Temperature
     if (temp === null && action.notes) {
       const m = action.notes.match(RX_TEMP)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { temp = v; contributed = true } }
     }
-    // Brome total
-    if (brome === null && action.notes) {
-      const m = action.notes.match(RX_BROME)
-      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { brome = v; contributed = true } }
+    // Total bromine
+    if (bromine === null && action.notes) {
+      const m = action.notes.match(RX_BROMINE)
+      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { bromine = v; contributed = true } }
     }
-    // Dureté totale
-    if (durete === null && action.notes) {
-      const m = action.notes.match(RX_DURETE)
-      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { durete = v; contributed = true } }
+    // Total hardness
+    if (hardness === null && action.notes) {
+      const m = action.notes.match(RX_HARDNESS)
+      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { hardness = v; contributed = true } }
     }
-    // Sel (ppm)
+    // Salt (ppm)
     if (salt === null && action.notes) {
-      const m = action.notes.match(RX_SEL)
+      const m = action.notes.match(RX_SALT)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { salt = v; contributed = true } }
     }
-    // Stabilisant / acide cyanurique (CYA)
-    if (stabilisant === null && action.notes) {
-      const m = action.notes.match(RX_STABILISANT)
-      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { stabilisant = v; contributed = true } }
+    // Stabilizer / cyanuric acid (CYA)
+    if (stabilizer === null && action.notes) {
+      const m = action.notes.match(RX_STABILIZER)
+      if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { stabilizer = v; contributed = true } }
     }
-    // Chlore combiné (CC) — deliberately does not contain "chlore" as a substring,
-    // so it never interacts with the free-chlore regex above.
+    // Combined chlorine (CC) — deliberately does not contain "chlorine" as a substring,
+    // so it never interacts with the free-chlorine regex above.
     if (cc === null && action.notes) {
       const m = action.notes.match(RX_CC)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { cc = v; contributed = true } }
@@ -314,12 +314,12 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
     if (contributed && date === null) date = action.date
 
     if (
-      ph !== null && chlore !== null && tac !== null && temp !== null &&
-      brome !== null && durete !== null && salt !== null && stabilisant !== null && cc !== null
+      ph !== null && chlorine !== null && tac !== null && temp !== null &&
+      bromine !== null && hardness !== null && salt !== null && stabilizer !== null && cc !== null
     ) break
   }
 
-  return { ph, chlore, tac, temp, brome, durete, salt, stabilisant, cc, date }
+  return { ph, chlorine, tac, temp, bromine, hardness, salt, stabilizer, cc, date }
 }
 
 function inRange(v: number, [min, max]: [number, number]): boolean {
@@ -334,9 +334,9 @@ export function getPhStatus(ph: number, ranges?: DynamicRanges): ParamStatus {
   return 'bad'
 }
 
-/** Chlore: normal=0.5–3.0, warn=0.3–4.0, bad=outside */
-export function getChloreStatus(c: number, ranges?: DynamicRanges): ParamStatus {
-  const r = ranges?.chlore ?? PARAM_RANGES.chlore
+/** Chlorine: normal=0.5–3.0, warn=0.3–4.0, bad=outside */
+export function getChlorineStatus(c: number, ranges?: DynamicRanges): ParamStatus {
+  const r = ranges?.chlorine ?? PARAM_RANGES.chlorine
   if (inRange(c, r.ideal)) return 'normal'
   if (inRange(c, r.acceptable)) return 'warn'
   return 'bad'
@@ -358,40 +358,40 @@ export function getTempStatus(temp: number, ranges?: DynamicRanges): ParamStatus
   return 'bad'
 }
 
-/** Brome total: normal=2–5 mg/L, warn=1–10 mg/L, bad=outside */
-export function getBromeStatus(v: number, ranges?: DynamicRanges): ParamStatus {
-  const r = ranges?.brome ?? PARAM_RANGES.brome
+/** Total bromine: normal=2–5 mg/L, warn=1–10 mg/L, bad=outside */
+export function getBromineStatus(v: number, ranges?: DynamicRanges): ParamStatus {
+  const r = ranges?.bromine ?? PARAM_RANGES.bromine
   if (inRange(v, r.ideal)) return 'normal'
   if (inRange(v, r.acceptable)) return 'warn'
   return 'bad'
 }
 
-/** Dureté totale: normal=100–500 ppm, warn=50–1000 ppm, bad=outside */
-export function getDureteStatus(v: number, ranges?: DynamicRanges): ParamStatus {
-  const r = ranges?.durete ?? PARAM_RANGES.durete
+/** Total hardness: normal=100–500 ppm, warn=50–1000 ppm, bad=outside */
+export function getHardnessStatus(v: number, ranges?: DynamicRanges): ParamStatus {
+  const r = ranges?.hardness ?? PARAM_RANGES.hardness
   if (inRange(v, r.ideal)) return 'normal'
   if (inRange(v, r.acceptable)) return 'warn'
   return 'bad'
 }
 
-/** Sel: normal=2700–3400 ppm, warn=2500–4500 ppm, bad=outside */
-export function getSelStatus(v: number, ranges?: DynamicRanges): ParamStatus {
-  const r = ranges?.sel ?? PARAM_RANGES.sel
+/** Salt: normal=2700–3400 ppm, warn=2500–4500 ppm, bad=outside */
+export function getSaltStatus(v: number, ranges?: DynamicRanges): ParamStatus {
+  const r = ranges?.salt ?? PARAM_RANGES.salt
   if (inRange(v, r.ideal)) return 'normal'
   if (inRange(v, r.acceptable)) return 'warn'
   return 'bad'
 }
 
-/** Stabilisant (CYA): normal=60–80 ppm, warn=30–100 ppm, bad=outside */
-export function getStabilisantStatus(v: number, ranges?: DynamicRanges): ParamStatus {
-  const r = ranges?.stabilisant ?? PARAM_RANGES.stabilisant
+/** Stabilizer (CYA): normal=60–80 ppm, warn=30–100 ppm, bad=outside */
+export function getStabilizerStatus(v: number, ranges?: DynamicRanges): ParamStatus {
+  const r = ranges?.stabilizer ?? PARAM_RANGES.stabilizer
   if (inRange(v, r.ideal)) return 'normal'
   if (inRange(v, r.acceptable)) return 'warn'
   return 'bad'
 }
 
-/** Chlore combiné (CC): normal=0–0.2 mg/L, warn=0–0.5 mg/L, bad=outside */
-export function getCcStatus(v: number, ranges?: DynamicRanges): ParamStatus {
+/** Combined chlorine (CC): normal=0–0.2 mg/L, warn=0–0.5 mg/L, bad=outside */
+export function getCombinedChlorineStatus(v: number, ranges?: DynamicRanges): ParamStatus {
   const r = ranges?.cc ?? PARAM_RANGES.cc
   if (inRange(v, r.ideal)) return 'normal'
   if (inRange(v, r.acceptable)) return 'warn'
@@ -441,17 +441,17 @@ export function getNextMeasureInDays(actions: Action[]): number | null {
 
 /**
  * Treatment counts for a given year-month string (YYYY-MM).
- * maintenance = Nettoyage cartouche / filtre skimmer / Calibrage pH
- * additions   = Ajout de produit
+ * maintenance = Cartridge cleaning / skimmer filter / pH calibration
+ * additions   = Add product
  */
 export function getTreatmentsThisMonth(
   actions: Action[],
   yearMonth: string,
 ): { total: number; maintenance: number; additions: number } {
-  const MAINTENANCE_TYPES = ['Nettoyage cartouche', 'Nettoyage filtre skimmer', 'Calibrage pH']
+  const MAINTENANCE_TYPES = ['Cartridge cleaning', 'Skimmer filter cleaning', 'pH calibration']
   const monthActions = actions.filter(a => a.date.startsWith(yearMonth))
   const maintenance = monthActions.filter(a => MAINTENANCE_TYPES.includes(a.action_type)).length
-  const additions = monthActions.filter(a => a.action_type === 'Ajout de produit').length
+  const additions = monthActions.filter(a => a.action_type === 'Add product').length
   return { total: monthActions.length, maintenance, additions }
 }
 
@@ -472,16 +472,16 @@ export function getTodoItems(actions: Action[], params: MeasuredParams, t: (key:
       title: t('todo_ph_title'),
       subtitle: t('todo_ph_subtitle'),
       delay: nextPh === null
-        ? t('kpi_jamais_mesure')
+        ? t('kpi_never_measured')
         : overdue
-          ? `${t('kpi_en_retard')} (${Math.abs(nextPh)} ${t('todo_j_abbr')})`
-          : `${t('kpi_dans')} ${nextPh} ${t('todo_j_abbr')}`,
+          ? `${t('kpi_overdue')} (${Math.abs(nextPh)} ${t('todo_day_abbr')})`
+          : `${t('kpi_in')} ${nextPh} ${t('todo_day_abbr')}`,
       isOverdue: overdue || nextPh === null,
     })
   }
 
   // Filter maintenance: warn after 14 days
-  const filterTypes = ['Nettoyage cartouche', 'Nettoyage filtre skimmer', 'Contre-lavage']
+  const filterTypes = ['Cartridge cleaning', 'Skimmer filter cleaning', 'Backwash']
   const lastFilter = [...actions]
     .filter(a => filterTypes.includes(a.action_type))
     .sort((a, b) => b.date.localeCompare(a.date))[0]
@@ -491,22 +491,22 @@ export function getTodoItems(actions: Action[], params: MeasuredParams, t: (key:
       id: 'filter-maintenance',
       icon: '🔧',
       iconBg: '#feecec',
-      title: t('todo_filtre_title'),
-      subtitle: t('todo_filtre_subtitle'),
-      delay: filterDays === null ? t('todo_jamais_fait') : `${t('kpi_en_retard')} (${filterDays} ${t('todo_j_abbr')})`,
+      title: t('todo_filter_title'),
+      subtitle: t('todo_filter_subtitle'),
+      delay: filterDays === null ? t('todo_never_done') : `${t('kpi_overdue')} (${filterDays} ${t('todo_day_abbr')})`,
       isOverdue: true,
     })
   }
 
-  // Chlore check
-  if (params.chlore !== null && params.chlore < 1) {
+  // Chlorine check
+  if (params.chlorine !== null && params.chlorine < 1) {
     items.push({
-      id: 'chlore-low',
+      id: 'chlorine-low',
       icon: '⚠️',
       iconBg: '#fff4e0',
-      title: t('todo_chlore_faible_title'),
-      subtitle: `${t('param_chlore')} : ${params.chlore} mg/L (${t('todo_chlore_min_recommande')})`,
-      delay: t('todo_verifier'),
+      title: t('todo_low_chlorine_title'),
+      subtitle: `${t('param_chlorine')} : ${params.chlorine} mg/L (${t('todo_chlorine_min_recommended')})`,
+      delay: t('todo_check'),
       isOverdue: false,
     })
   }
@@ -514,9 +514,9 @@ export function getTodoItems(actions: Action[], params: MeasuredParams, t: (key:
   return items
 }
 
-// ── Mesures page helpers ───────────────────────────────────────────────────
+// ── Measurements page helpers ───────────────────────────────────────────────
 
-export type ChlorePoint = { date: string; chlore: number }
+export type ChlorinePoint = { date: string; chlorine: number }
 
 /**
  * Filter measure-type actions by rolling period.
@@ -559,17 +559,17 @@ export function getPhTrend(
 }
 
 /**
- * Last `limit` chlore libre values from the given actions, oldest-first.
+ * Last `limit` free chlorine values from the given actions, oldest-first.
  * Caller should pre-filter by period before passing.
  */
-export function getChloreHistory(actions: Action[], limit = 7): ChlorePoint[] {
-  const result: ChlorePoint[] = []
+export function getChlorineHistory(actions: Action[], limit = 7): ChlorinePoint[] {
+  const result: ChlorinePoint[] = []
   for (const a of [...actions].sort((x, y) => x.date.localeCompare(y.date))) {
     if (!MEASURE_ACTION_TYPES.includes(a.action_type)) continue
-    const m = a.notes.match(RX_CHLORE)
+    const m = a.notes.match(RX_CHLORINE)
     if (m) {
       const v = parseFloat(m[1])
-      if (!isNaN(v)) result.push({ date: a.date, chlore: v })
+      if (!isNaN(v)) result.push({ date: a.date, chlorine: v })
     }
   }
   return result.slice(-limit)

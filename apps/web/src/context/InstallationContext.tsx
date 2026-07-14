@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { Installation, InstallationWaterParams } from '../types'
 import { installationParamsToRanges, type DynamicRanges } from '../utils'
-import type { TempUnit, SaltUnit, ConcUnit, DureteUnit } from '../units'
+import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
 
 type InstallationCtx = {
   installations: Installation[]
@@ -11,14 +11,14 @@ type InstallationCtx = {
   refresh: () => Promise<void>
   addInstallation: (data: {
     name: string
-    type: 'piscine' | 'spa'
-    sanitizer: 'brome' | 'chlore' | 'sel'
+    type: 'pool' | 'spa'
+    sanitizer: 'bromine' | 'chlorine' | 'salt'
     volume?: number
     volume_unit?: 'L' | 'gal'
     temp_unit?: TempUnit
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
-    durete_unit?: DureteUnit
+    hardness_unit?: HardnessUnit
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
 }
@@ -87,14 +87,14 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
 
   const addInstallation = useCallback(async (data: {
     name: string
-    type: 'piscine' | 'spa'
-    sanitizer: 'brome' | 'chlore' | 'sel'
+    type: 'pool' | 'spa'
+    sanitizer: 'bromine' | 'chlorine' | 'salt'
     volume?: number
     volume_unit?: 'L' | 'gal'
     temp_unit?: TempUnit
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
-    durete_unit?: DureteUnit
+    hardness_unit?: HardnessUnit
   }): Promise<Installation> => {
     const res = await fetch('/api/installations', {
       method: 'POST',
@@ -102,7 +102,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
       credentials: 'same-origin',
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error('Erreur lors de la création')
+    if (!res.ok) throw new Error('Error creating installation')
     const inst: Installation = await res.json()
     setInstallations(prev => [...prev, inst])
     setActiveId(inst.id)
@@ -116,7 +116,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     })
     if (!res.ok) {
       const data = await res.json().catch(() => null)
-      throw new Error(data?.detail ?? 'Erreur lors de la suppression')
+      throw new Error(data?.detail ?? 'Error deleting installation')
     }
     setInstallations(prev => prev.filter(i => i.id !== id))
     if (activeId === id) {

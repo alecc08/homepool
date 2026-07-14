@@ -1,5 +1,5 @@
 <svg width="140" height="125" viewBox="0 0 140 125" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- vapeur atténuée -->
+  <!-- faded steam -->
   <path d="M54 24 Q52 18 54 12 Q56 18 54 24" stroke="rgba(56,150,170,0.25)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
   <path d="M70 20 Q68 14 70 8 Q72 14 70 20" stroke="rgba(56,150,170,0.2)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
   <!-- faces -->
@@ -9,13 +9,13 @@
   <!-- surface eau trouble -->
   <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#3a9aaa" opacity="0.9"/>
   <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="rgba(180,210,180,0.18)"/>
-  <!-- particules turbidité -->
+  <!-- turbidity particles -->
   <circle cx="44" cy="66" r="1.5" fill="rgba(255,255,255,0.28)"/>
   <circle cx="62" cy="60" r="1" fill="rgba(255,255,255,0.25)"/>
   <circle cx="80" cy="68" r="1.5" fill="rgba(255,255,255,0.28)"/>
   <circle cx="98" cy="62" r="1" fill="rgba(255,255,255,0.22)"/>
   <circle cx="58" cy="76" r="1.5" fill="rgba(255,255,255,0.2)"/>
-  <!-- vague atténuée -->
+  <!-- faded wave -->
   <path d="M30 66 Q50 60 68 66 Q86 72 104 66" stroke="rgba(255,255,255,0.25)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
   <!-- jets -->
   <circle cx="26" cy="67" r="2.5" fill="rgba(255,255,255,0.28)"/>
