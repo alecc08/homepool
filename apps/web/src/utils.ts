@@ -155,17 +155,20 @@ export function getWaterStatus(params: WaterParams, ranges?: DynamicRanges): { s
   const rbr    = ranges?.brome  ?? PARAM_RANGES.brome
   const rtac   = ranges?.tac    ?? PARAM_RANGES.tac
 
-  // Green — most severe, checked first
+  // Green — most severe, checked first. TAC/alkalinity is deliberately excluded here:
+  // an out-of-range TAC doesn't cause visually green/algae water (it's a balance
+  // parameter, not a sanitizer), so it can only push status down to 'cloudy', never
+  // trigger this tier. It's still surfaced via its own status pill on the Dashboard.
   if (
     (ph     !== null && !inRange(ph,     rph.acceptable))  ||
     (chlore !== null && !inRange(chlore, rcl.acceptable))  ||
-    (brome  !== null && !inRange(brome,  rbr.acceptable))  ||
-    (tac    !== null && !inRange(tac,    rtac.acceptable))
+    (brome  !== null && !inRange(brome,  rbr.acceptable))
   ) {
     return { status: 'green', hasData: true }
   }
 
-  // Cloudy
+  // Cloudy — TAC outside its ideal band lands here (this also covers a TAC outside its
+  // acceptable band, since acceptable is always a superset of ideal).
   if (
     (ph     !== null && !inRange(ph,     rph.ideal))  ||
     (chlore !== null && !inRange(chlore, rcl.ideal))  ||

@@ -9,10 +9,13 @@ import {
   getStabilisantStatus,
   getCcStatus,
   getDureteStatus,
+  getWaterStatus,
   extractMeasuredParams,
   installationParamsToRanges,
   getTodoItems,
   type MeasuredParams,
+  type WaterParams,
+  type DynamicRanges,
 } from './utils'
 import { translations } from './i18n/translations'
 
@@ -230,6 +233,44 @@ describe('getDureteStatus', () => {
     expect(getDureteStatus(15, ranges)).toBe('normal')
     expect(getDureteStatus(25, ranges)).toBe('warn')
     expect(getDureteStatus(40, ranges)).toBe('bad')
+  })
+})
+
+describe('getWaterStatus', () => {
+  const inRangeParams: WaterParams = { ph: 7.2, chlore: 1.5, tac: 100, brome: null }
+
+  it('returns clear when all measured params are within their ideal range', () => {
+    expect(getWaterStatus(inRangeParams)).toEqual({ status: 'clear', hasData: true })
+  })
+
+  it('returns clear with hasData false when no param has been measured', () => {
+    expect(getWaterStatus({ ph: null, chlore: null, tac: null, brome: null })).toEqual({ status: 'clear', hasData: false })
+  })
+
+  it('returns green when ph alone is outside its acceptable range', () => {
+    expect(getWaterStatus({ ...inRangeParams, ph: 5.0 })).toEqual({ status: 'green', hasData: true })
+  })
+
+  it('returns green when chlore alone is outside its acceptable range', () => {
+    expect(getWaterStatus({ ...inRangeParams, chlore: 10 })).toEqual({ status: 'green', hasData: true })
+  })
+
+  it('returns green when brome alone is outside its acceptable range', () => {
+    expect(getWaterStatus({ ...inRangeParams, brome: 20 })).toEqual({ status: 'green', hasData: true })
+  })
+
+  it('regression: TAC outside acceptable range alone falls to cloudy, not green', () => {
+    expect(getWaterStatus({ ph: null, chlore: null, tac: 250, brome: null })).toEqual({ status: 'cloudy', hasData: true })
+    expect(getWaterStatus({ ...inRangeParams, tac: 250 })).toEqual({ status: 'cloudy', hasData: true })
+  })
+
+  it('returns cloudy when TAC is outside ideal but within acceptable, others ideal', () => {
+    expect(getWaterStatus({ ...inRangeParams, tac: 70 })).toEqual({ status: 'cloudy', hasData: true })
+  })
+
+  it('respects a ranges override for a TAC-alone excursion', () => {
+    const ranges: DynamicRanges = { tac: { ideal: [10, 20], acceptable: [5, 30] } }
+    expect(getWaterStatus({ ph: null, chlore: null, tac: 40, brome: null }, ranges)).toEqual({ status: 'cloudy', hasData: true })
   })
 })
 
