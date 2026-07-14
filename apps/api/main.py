@@ -163,10 +163,18 @@ def _migrate_installations(session: Session) -> None:
 
     for row in users_without:
         uid = int(row[0])
+        # NOT NULL columns must be listed explicitly: SQLModel Field(default=...) is a
+        # Python-side default only, not a DB server_default, so raw SQL bypasses it. On
+        # a brand-new database, create_all() creates these columns without a DEFAULT
+        # clause (that only gets attached later by the ALTER TABLE migrations below,
+        # which are no-ops here since the columns already exist) — omitting a value
+        # would violate the NOT NULL constraint.
         session.exec(
             text("""
-                INSERT INTO installation (user_id, name, type, sanitizer, created_at)
-                VALUES (:uid, 'Ma piscine', 'piscine', 'brome', NOW())
+                INSERT INTO installation
+                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, durete_unit, created_at)
+                VALUES
+                    (:uid, 'Ma piscine', 'piscine', 'brome', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
             """).bindparams(uid=uid)
         )
     if users_without:
