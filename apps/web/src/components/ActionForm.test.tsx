@@ -140,9 +140,9 @@ describe('ActionForm', () => {
 
     expect(onEdit).toHaveBeenCalledTimes(1)
     const [, payload] = onEdit.mock.calls[0]
-    expect(payload.notes).toContain('sel: 3000')
-    expect(payload.notes).toContain('stabilisant: 70')
-    expect(payload.notes).toContain('combiné: 0.3')
+    expect(payload.notes).toContain('salt: 3000')
+    expect(payload.notes).toContain('stabilizer: 70')
+    expect(payload.notes).toContain('combined: 0.3')
   })
 
   it('bandelette mode for a sel installation does not render a salt/CYA/CC swatch panel, but does render Chlore', () => {
@@ -195,17 +195,17 @@ describe('ActionForm', () => {
 
       expect(onEdit).toHaveBeenCalledTimes(1)
       const [, payload] = onEdit.mock.calls[0]
-      expect(payload.notes).toContain('température: 26')
+      expect(payload.notes).toContain('temperature: 26')
     })
 
     it('edit mode does not leak an existing température note into the visible Notes textarea', () => {
       setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
-      const editAction = makeMesureAction({ notes: 'température: 26. Eau claire' })
+      const editAction = makeMesureAction({ notes: 'temperature: 26. Clear water' })
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
       expect(notes.value).not.toContain('température')
-      expect(notes.value).toContain('Eau claire')
+      expect(notes.value).toContain('Clear water')
     })
 
     it('bandelette mode renders no temperature swatch panel, for any sanitizer', () => {
@@ -225,7 +225,7 @@ describe('ActionForm', () => {
       // with every field filled — this is the exact shape a real save produces.
       const editAction = makeMesureAction({
         qty: '7',
-        notes: 'chlore: 1.5. TAC: 120. dureté: 250. sel: 3200. stabilisant: 65. combiné: 0.1. température: 82. Eau claire. Niveau OK',
+        notes: 'chlorine: 1.5. TAC: 120. hardness: 250. salt: 3200. stabilizer: 65. combined: 0.1. temperature: 82. Clear water. Level OK',
       })
       render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
 
@@ -240,7 +240,7 @@ describe('ActionForm', () => {
       expect((screen.getByPlaceholderText('77') as HTMLInputElement).value).toBe('82')
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
-      expect(notes.value).toBe('Eau claire. Niveau OK')
+      expect(notes.value).toBe('Clear water. Level OK')
     })
   })
 })

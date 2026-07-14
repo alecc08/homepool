@@ -144,9 +144,9 @@ describe('getCombinedChlorineStatus', () => {
   })
 })
 
-describe('extractMeasuredParams — sel/stabilisant/cc', () => {
-  it('parses sel, stabilisant, combiné from notes', () => {
-    const actions = [makeAction({ action_type: 'Measurement', notes: 'sel: 3200. stabilisant: 65. combiné: 0.3' })]
+describe('extractMeasuredParams — salt/stabilizer/cc', () => {
+  it('parses salt, stabilizer, combined from notes', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'salt: 3200. stabilizer: 65. combined: 0.3' })]
     const p = extractMeasuredParams(actions)
     expect(p.salt).toBe(3200)
     expect(p.stabilizer).toBe(65)
@@ -154,27 +154,21 @@ describe('extractMeasuredParams — sel/stabilisant/cc', () => {
   })
 
   it('is case-insensitive', () => {
-    const actions = [makeAction({ action_type: 'Measurement', notes: 'SEL: 2900. STABILISANT: 55. COMBINÉ: 0.1' })]
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'SALT: 2900. STABILIZER: 55. COMBINED: 0.1' })]
     const p = extractMeasuredParams(actions)
     expect(p.salt).toBe(2900)
     expect(p.stabilizer).toBe(55)
     expect(p.cc).toBe(0.1)
   })
 
-  it('parses English "salt" fallback for sel', () => {
-    const actions = [makeAction({ action_type: 'Measurement', notes: 'salt: 3100' })]
-    const p = extractMeasuredParams(actions)
-    expect(p.salt).toBe(3100)
-  })
-
-  it('does not false-positive on unrelated text mentioning "sel"', () => {
-    const actions = [makeAction({ action_type: 'Measurement', notes: 'Ajout de sel dans le bassin' })]
+  it('does not false-positive on unrelated text mentioning "salt" with no following number', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'Added salt to the pool' })]
     const p = extractMeasuredParams(actions)
     expect(p.salt).toBeNull()
   })
 
-  it('parses chlore and combiné independently without collision', () => {
-    const actions = [makeAction({ action_type: 'Measurement', notes: 'chlore: 1.5. combiné: 0.3' })]
+  it('parses chlorine and combined independently without collision', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'chlorine: 1.5. combined: 0.3' })]
     const p = extractMeasuredParams(actions)
     expect(p.chlorine).toBe(1.5)
     expect(p.cc).toBe(0.3)
@@ -182,10 +176,10 @@ describe('extractMeasuredParams — sel/stabilisant/cc', () => {
 })
 
 describe('extractMeasuredParams — regex data-loss regression (bug: greedy trailing-period capture + temperature hijack)', () => {
-  it('extracts the real température value, not a hijacked value from an earlier "...t: N" pattern', () => {
-    // stabilisant contains a "t" immediately before ": 65." — a permissive temperature
-    // regex can match there before ever reaching the real "température: 82" further along.
-    const notes = 'chlore: 1.5. TAC: 120. dureté: 250. sel: 3200. stabilisant: 65. combiné: 0.1. température: 82. Eau claire. Niveau OK'
+  it('extracts the real temperature value, not a hijacked value from an earlier "...t: N" pattern', () => {
+    // stabilizer contains a "t" immediately before ": 65." — a permissive temperature
+    // regex can match there before ever reaching the real "temperature: 82" further along.
+    const notes = 'chlorine: 1.5. TAC: 120. hardness: 250. salt: 3200. stabilizer: 65. combined: 0.1. temperature: 82. Clear water. Level OK'
     const actions = [makeAction({ action_type: 'Measurement', notes })]
     const p = extractMeasuredParams(actions)
     expect(p.temp).toBe(82)
@@ -193,7 +187,7 @@ describe('extractMeasuredParams — regex data-loss regression (bug: greedy trai
   })
 
   it('extracts exact values (no swallowed trailing period) for every field in a fully-filled notes string', () => {
-    const notes = 'chlore: 1.5. TAC: 120. dureté: 250. sel: 3200. stabilisant: 65. combiné: 0.1. température: 82. Eau claire. Niveau OK'
+    const notes = 'chlorine: 1.5. TAC: 120. hardness: 250. salt: 3200. stabilizer: 65. combined: 0.1. temperature: 82. Clear water. Level OK'
     const actions = [makeAction({ action_type: 'Measurement', notes })]
     const p = extractMeasuredParams(actions)
     expect(p.chlorine).toBe(1.5)

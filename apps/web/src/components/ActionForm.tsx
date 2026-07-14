@@ -22,12 +22,12 @@ import {
   getTempStatus,
   translateLabel,
   PARAM_RANGES,
-  RX_BROME,
-  RX_CHLORE,
+  RX_BROMINE,
+  RX_CHLORINE,
   RX_TAC,
-  RX_DURETE,
-  RX_SEL,
-  RX_STABILISANT,
+  RX_HARDNESS,
+  RX_SALT,
+  RX_STABILIZER,
   RX_CC,
   RX_TEMP,
   type DynamicRanges,
@@ -170,17 +170,17 @@ function rowFromAction(action: Action, products: Product[]): ActionRow {
   if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') {
     base.action_type = 'Measurement'
     base.m_ph = action.qty
-    const bromeM = action.notes.match(RX_BROME)
+    const bromeM = action.notes.match(RX_BROMINE)
     if (bromeM) base.m_bromine = bromeM[1]
-    const chloreM = action.notes.match(RX_CHLORE)
+    const chloreM = action.notes.match(RX_CHLORINE)
     if (chloreM) base.m_chlorine = chloreM[1]
     const tacM = action.notes.match(RX_TAC)
     if (tacM) base.m_tac = tacM[1]
-    const dureteM = action.notes.match(RX_DURETE)
+    const dureteM = action.notes.match(RX_HARDNESS)
     if (dureteM) base.m_hardness = dureteM[1]
-    const selM = action.notes.match(RX_SEL)
+    const selM = action.notes.match(RX_SALT)
     if (selM) base.m_salt = selM[1]
-    const stabilisantM = action.notes.match(RX_STABILISANT)
+    const stabilisantM = action.notes.match(RX_STABILIZER)
     if (stabilisantM) base.m_stabilizer = stabilisantM[1]
     const ccM = action.notes.match(RX_CC)
     if (ccM) base.m_cc = ccM[1]
@@ -833,14 +833,14 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
     if (!editAction) return ''
     if (editAction.action_type === 'Measurement' || editAction.action_type === 'pH Measurement') {
       return editAction.notes
-        .replace(/brome\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/chlore?\s*(?:libre)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
         .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/dur[eé]t[eé]\s*(?:totale?)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/sel\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/stabilisant\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/combin[ée]?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/temp[eé]rature?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
+        .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
         .replace(/^[\s.]+/, '')
         .trim()
     }
@@ -880,14 +880,14 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   const toPayload = (row: ActionRow) => {
     if (row.action_type === 'Measurement') {
       const parts: string[] = []
-      if (row.m_bromine)  parts.push(`brome: ${row.m_bromine}`)
-      if (row.m_chlorine) parts.push(`chlore: ${row.m_chlorine}`)
+      if (row.m_bromine)  parts.push(`bromine: ${row.m_bromine}`)
+      if (row.m_chlorine) parts.push(`chlorine: ${row.m_chlorine}`)
       if (row.m_tac)    parts.push(`TAC: ${row.m_tac}`)
-      if (row.m_hardness) parts.push(`dureté: ${row.m_hardness}`)
-      if (row.m_salt)    parts.push(`sel: ${row.m_salt}`)
-      if (row.m_stabilizer) parts.push(`stabilisant: ${row.m_stabilizer}`)
-      if (row.m_cc)     parts.push(`combiné: ${row.m_cc}`)
-      if (row.m_temp)   parts.push(`température: ${row.m_temp}`)
+      if (row.m_hardness) parts.push(`hardness: ${row.m_hardness}`)
+      if (row.m_salt)    parts.push(`salt: ${row.m_salt}`)
+      if (row.m_stabilizer) parts.push(`stabilizer: ${row.m_stabilizer}`)
+      if (row.m_cc)     parts.push(`combined: ${row.m_cc}`)
+      if (row.m_temp)   parts.push(`temperature: ${row.m_temp}`)
       const fullNotes = [parts.join('. '), notes].filter(Boolean).join('. ')
       return { date, action_type: 'Measurement', product_id: null, installation_id: active?.id ?? null, qty: row.m_ph, unit: '', notes: fullNotes }
     }

@@ -92,18 +92,18 @@ const MEASURE_ACTION_TYPES = ['pH Measurement', 'Measurement']
 // Single source of truth for parsing the `key: value` measurement fields that
 // toPayload (ActionForm.tsx) writes into `notes`. (\d+(?:\.\d+)?) — not [\d.]+ —
 // so a value immediately followed by a sentence period (as toPayload always
-// produces, e.g. "chlore: 1.5. TAC: ...") captures cleanly without swallowing
+// produces, e.g. "chlorine: 1.5. TAC: ...") captures cleanly without swallowing
 // the trailing dot. RX_TEMP requires a literal ° for its shorthand branch (not
-// an optional one) so it can't hijack the "t" in "stabilisant: 65".
+// an optional one) so it can't hijack the "t" in "stabilizer: 65".
 const NUM = String.raw`(\d+(?:\.\d+)?)`
-export const RX_CHLORE = new RegExp(String.raw`chlore?\s*(?:libre)?\s*:?\s*${NUM}`, 'i')
+export const RX_CHLORINE = new RegExp(String.raw`chlorine?\s*(?:free)?\s*:?\s*${NUM}`, 'i')
 export const RX_TAC = new RegExp(String.raw`TAC\s*:?\s*${NUM}`, 'i')
-export const RX_DURETE = new RegExp(String.raw`dur[eé]t[eé]\s*(?:totale?)?\s*:?\s*${NUM}`, 'i')
-export const RX_BROME = new RegExp(String.raw`brome\s*(?:total)?\s*:?\s*${NUM}`, 'i')
-export const RX_SEL = new RegExp(String.raw`(?:sel|salt)\s*:?\s*${NUM}`, 'i')
-export const RX_STABILISANT = new RegExp(String.raw`(?:stabilisant|acide cyanurique|cya)\s*:?\s*${NUM}`, 'i')
-export const RX_CC = new RegExp(String.raw`combin[ée]?\s*:?\s*${NUM}`, 'i')
-export const RX_TEMP = new RegExp(String.raw`(?:temp[eé]rature?|\bT°)\s*:?\s*${NUM}`, 'i')
+export const RX_HARDNESS = new RegExp(String.raw`hardness\s*(?:total)?\s*:?\s*${NUM}`, 'i')
+export const RX_BROMINE = new RegExp(String.raw`bromine\s*(?:total)?\s*:?\s*${NUM}`, 'i')
+export const RX_SALT = new RegExp(String.raw`salt\s*:?\s*${NUM}`, 'i')
+export const RX_STABILIZER = new RegExp(String.raw`(?:stabilizer|cyanuric acid|cya)\s*:?\s*${NUM}`, 'i')
+export const RX_CC = new RegExp(String.raw`combined\s*:?\s*${NUM}`, 'i')
+export const RX_TEMP = new RegExp(String.raw`(?:temperature?|\bT°)\s*:?\s*${NUM}`, 'i')
 
 /** Extracts the most recent pH, free chlorine and TAC values from actions. */
 export function extractWaterParams(actions: Action[]): WaterParams {
@@ -125,7 +125,7 @@ export function extractWaterParams(actions: Action[]): WaterParams {
     }
     // Free chlorine: parse from notes (e.g. "chlorine free: 1.5")
     if (chlorine === null && action.notes) {
-      const m = action.notes.match(RX_CHLORE)
+      const m = action.notes.match(RX_CHLORINE)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) chlorine = v }
     }
     // TAC: parse from notes (e.g. "TAC: 120")
@@ -271,7 +271,7 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
     }
     // Free chlorine
     if (chlorine === null && action.notes) {
-      const m = action.notes.match(RX_CHLORE)
+      const m = action.notes.match(RX_CHLORINE)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { chlorine = v; contributed = true } }
     }
     // TAC
@@ -286,22 +286,22 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
     }
     // Total bromine
     if (bromine === null && action.notes) {
-      const m = action.notes.match(RX_BROME)
+      const m = action.notes.match(RX_BROMINE)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { bromine = v; contributed = true } }
     }
     // Total hardness
     if (hardness === null && action.notes) {
-      const m = action.notes.match(RX_DURETE)
+      const m = action.notes.match(RX_HARDNESS)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { hardness = v; contributed = true } }
     }
     // Salt (ppm)
     if (salt === null && action.notes) {
-      const m = action.notes.match(RX_SEL)
+      const m = action.notes.match(RX_SALT)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { salt = v; contributed = true } }
     }
     // Stabilizer / cyanuric acid (CYA)
     if (stabilizer === null && action.notes) {
-      const m = action.notes.match(RX_STABILISANT)
+      const m = action.notes.match(RX_STABILIZER)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { stabilizer = v; contributed = true } }
     }
     // Combined chlorine (CC) — deliberately does not contain "chlorine" as a substring,
@@ -566,7 +566,7 @@ export function getChlorineHistory(actions: Action[], limit = 7): ChlorinePoint[
   const result: ChlorinePoint[] = []
   for (const a of [...actions].sort((x, y) => x.date.localeCompare(y.date))) {
     if (!MEASURE_ACTION_TYPES.includes(a.action_type)) continue
-    const m = a.notes.match(RX_CHLORE)
+    const m = a.notes.match(RX_CHLORINE)
     if (m) {
       const v = parseFloat(m[1])
       if (!isNaN(v)) result.push({ date: a.date, chlorine: v })

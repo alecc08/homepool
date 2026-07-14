@@ -147,14 +147,14 @@ function EntryCard({ action, products, onEdit, onDelete }: {
 
   const noteText = cat === 'mesure'
     ? action.notes
-      .replace(/chlore?\s*(?:libre)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
       .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/temp[eé]rature\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/brome\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/dur[eé]t[eé]\s*(?:totale?)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/sel\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/stabilisant\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/combin[ée]?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+      .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
       .replace(/^[\s.]+/, '')
       .trim()
     : action.notes.trim()
