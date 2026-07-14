@@ -1,5 +1,7 @@
+import hashlib
 import logging
 import os
+import secrets
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -17,8 +19,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from passlib.context import CryptContext
 
 from database import engine, get_session
-from models import Action, Installation, PasswordResetToken, Product, User
+from models import Action, ApiKey, Installation, PasswordResetToken, Product, User
 from seeds import insert_seeds
+from water_params import extract_current_conditions, extract_history
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address)
@@ -390,6 +393,36 @@ class ActionIn(BaseModel):
     notes: str = ""
 
 
+class ParamValueOut(BaseModel):
+    value: float
+    date: date
+
+
+class CurrentConditionsOut(BaseModel):
+    ph: Optional[ParamValueOut] = None
+    chlorine: Optional[ParamValueOut] = None
+    bromine: Optional[ParamValueOut] = None
+    tac: Optional[ParamValueOut] = None
+    hardness: Optional[ParamValueOut] = None
+    salt: Optional[ParamValueOut] = None
+    stabilizer: Optional[ParamValueOut] = None
+    cc: Optional[ParamValueOut] = None
+    temp: Optional[ParamValueOut] = None
+
+
+class HistoryEntryOut(BaseModel):
+    date: date
+    ph: Optional[float] = None
+    chlorine: Optional[float] = None
+    bromine: Optional[float] = None
+    tac: Optional[float] = None
+    hardness: Optional[float] = None
+    salt: Optional[float] = None
+    stabilizer: Optional[float] = None
+    cc: Optional[float] = None
+    temp: Optional[float] = None
+
+
 class ActionOut(BaseModel):
     id: int
     date: date
@@ -415,6 +448,35 @@ def get_current_user(
     user = session.get(User, user_id)
     if not user:
         raise AuthError()
+    return user
+
+
+def _hash_api_key(key: str) -> str:
+    # High-entropy random tokens (secrets.token_urlsafe), not user-chosen passwords —
+    # a fast, unsalted hash is fine here and keeps per-request lookups cheap.
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def get_current_user_by_api_key(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> User:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise AuthError()
+    key = auth[len("Bearer "):].strip()
+    if not key:
+        raise AuthError()
+    key_hash = _hash_api_key(key)
+    api_key = session.exec(select(ApiKey).where(ApiKey.key_hash == key_hash)).first()
+    if not api_key:
+        raise AuthError()
+    user = session.get(User, api_key.user_id)
+    if not user:
+        raise AuthError()
+    api_key.last_used_at = datetime.now(timezone.utc)
+    session.add(api_key)
+    session.commit()
     return user
 
 
@@ -553,6 +615,42 @@ def update_me(
     session.commit()
     session.refresh(user)
     return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
+
+
+@app.get("/me/api-key")
+def get_api_key_status(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    existing = session.exec(select(ApiKey).where(ApiKey.user_id == user.id)).first()
+    return {"exists": existing is not None}
+
+
+@app.post("/me/api-key")
+def create_api_key(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    existing = session.exec(select(ApiKey).where(ApiKey.user_id == user.id)).all()
+    for k in existing:
+        session.delete(k)
+    session.flush()
+    plaintext = secrets.token_urlsafe(32)
+    api_key = ApiKey(user_id=user.id, key_hash=_hash_api_key(plaintext))
+    session.add(api_key)
+    session.commit()
+    return {"key": plaintext}
+
+
+@app.delete("/me/api-key", status_code=204)
+def revoke_api_key(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    existing = session.exec(select(ApiKey).where(ApiKey.user_id == user.id)).all()
+    for k in existing:
+        session.delete(k)
+    session.commit()
 
 
 # ── Products ───────────────────────────────────────────────────────────────
@@ -788,3 +886,60 @@ def delete_action(
         raise HTTPException(status_code=404, detail="Action not found")
     session.delete(action)
     session.commit()
+
+
+# ── Public API (Home Assistant, etc.) ──────────────────────────────────────
+#
+# Token-authenticated, read-only routes for external consumers. They return
+# pre-parsed measurement fields (see water_params.py) rather than raw Action
+# rows, so callers don't need to understand the internal notes-encoding scheme.
+
+def _resolve_installation_for_api_key(
+    installation_id: Optional[int],
+    user: User,
+    session: Session,
+) -> int:
+    resolved = _resolve_installation(installation_id, user, session)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="No installation found")
+    return resolved
+
+
+@app.get("/v1/current", response_model=CurrentConditionsOut)
+@limiter.limit("60/minute")
+def api_current_conditions(
+    request: Request,
+    installation_id: Optional[int] = None,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
+    cutoff = date.today() - timedelta(days=90)
+    actions = session.exec(
+        select(Action)
+        .where(Action.installation_id == resolved_id, Action.date >= cutoff)
+        .order_by(Action.date.desc())
+        .limit(500)
+    ).all()
+    return CurrentConditionsOut(**extract_current_conditions(actions))
+
+
+@app.get("/v1/history", response_model=List[HistoryEntryOut])
+@limiter.limit("60/minute")
+def api_history(
+    request: Request,
+    installation_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    limit: Optional[int] = 200,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
+    cutoff: date = date.fromisoformat(from_date) if from_date else date.today() - timedelta(days=90)
+    actions = session.exec(
+        select(Action)
+        .where(Action.installation_id == resolved_id, Action.date >= cutoff)
+        .order_by(Action.date.desc())
+        .limit(limit)
+    ).all()
+    return [HistoryEntryOut(**entry) for entry in extract_history(actions)]

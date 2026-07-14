@@ -75,6 +75,7 @@ describe('ActionForm', () => {
     const onAdd = vi.fn()
     render(<ActionForm onAdd={onAdd} products={products} />)
 
+    fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
     fireEvent.click(screen.getByText('Enregistrer'))
 
     expect(onAdd).toHaveBeenCalledTimes(1)
@@ -94,6 +95,7 @@ describe('ActionForm', () => {
     const onClose = vi.fn()
     render(<ActionForm onAdd={onAdd} products={products} onClose={onClose} />)
 
+    fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
     fireEvent.click(screen.getByText('Enregistrer'))
 
     expect(onClose).toHaveBeenCalledTimes(1)

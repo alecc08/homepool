@@ -133,7 +133,7 @@ type ActionRow = {
 function makeRow(actionTypes: string[]): ActionRow {
   return {
     key: Math.random().toString(36).slice(2),
-    action_type: actionTypes[0],
+    action_type: actionTypes.includes('Measurement') ? 'Measurement' : actionTypes[0],
     product_name: null,
     qty: '',
     unit: UNITS[0],
@@ -192,12 +192,12 @@ function rowFromAction(action: Action, products: Product[]): ActionRow {
 
 // ── Mode toggle (localStorage) ─────────────────────────────────────────────
 
-type MeasureMode = 'strip' | 'device'
+type MeasureMode = 'strip' | 'manual'
 
 function readMode(): MeasureMode {
   try {
     const v = localStorage.getItem('pooly_measure_mode')
-    return v === 'device' ? 'device' : 'strip'
+    return v === 'manual' || v === 'device' ? 'manual' : 'strip'
   } catch { return 'strip' }
 }
 
@@ -705,7 +705,7 @@ function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Toggle */}
       <div style={{ display: 'flex', background: 'var(--bg-surface-2)', borderRadius: 8, padding: 3, gap: 2 }}>
-        {([['strip', t('modal_strip')], ['device', t('modal_device')]] as [MeasureMode, string][]).map(([m, label]) => {
+        {([['manual', t('modal_manual')], ['strip', t('modal_strip')]] as [MeasureMode, string][]).map(([m, label]) => {
           const active = mode === m
           return (
             <button

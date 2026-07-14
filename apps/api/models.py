@@ -44,6 +44,14 @@ class Installation(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class ApiKey(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    key_hash: str = Field(index=True, unique=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_used_at: Optional[datetime] = Field(default=None)
+
+
 class Action(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     date: date

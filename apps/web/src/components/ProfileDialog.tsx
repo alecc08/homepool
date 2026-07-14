@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,59 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+
+  const [hasApiKey, setHasApiKey] = useState(false)
+  const [newApiKey, setNewApiKey] = useState<string | null>(null)
+  const [apiKeyLoading, setApiKeyLoading] = useState(false)
+  const [apiKeyError, setApiKeyError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/me/api-key', { credentials: 'same-origin' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) setHasApiKey(data.exists) })
+      .catch(() => {})
+  }, [])
+
+  async function handleGenerateApiKey() {
+    setApiKeyError('')
+    setApiKeyLoading(true)
+    try {
+      const res = await fetch('/api/me/api-key', { method: 'POST', credentials: 'same-origin' })
+      if (!res.ok) throw new Error(t('generic_error'))
+      const data = await res.json()
+      setNewApiKey(data.key)
+      setHasApiKey(true)
+      setCopied(false)
+    } catch (err: unknown) {
+      setApiKeyError(err instanceof Error ? err.message : t('generic_error'))
+    } finally {
+      setApiKeyLoading(false)
+    }
+  }
+
+  async function handleRevokeApiKey() {
+    setApiKeyError('')
+    setApiKeyLoading(true)
+    try {
+      const res = await fetch('/api/me/api-key', { method: 'DELETE', credentials: 'same-origin' })
+      if (!res.ok) throw new Error(t('generic_error'))
+      setHasApiKey(false)
+      setNewApiKey(null)
+    } catch (err: unknown) {
+      setApiKeyError(err instanceof Error ? err.message : t('generic_error'))
+    } finally {
+      setApiKeyLoading(false)
+    }
+  }
+
+  async function handleCopyApiKey() {
+    if (!newApiKey) return
+    try {
+      await navigator.clipboard.writeText(newApiKey)
+      setCopied(true)
+    } catch { /* ignore */ }
+  }
 
   const changingPassword = !!(currentPw || newPw || confirmPw)
 
@@ -118,6 +171,50 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
             {t('profile_saved')}
           </p>
         )}
+
+        <Separator />
+
+        <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+          {t('profile_api_access')}
+        </div>
+        <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+          {t('profile_api_access_desc')}
+        </p>
+
+        {newApiKey ? (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input readOnly value={newApiKey} style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12 }} />
+              <Button type="button" variant="outline" onClick={handleCopyApiKey}>
+                {copied ? t('profile_api_key_copied') : t('profile_api_key_copy')}
+              </Button>
+            </div>
+            <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--status-warn-text)', margin: 0 }}>
+              {t('profile_api_key_shown_once')}
+            </p>
+          </div>
+        ) : (
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            {hasApiKey ? t('profile_api_key_exists') : t('profile_api_key_none')}
+          </p>
+        )}
+
+        {apiKeyError && (
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--status-danger-text)', margin: 0 }}>
+            {apiKeyError}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button type="button" variant="outline" disabled={apiKeyLoading} onClick={handleGenerateApiKey}>
+            {hasApiKey ? t('profile_api_key_regenerate') : t('profile_api_key_generate')}
+          </Button>
+          {hasApiKey && (
+            <Button type="button" variant="ghost" disabled={apiKeyLoading} onClick={handleRevokeApiKey}>
+              {t('profile_api_key_revoke')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Fixed footer — always visible */}
