@@ -68,7 +68,7 @@ export default function InstallBanner() {
   )
 }
 
-// Extension du type BeforeInstallPromptEvent (non inclus dans lib.dom.d.ts standard)
+// Extension of the BeforeInstallPromptEvent type (not included in the standard lib.dom.d.ts)
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>

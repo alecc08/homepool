@@ -138,7 +138,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   const handleDelete = async (id: number) => {
     try {
       const res = await fetch(`/api/actions/${id}`, { method: 'DELETE', credentials: 'same-origin' })
-      if (!res.ok) throw new Error('Erreur lors de la suppression')
+      if (!res.ok) throw new Error('Error deleting entry')
       setActions(prev => prev.filter(a => a.id !== id))
       setDeletingAction(null)
     } catch {
@@ -169,7 +169,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         credentials: 'same-origin',
         body: JSON.stringify({ ...data, installation_id: active?.id ?? null }),
       })
-      if (!res.ok) throw new Error('Erreur lors de la modification')
+      if (!res.ok) throw new Error('Error updating entry')
       const updated: Action = await res.json()
       setActions(prev => prev.map(a => a.id === id ? updated : a).sort((a, b) => b.date.localeCompare(a.date)))
       setEditingAction(null)
@@ -285,7 +285,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         </DialogContent>
       </Dialog>
 
-      {/* Modal — nouvelle installation */}
+      {/* Modal — new installation */}
       <InstallationModal
         open={showInstallationModal}
         onClose={() => setShowInstallationModal(false)}

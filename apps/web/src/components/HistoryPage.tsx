@@ -17,8 +17,8 @@ import { ACTION_TYPE_LABELS, PRODUCT_LABELS } from './ActionForm'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type FilterType = 'all' | 'mesure' | 'traitement' | 'entretien'
-type Category = 'mesure' | 'traitement' | 'entretien'
+type FilterType = 'all' | 'measurement' | 'treatment' | 'maintenance'
+type Category = 'measurement' | 'treatment' | 'maintenance'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -35,9 +35,9 @@ function formatDate(dateStr: string): string {
 
 function getCategory(action: Action): Category {
   const t = action.action_type
-  if (t === 'Measurement' || t === 'pH Measurement') return 'mesure'
-  if (t === 'Add product') return 'traitement'
-  return 'entretien'
+  if (t === 'Measurement' || t === 'pH Measurement') return 'measurement'
+  if (t === 'Add product') return 'treatment'
+  return 'maintenance'
 }
 
 function getTitle(action: Action, products: Product[], t: (key: TranslationKey) => string): string {
@@ -51,9 +51,9 @@ function getTitle(action: Action, products: Product[], t: (key: TranslationKey) 
 }
 
 const CATEGORY_ICON: Record<Category, { emoji: string; bg: string }> = {
-  mesure:      { emoji: '🧪', bg: '#eef2ff' },
-  traitement:  { emoji: '🧴', bg: '#f3e8ff' },
-  entretien:   { emoji: '🔧', bg: '#e0f2fe' },
+  measurement: { emoji: '🧪', bg: '#eef2ff' },
+  treatment:   { emoji: '🧴', bg: '#f3e8ff' },
+  maintenance: { emoji: '🔧', bg: '#e0f2fe' },
 }
 
 const PARAM_STATUS_STYLE: Record<'normal' | 'warn' | 'bad', { color: string; bg: string }> = {
@@ -126,14 +126,14 @@ function EntryCard({ action, products, onEdit, onDelete }: {
     green:  { label: t('status_out_of_range'), color: 'var(--status-danger-text)', bg: 'var(--status-danger-bg)' },
   }
 
-  const TYPE_PILL: Record<'traitement' | 'entretien', { label: string; color: string; bg: string }> = {
-    traitement: { label: t('history_treatment_badge'), color: 'var(--badge-purple-text)', bg: 'var(--badge-purple-bg)' },
-    entretien:  { label: t('history_maintenance_badge'),  color: 'var(--badge-blue-text)',   bg: 'var(--badge-blue-bg)'   },
+  const TYPE_PILL: Record<'treatment' | 'maintenance', { label: string; color: string; bg: string }> = {
+    treatment: { label: t('history_treatment_badge'), color: 'var(--badge-purple-text)', bg: 'var(--badge-purple-bg)' },
+    maintenance: { label: t('history_maintenance_badge'),  color: 'var(--badge-blue-text)',   bg: 'var(--badge-blue-bg)'   },
   }
 
   // Status badge (measurement) or type pill (treatment/maintenance)
   let badge: React.ReactNode = null
-  if (cat === 'mesure') {
+  if (cat === 'measurement') {
     const p = extractMeasuredParams([action])
     const { status, hasData } = getWaterStatus({ ph: p.ph, chlorine: p.chlorine, tac: p.tac })
     if (hasData) {
@@ -145,7 +145,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
     badge = <Pill label={c.label} color={c.color} bg={c.bg} />
   }
 
-  const noteText = cat === 'mesure'
+  const noteText = cat === 'measurement'
     ? action.notes
       .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
       .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
@@ -210,7 +210,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
         ) : null}
 
         {/* Line 3: param pills (measurements only) */}
-        {cat === 'mesure' && <ParamPills action={action} />}
+        {cat === 'measurement' && <ParamPills action={action} />}
       </div>
 
       {/* Date + actions */}
@@ -262,9 +262,9 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
 
   const FILTER_BTNS: { label: string; value: FilterType }[] = [
     { label: t('history_all'),         value: 'all' },
-    { label: t('history_measurements'),      value: 'mesure' },
-    { label: t('history_treatments'),  value: 'traitement' },
-    { label: t('history_maintenance'),   value: 'entretien' },
+    { label: t('history_measurements'),      value: 'measurement' },
+    { label: t('history_treatments'),  value: 'treatment' },
+    { label: t('history_maintenance'),   value: 'maintenance' },
   ]
 
   const filtered = useMemo(() => {

@@ -922,7 +922,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
   return (
     <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
 
-      {/* Corps scrollable */}
+      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4">
 
         {/* Date */}
@@ -987,7 +987,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
 
       </div>
 
-      {/* Footer fixe — toujours visible */}
+      {/* Fixed footer — always visible */}
       <div style={{
         flexShrink: 0,
         padding: '14px 0 0',

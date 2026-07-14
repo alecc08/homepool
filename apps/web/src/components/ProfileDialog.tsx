@@ -51,7 +51,7 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
-      {/* Corps scrollable */}
+      {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <Label htmlFor="prof-firstName">{t('profile_first_name')}</Label>
@@ -120,7 +120,7 @@ export default function ProfileDialog({ user, onSave, onClose }: Props) {
         )}
       </div>
 
-      {/* Footer fixe — toujours visible */}
+      {/* Fixed footer — always visible */}
       <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Button type="button" variant="ghost" onClick={onClose}>{t('modal_cancel')}</Button>
         <Button type="submit" disabled={loading}>

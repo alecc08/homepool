@@ -2,12 +2,12 @@
 @import "tailwindcss";
 
 :root {
-  /* Vars brand non-thémables (toujours fixe) */
+  /* Brand vars, not themeable (always fixed) */
   --pooly-primary: #1e3a5f;
   --pooly-cyan: #38bdf8;
   --pooly-indigo: #6366f1;
 
-  /* Vars thémables — valeurs light par défaut (remplacées par theme.css en dark) */
+  /* Themeable vars — light defaults (overridden by theme.css in dark) */
   --pooly-bg:           var(--bg-page);
   --pooly-surface:      var(--bg-surface);
   --pooly-border-color: var(--border);
@@ -23,7 +23,7 @@
   --pooly-bad-text:     var(--status-danger-text);
   --pooly-bad-bg:       var(--status-danger-bg);
 
-  /* Shadcn tokens hérités de theme.css + overrides locaux */
+  /* Shadcn tokens inherited from theme.css + local overrides */
   --accent-foreground: 215 52% 24%;
 }
 
@@ -782,7 +782,7 @@ input[type="checkbox"]:checked::after {
     border-left: none !important;
   }
 
-  /* History table: hide Paramètres & Notes columns on mobile */
+  /* History table: hide Parameters & Notes columns on mobile */
   .history-col-params,
   .history-col-notes {
     display: none;

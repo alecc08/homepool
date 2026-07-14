@@ -352,7 +352,7 @@ export default function LoginPage({ onLogin }: Props) {
             {SUBTITLE[view]}
           </p>
 
-          {/* ── CONNEXION ── */}
+          {/* ── LOGIN ── */}
           {view === 'login' && (
             <form onSubmit={handleLogin} style={{ display: 'grid', gap: 14 }}>
               <div>

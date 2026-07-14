@@ -43,7 +43,7 @@ const DialogContent = React.forwardRef<
       className={cn(
         // Base
         "fixed z-50 flex flex-col w-full gap-4 border shadow-lg duration-200",
-        // Desktop: centered modal, hauteur max pour que le footer reste visible
+        // Desktop: centered modal, max height so the footer stays visible
         "left-[50%] top-[50%] max-w-[460px] max-h-[calc(100vh-40px)] translate-x-[-50%] translate-y-[-50%] rounded-[16px] p-7 overflow-hidden",
         // Mobile: full screen
         "max-[768px]:inset-0 max-[768px]:translate-x-0 max-[768px]:translate-y-0 max-[768px]:max-w-full max-[768px]:w-full max-[768px]:h-full max-[768px]:overflow-y-auto max-[768px]:rounded-none max-[768px]:p-5",

@@ -1,7 +1,7 @@
 {
   "name": "Pooly",
   "short_name": "Pooly",
-  "description": "Journal d'entretien pour piscines et spas",
+  "description": "Maintenance log for pools and spas",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a1f3c",

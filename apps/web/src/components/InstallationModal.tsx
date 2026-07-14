@@ -100,7 +100,7 @@ export default function InstallationModal({ open, onClose }: Props) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18, paddingTop: 4 }}>
-          {/* Nom */}
+          {/* Name */}
           <div style={{ display: 'grid', gap: 6 }}>
             <Label htmlFor="inst-name">{t('modal_install_name')}</Label>
             <Input
