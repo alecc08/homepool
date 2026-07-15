@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to Pooly",
-        "description": "Enter your Pooly server URL and API key (from Settings → API Key in the Pooly web app).",
+        "description": "Enter your Pooly server URL and API key (from Settings → API Key in the Pooly web app). The URL must include the /api path, e.g. https://your-domain/api",
         "data": {
           "url": "Base URL",
           "api_key": "API Key"

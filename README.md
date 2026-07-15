@@ -42,6 +42,7 @@ where it all started, and that's the best way to support the person who built it
 - [Screenshots](#-screenshots)
 - [Quick start](#-quick-start)
 - [Configuration](#-configuration)
+- [Home Assistant Integration](#-home-assistant-integration)
 - [Tech stack](#-tech-stack)
 - [Contributing](#-contributing)
 - [Support](#-support)
@@ -141,6 +142,30 @@ RANGE_POOL_SALT_SALT_IDEAL_MAX=4400
 ```
 
 The naming convention is `RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}` — see the commented examples in `.env.example` for the full list of types, sanitizers and parameter codes.
+
+---
+
+### 🏠 Home Assistant Integration
+
+Pooly's water measurements can be pulled into Home Assistant as sensors.
+
+1. **Install via HACS**
+   Settings → HACS → custom repositories (⋮ menu) → add repository URL `https://github.com/alecc08/pooly`, category **Integration** → find "Pooly" in HACS → Install.
+
+2. **Add the integration**
+   Settings → Devices & Services → Add Integration → search for "Pooly".
+
+3. **Configure**
+   - **Base URL**: your Pooly server URL. If you're running behind the bundled nginx/reverse-proxy setup, this **must include the `/api` path** — e.g. `https://your-domain/api`, not just `https://your-domain`. Using the domain without `/api` will result in a "failed to connect to the Pooly server" error.
+   - **API Key**: generate one from Settings → API Key in the Pooly web app.
+
+4. **Result**
+   Once added, you'll get a Sensors card with your installation's water parameters:
+
+   ![Home Assistant sensors](docs/screenshots/ha-sensors.png)
+
+5. **Display on a dashboard (optional)**
+   Pooly's integration only exposes the raw sensor entities — for a nicer pool-specific dashboard widget, pair it with the [Pool Monitor Card](https://github.com/wilsto/pool-monitor-card) (installable via HACS as a frontend repository). Use the Pooly sensors as the card's data source to get a purpose-built pool/spa display.
 
 ---
 
