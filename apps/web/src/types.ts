@@ -53,3 +53,17 @@ export type InstallationWaterParams = {
   cc?: { ideal: [number, number]; acceptable: [number, number] }
   hardness?: { ideal: [number, number]; acceptable: [number, number] }
 }
+
+/** Backend param keys used by /params and /params/full (canonical, not display labels). */
+export type ParamKey = 'ph' | 'cl' | 'br' | 'cc' | 'tac' | 'temp' | 'salt' | 'cya' | 'hardness'
+
+export type ParamBand = { ideal: [number, number]; acceptable: [number, number] }
+
+/** One entry of the GET /installations/{id}/params/full response. */
+export type ParamFullEntry = {
+  default: ParamBand
+  override: { ideal?: [number, number]; acceptable?: [number, number] } | null
+  effective: ParamBand
+}
+
+export type InstallationParamsFull = Partial<Record<ParamKey, ParamFullEntry>>

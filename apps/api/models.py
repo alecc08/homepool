@@ -2,6 +2,7 @@
 from datetime import date, datetime, timezone
 from typing import Optional
 
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -41,6 +42,10 @@ class Installation(SQLModel, table=True):
     salt_unit: str = Field(default="ppm")       # "ppm" | "g/L"
     conc_unit: str = Field(default="mg/L")      # "mg/L" | "ppm"
     hardness_unit: str = Field(default="ppm")     # "ppm" | "°dH" | "°f"
+    # Sparse per-installation overrides layered on top of WATER_PARAMS, e.g.
+    # {"ph": {"ideal": [7.0, 7.6]}}. NULL/{} = no customization. Values are always
+    # stored in canonical/metric units, independent of temp_unit/salt_unit/hardness_unit.
+    range_overrides: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.now)
 
 

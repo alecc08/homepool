@@ -6,26 +6,51 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
+import type { Installation } from '../types'
+import WaterChemistryTargets from './WaterChemistryTargets'
 
 type Props = {
   open: boolean
   onClose: () => void
+  installation?: Installation
 }
 
-export default function InstallationModal({ open, onClose }: Props) {
+type Tab = 'general' | 'water'
+
+export default function InstallationModal({ open, onClose, installation }: Props) {
   const { t } = useT()
-  const { addInstallation } = useInstallation()
-  const [name, setName] = useState('')
-  const [type, setType] = useState<'pool' | 'spa'>('pool')
-  const [sanitizer, setSanitizer] = useState<'bromine' | 'chlorine' | 'salt'>('chlorine')
-  const [volume, setVolume] = useState('')
-  const [volumeUnit, setVolumeUnit] = useState<'L' | 'gal'>('L')
-  const [tempUnit, setTempUnit] = useState<TempUnit>('C')
-  const [saltUnit, setSaltUnit] = useState<SaltUnit>('ppm')
-  const [concUnit, setConcUnit] = useState<ConcUnit>('mg/L')
-  const [hardnessUnit, setHardnessUnit] = useState<HardnessUnit>('ppm')
+  const { addInstallation, refresh } = useInstallation()
+  const isEdit = !!installation
+  const [tab, setTab] = useState<Tab>('general')
+  const [name, setName] = useState(installation?.name ?? '')
+  const [type, setType] = useState<'pool' | 'spa'>(installation?.type ?? 'pool')
+  const [sanitizer, setSanitizer] = useState<'bromine' | 'chlorine' | 'salt'>(installation?.sanitizer ?? 'chlorine')
+  const [volume, setVolume] = useState(installation?.volume != null ? String(installation.volume) : '')
+  const [volumeUnit, setVolumeUnit] = useState<'L' | 'gal'>(installation?.volume_unit ?? 'L')
+  const [tempUnit, setTempUnit] = useState<TempUnit>(installation?.temp_unit ?? 'C')
+  const [saltUnit, setSaltUnit] = useState<SaltUnit>(installation?.salt_unit ?? 'ppm')
+  const [concUnit, setConcUnit] = useState<ConcUnit>(installation?.conc_unit ?? 'mg/L')
+  const [hardnessUnit, setHardnessUnit] = useState<HardnessUnit>(installation?.hardness_unit ?? 'ppm')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const resetForm = () => {
+    setName('')
+    setType('pool')
+    setSanitizer('chlorine')
+    setVolume('')
+    setVolumeUnit('L')
+    setTempUnit('C')
+    setSaltUnit('ppm')
+    setConcUnit('mg/L')
+    setHardnessUnit('ppm')
+    setTab('general')
+  }
+
+  const handleClose = () => {
+    if (!isEdit) resetForm()
+    onClose()
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,7 +59,7 @@ export default function InstallationModal({ open, onClose }: Props) {
     setError(null)
     try {
       const parsedVolume = volume.trim() ? parseFloat(volume) : undefined
-      await addInstallation({
+      const payload = {
         name: name.trim(),
         type,
         sanitizer,
@@ -43,19 +68,23 @@ export default function InstallationModal({ open, onClose }: Props) {
         conc_unit: concUnit,
         hardness_unit: hardnessUnit,
         ...(parsedVolume !== undefined && !isNaN(parsedVolume) ? { volume: parsedVolume, volume_unit: volumeUnit } : {}),
-      })
-      setName('')
-      setType('pool')
-      setSanitizer('chlorine')
-      setVolume('')
-      setVolumeUnit('L')
-      setTempUnit('C')
-      setSaltUnit('ppm')
-      setConcUnit('mg/L')
-      setHardnessUnit('ppm')
+      }
+      if (isEdit && installation) {
+        const res = await fetch(`/api/installations/${installation.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) throw new Error('failed')
+        await refresh()
+      } else {
+        await addInstallation(payload)
+        resetForm()
+      }
       onClose()
     } catch {
-      setError(t('modal_install_create_error'))
+      setError(isEdit ? t('modal_install_update_error') : t('modal_install_create_error'))
     } finally {
       setLoading(false)
     }
@@ -91,14 +120,38 @@ export default function InstallationModal({ open, onClose }: Props) {
   })
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="sm:max-w-sm">
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent className={isEdit ? 'sm:max-w-md' : 'sm:max-w-sm'}>
         <DialogHeader>
           <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
-            {t('modal_install_title')}
+            {isEdit ? t('modal_install_title_edit') : t('modal_install_title')}
           </DialogTitle>
         </DialogHeader>
 
+        {isEdit && (
+          <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+            {(['general', 'water'] as Tab[]).map(tb => (
+              <button
+                key={tb}
+                type="button"
+                onClick={() => setTab(tb)}
+                style={{
+                  padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600,
+                  color: tab === tb ? '#38bdf8' : 'var(--text-secondary)',
+                  borderBottom: tab === tb ? '2px solid #38bdf8' : '2px solid transparent',
+                  marginBottom: -1,
+                }}
+              >
+                {tb === 'general' ? t('modal_tab_general') : t('modal_tab_water_chemistry')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isEdit && tab === 'water' && installation ? (
+          <WaterChemistryTargets installation={installation} />
+        ) : (
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18, paddingTop: 4 }}>
           {/* Name */}
           <div style={{ display: 'grid', gap: 6 }}>
@@ -244,9 +297,12 @@ export default function InstallationModal({ open, onClose }: Props) {
           )}
 
           <Button type="submit" disabled={loading} className="w-full">
-            {loading ? t('modal_install_creating') : t('modal_install_create')}
+            {loading
+              ? (isEdit ? t('modal_install_saving') : t('modal_install_creating'))
+              : (isEdit ? t('modal_install_save') : t('modal_install_create'))}
           </Button>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )

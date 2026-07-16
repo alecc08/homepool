@@ -21,6 +21,7 @@ type InstallationCtx = {
     hardness_unit?: HardnessUnit
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
+  updateRanges: (ranges: DynamicRanges) => void
 }
 
 const InstallationContext = createContext<InstallationCtx | null>(null)
@@ -125,8 +126,12 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     }
   }, [activeId])
 
+  const updateRanges = useCallback((next: DynamicRanges) => {
+    setRanges(next)
+  }, [])
+
   return (
-    <InstallationContext.Provider value={{ installations, active, ranges, setActive, refresh, addInstallation, deleteInstallation }}>
+    <InstallationContext.Provider value={{ installations, active, ranges, setActive, refresh, addInstallation, deleteInstallation, updateRanges }}>
       {children}
     </InstallationContext.Provider>
   )

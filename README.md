@@ -143,17 +143,11 @@ Copy `.env.example` to `.env` and adjust the values:
 
 > ⚠️ **Never commit your `.env` file**. It is already in `.gitignore`.
 
-#### Overriding ideal water-parameter ranges
+#### Customizing ideal water-parameter ranges
 
-Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm) and a matching free-chlorine band, following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. If your setup runs differently, you can override any band without touching code:
+Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm) and a matching free-chlorine band, following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. If your setup runs differently, open an installation's edit modal → **Water Chemistry Targets** tab to customize any band per installation, right from the UI — no env vars or restarts required.
 
-```bash
-# Example: your salt cell runs happily at a higher salt level than the default
-RANGE_POOL_SALT_SALT_IDEAL_MIN=3600
-RANGE_POOL_SALT_SALT_IDEAL_MAX=4400
-```
-
-The naming convention is `RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}` — see the commented examples in `.env.example` for the full list of types, sanitizers and parameter codes.
+> ⚠️ **Upgrading from an older version?** The `RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}` env var mechanism has been removed in favor of the per-installation UI above. If you were relying on `RANGE_*` env vars, re-apply your preferred ranges per-installation via the UI after upgrading — the env vars are now ignored.
 
 ---
 

@@ -115,6 +115,7 @@ type Props = {
   onLogout?: () => void
   onProfile?: () => void
   onAddInstallation?: () => void
+  onEditInstallation?: () => void
   page?: Page
   onNavigate?: (page: Page) => void
   user?: User
@@ -122,7 +123,7 @@ type Props = {
   setTheme?: (t: Theme) => void
 }
 
-export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
+export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, onEditInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
   const { installations, active, setActive, deleteInstallation } = useInstallation()
   const { t, locale, setLocale } = useT()
 
@@ -190,9 +191,28 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span style={{ fontSize: 14 }}>{active?.type === 'spa' ? '🛁' : '🏊'}</span>
-                  <span style={{ fontFamily: 'Sora, sans-serif', fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontFamily: 'Sora, sans-serif', fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                     {active?.name ?? '…'}
                   </span>
+                  {onEditInstallation && (
+                    <button
+                      type="button"
+                      onClick={onEditInstallation}
+                      aria-label={t('nav_edit_installation')}
+                      title={t('nav_edit_installation')}
+                      style={{
+                        flexShrink: 0, width: 22, height: 22, borderRadius: 6,
+                        background: 'none', border: 'none',
+                        color: 'rgba(255,255,255,0.45)', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
                 {active?.volume != null && (
                   <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: 'rgba(255,255,255,0.35)', marginLeft: 21 }}>
@@ -218,6 +238,25 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
                     </option>
                   ))}
                 </select>
+                {onEditInstallation && (
+                  <button
+                    type="button"
+                    onClick={onEditInstallation}
+                    aria-label={t('nav_edit_installation')}
+                    title={t('nav_edit_installation')}
+                    style={{
+                      flexShrink: 0, width: 26, height: 26, borderRadius: 6,
+                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)',
+                      color: 'rgba(255,255,255,0.45)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleDeleteInstallation}

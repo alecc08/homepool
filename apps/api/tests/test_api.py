@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from main import WATER_PARAMS, _apply_range_overrides
+from main import WATER_PARAMS, _merge_range_overrides
 
 TODAY = date.today().isoformat()
 
@@ -194,42 +194,115 @@ def test_get_installation_params_unknown_sanitizer_returns_empty(client: TestCli
     assert params_r.json() == {}
 
 
-# ── Range overrides (RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX}) ──
+# ── Per-installation range overrides ────────────────────────────────────────
 
-def test_apply_range_overrides_full(monkeypatch, water_params_snapshot):
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MIN", "3600")
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MAX", "4400")
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_ACCEPTABLE_MIN", "3000")
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_ACCEPTABLE_MAX", "5000")
-    _apply_range_overrides()
-    ranges = WATER_PARAMS[("pool", "salt")]["salt"]
-    assert ranges["ideal"] == (3600.0, 4400.0)
-    assert ranges["acceptable"] == (3000.0, 5000.0)
+def test_merge_range_overrides_applies_only_present_bands(water_params_snapshot):
+    defaults = WATER_PARAMS[("pool", "salt")]
+    merged = _merge_range_overrides(defaults, {"salt": {"ideal": [3600, 4400]}})
+    assert merged["salt"]["ideal"] == (3600, 4400)
+    assert merged["salt"]["acceptable"] == defaults["salt"]["acceptable"]
+    # original untouched
+    assert defaults["salt"]["ideal"] == (2700, 3400)
 
 
-def test_apply_range_overrides_partial_leaves_other_side_default(monkeypatch, water_params_snapshot):
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MIN", "3600")
-    monkeypatch.setenv("RANGE_POOL_SALT_SALT_IDEAL_MAX", "4400")
-    _apply_range_overrides()
-    ranges = WATER_PARAMS[("pool", "salt")]["salt"]
-    assert ranges["ideal"] == (3600.0, 4400.0)
-    assert ranges["acceptable"] == (2500, 4500)
+def test_merge_range_overrides_ignores_unknown_param(water_params_snapshot):
+    defaults = WATER_PARAMS[("pool", "bromine")]
+    merged = _merge_range_overrides(defaults, {"cl": {"ideal": [1.0, 3.0]}})
+    assert "cl" not in merged
 
 
-def test_apply_range_overrides_noop_without_env_vars(water_params_snapshot):
-    before = copy.deepcopy(WATER_PARAMS)
-    _apply_range_overrides()
-    assert WATER_PARAMS == before
+def test_merge_range_overrides_noop_without_overrides(water_params_snapshot):
+    defaults = WATER_PARAMS[("pool", "salt")]
+    assert _merge_range_overrides(defaults, None) == defaults
+    assert _merge_range_overrides(defaults, {}) == defaults
 
 
-def test_apply_range_overrides_ignores_param_not_present_for_combo(monkeypatch, water_params_snapshot):
-    # ("pool", "bromine") has no "cl" key — an override targeting it must be a no-op.
-    monkeypatch.setenv("RANGE_POOL_BROMINE_CL_IDEAL_MIN", "1.0")
-    monkeypatch.setenv("RANGE_POOL_BROMINE_CL_IDEAL_MAX", "3.0")
-    before = copy.deepcopy(WATER_PARAMS[("pool", "bromine")])
-    _apply_range_overrides()
-    assert WATER_PARAMS[("pool", "bromine")] == before
-    assert "cl" not in WATER_PARAMS[("pool", "bromine")]
+def test_get_installation_params_reflects_overrides(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    put_r = client.put(
+        f"/installations/{installation_id}/params",
+        json={"salt": {"ideal": [3600, 4400]}},
+    )
+    assert put_r.status_code == 200
+    assert put_r.json()["salt"]["ideal"] == [3600, 4400]
+
+    params_r = client.get(f"/installations/{installation_id}/params")
+    assert params_r.json()["salt"]["ideal"] == [3600, 4400]
+    assert params_r.json()["salt"]["acceptable"] == [2500, 4500]
+
+
+def test_get_installation_params_full_shape(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [3600, 4400]}})
+
+    full_r = client.get(f"/installations/{installation_id}/params/full")
+    assert full_r.status_code == 200
+    full = full_r.json()
+    assert full["salt"]["default"]["ideal"] == [2700, 3400]
+    assert full["salt"]["override"] == {"ideal": [3600, 4400]}
+    assert full["salt"]["effective"]["ideal"] == [3600, 4400]
+    assert full["salt"]["effective"]["acceptable"] == [2500, 4500]
+    assert full["ph"]["override"] is None
+
+
+def test_put_installation_params_clears_with_empty_body(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [3600, 4400]}})
+    clear_r = client.put(f"/installations/{installation_id}/params", json={})
+    assert clear_r.status_code == 200
+    assert clear_r.json()["salt"]["ideal"] == [2700, 3400]
+
+
+def test_put_installation_params_rejects_unknown_param(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Bromine pool", "type": "pool", "sanitizer": "bromine"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"cl": {"ideal": [1.0, 3.0]}})
+    assert put_r.status_code == 400
+
+
+def test_put_installation_params_rejects_min_gte_max(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [4000, 3000]}})
+    assert put_r.status_code == 400
+
+
+def test_put_installation_params_rejects_ideal_outside_acceptable(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [1000, 5000]}})
+    assert put_r.status_code == 400
+
+
+def test_put_installation_params_rejects_out_of_bounds(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "My pool", "type": "pool", "sanitizer": "chlorine"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"ph": {"ideal": [-1, 20]}})
+    assert put_r.status_code == 400
+
+
+def test_put_installation_params_requires_ownership(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    client.post("/auth/logout")
+    r2 = client.post(
+        "/auth/register",
+        json={"first_name": "Other", "email": "other@example.com", "password": "OtherPass1"},
+    )
+    assert r2.status_code == 200
+    put_r = client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [3600, 4400]}})
+    assert put_r.status_code == 404
 
 
 def test_create_installation_with_volume(client: TestClient):
