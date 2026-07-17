@@ -41,6 +41,7 @@ type AppMainProps = {
 
 function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps) {
   const { active } = useInstallation()
+  const [editingInstallation, setEditingInstallation] = useState(false)
   const { t } = useT()
   const [actions, setActions] = useState<Action[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -188,6 +189,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         onLogout={onLogout}
         onProfile={() => setShowProfile(true)}
         onAddInstallation={() => setShowInstallationModal(true)}
+        onEditInstallation={() => setEditingInstallation(true)}
         page={page}
         onNavigate={navigate}
         user={user}
@@ -290,6 +292,15 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         open={showInstallationModal}
         onClose={() => setShowInstallationModal(false)}
       />
+
+      {/* Modal — edit installation */}
+      {active && (
+        <InstallationModal
+          open={editingInstallation}
+          onClose={() => setEditingInstallation(false)}
+          installation={active}
+        />
+      )}
 
       {/* PWA install banner */}
       <InstallBanner />

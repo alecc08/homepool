@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import logging
 import os
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
@@ -89,35 +90,37 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
 }
 
 
-def _apply_range_overrides(target: Optional[Dict[Tuple[str, str], Dict]] = None) -> None:
-    """Applies RANGE_<TYPE>_<SANITIZER>_<PARAM>_{IDEAL,ACCEPTABLE}_{MIN,MAX} env var
-    overrides onto WATER_PARAMS (or an explicit `target` dict, for tests). Only
-    overrides (type, sanitizer, param) combos that already exist in the dict — never
-    invents new param keys for a combo that doesn't have them."""
-    params = WATER_PARAMS if target is None else target
-    applied: List[str] = []
-    for (inst_type, sanitizer), params_for_combo in params.items():
-        for param, ranges in params_for_combo.items():
-            for band in ("ideal", "acceptable"):
-                lo, hi = ranges[band]
-                prefix = f"RANGE_{inst_type.upper()}_{sanitizer.upper()}_{param.upper()}_{band.upper()}"
-                min_env = os.getenv(f"{prefix}_MIN")
-                max_env = os.getenv(f"{prefix}_MAX")
-                new_lo = float(min_env) if min_env is not None else lo
-                new_hi = float(max_env) if max_env is not None else hi
-                if min_env is not None or max_env is not None:
-                    applied.append(f"{prefix}=({new_lo}, {new_hi})")
-                ranges[band] = (new_lo, new_hi)
-    if target is None and applied:
-        # Routed through uvicorn's own logger (not the root logger, which uvicorn
-        # never configures) so this is guaranteed to reach `docker logs` at the
-        # default log level, right alongside uvicorn's own startup lines.
-        logging.getLogger("uvicorn.error").info(
-            "Water param range overrides applied: %s", ", ".join(applied)
-        )
+# Sane absolute bounds per param, used to validate per-installation range overrides.
+# Mirrored (manually — bounds change far less often than ranges) into
+# apps/web/src/paramGuidance.ts for instant client-side validation.
+PARAM_BOUNDS: Dict[str, Tuple[float, float]] = {
+    "ph": (0, 14),
+    "cl": (0, 20),
+    "br": (0, 20),
+    "cc": (0, 10),
+    "tac": (0, 500),
+    "temp": (0, 50),
+    "salt": (0, 10000),
+    "cya": (0, 300),
+    "hardness": (0, 2000),
+}
 
 
-_apply_range_overrides()
+def _merge_range_overrides(defaults: Dict, overrides: Optional[Dict]) -> Dict:
+    """Deep-copies `defaults` (a WATER_PARAMS combo dict) and layers `overrides` on
+    top of it. Only replaces a param/band that's already present in `defaults` —
+    an override can never invent a new param key for a combo that doesn't have it."""
+    merged = copy.deepcopy(defaults)
+    if not overrides:
+        return merged
+    for param, bands in overrides.items():
+        if param not in merged:
+            continue
+        for band, value in bands.items():
+            if band not in merged[param]:
+                continue
+            merged[param][band] = tuple(value)
+    return merged
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -179,6 +182,13 @@ def _ensure_measurement_unit_columns(session: Session) -> None:
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS salt_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS conc_unit VARCHAR NOT NULL DEFAULT 'mg/L'"))
     session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS hardness_unit VARCHAR NOT NULL DEFAULT 'ppm'"))
+    session.commit()
+
+
+def _ensure_range_overrides_column(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS range_overrides JSON"))
     session.commit()
 
 
@@ -272,6 +282,7 @@ async def lifespan(app: FastAPI):
         _ensure_first_name_column(session)
         _ensure_volume_columns(session)
         _ensure_measurement_unit_columns(session)
+        _ensure_range_overrides_column(session)
         insert_seeds(session)
         _ensure_admin_user(session)
         _migrate_installations(session)
@@ -760,6 +771,13 @@ def delete_installation(
     session.commit()
 
 
+# Two-layer range model: WATER_PARAMS holds the hardcoded factory defaults per
+# (type, sanitizer) combo; Installation.range_overrides holds a sparse, per-installation
+# customization layered on top via _merge_range_overrides. GET .../params returns the
+# merged ("effective") result — the only shape older/other consumers (InstallationContext)
+# need to know about. GET .../params/full and PUT .../params expose the two layers
+# separately, for the settings UI.
+
 @app.get("/installations/{installation_id}/params")
 def get_installation_params(
     installation_id: int,
@@ -769,8 +787,81 @@ def get_installation_params(
     installation = session.get(Installation, installation_id)
     if not installation or installation.user_id != user.id:
         raise HTTPException(status_code=404, detail="Installation not found")
-    params = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
-    return params
+    defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
+    return _merge_range_overrides(defaults, installation.range_overrides)
+
+
+@app.get("/installations/{installation_id}/params/full")
+def get_installation_params_full(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    installation = session.get(Installation, installation_id)
+    if not installation or installation.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Installation not found")
+    defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
+    overrides = installation.range_overrides or {}
+    result: Dict[str, Dict] = {}
+    for param, bands in defaults.items():
+        param_override = overrides.get(param, {})
+        effective = {band: list(param_override.get(band, value)) for band, value in bands.items()}
+        result[param] = {
+            "default": {band: list(value) for band, value in bands.items()},
+            "override": {band: list(value) for band, value in param_override.items()} or None,
+            "effective": effective,
+        }
+    return result
+
+
+def _range_error(detail: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=detail)
+
+
+@app.put("/installations/{installation_id}/params")
+def update_installation_params(
+    installation_id: int,
+    payload: Dict[str, Dict[str, List[float]]] = Body(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    installation = session.get(Installation, installation_id)
+    if not installation or installation.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Installation not found")
+
+    defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
+
+    for param, bands in payload.items():
+        if param not in defaults:
+            raise _range_error(f"Unknown parameter for this installation: {param}")
+        bounds = PARAM_BOUNDS.get(param)
+        for band, value in bands.items():
+            if band not in ("ideal", "acceptable"):
+                raise _range_error(f"Unknown band for {param}: {band}")
+            if len(value) != 2:
+                raise _range_error(f"{param}.{band} must be [min, max]")
+            lo, hi = value
+            if lo >= hi:
+                raise _range_error(f"{param}.{band}: min must be less than max")
+            if bounds and (lo < bounds[0] or hi > bounds[1]):
+                raise _range_error(f"{param}.{band} is outside allowed bounds {bounds}")
+
+    new_effective = _merge_range_overrides(defaults, payload)
+    for param, bands in new_effective.items():
+        if "ideal" in bands and "acceptable" in bands:
+            i_lo, i_hi = bands["ideal"]
+            a_lo, a_hi = bands["acceptable"]
+            if i_lo < a_lo or i_hi > a_hi:
+                raise _range_error(f"{param}: ideal range must be within the acceptable range")
+
+    installation.range_overrides = {
+        param: {band: list(value) for band, value in bands.items()}
+        for param, bands in payload.items()
+    }
+    session.add(installation)
+    session.commit()
+    session.refresh(installation)
+    return _merge_range_overrides(defaults, installation.range_overrides)
 
 
 # ── Actions ────────────────────────────────────────────────────────────────
