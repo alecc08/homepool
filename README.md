@@ -166,7 +166,7 @@ Pooly's water measurements can be pulled into Home Assistant as sensors.
    - **API Key**: generate one from Settings → API Key in the Pooly web app.
 
 4. **Result**
-   Once added, you'll get a Sensors card with your installation's water parameters:
+   Once added, you'll get a Sensors card with your installation's water parameters, plus two "days until due" sensors per installation — **Days Until pH Measurement Due** and **Days Until Filter Maintenance Due**. These are plain numeric sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. trigger a notification when `states('sensor.xxx_days_until_ph_measurement_due') | int <= 3`:
 
    ![Home Assistant sensors](docs/screenshots/ha-sensors.png)
 

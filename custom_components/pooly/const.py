@@ -34,3 +34,9 @@ FIELD_NAMES = {
     "cc": "Combined Chlorine",
     "temp": "Temperature",
 }
+
+# todo task key -> (icon, name), same shape/purpose as FIELD_META/FIELD_NAMES.
+TODO_META = {
+    "ph_measurement": ("mdi:calendar-clock", "Days Until pH Measurement Due"),
+    "filter_maintenance": ("mdi:calendar-clock", "Days Until Filter Maintenance Due"),
+}

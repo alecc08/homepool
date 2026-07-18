@@ -40,3 +40,6 @@ class PoolyClient:
 
     async def get_current(self, installation_id: int) -> dict:
         return await self._get("/v1/current", params={"installation_id": installation_id})
+
+    async def get_todo(self, installation_id: int) -> dict:
+        return await self._get("/v1/todo", params={"installation_id": installation_id})

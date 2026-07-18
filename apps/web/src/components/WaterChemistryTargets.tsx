@@ -7,12 +7,7 @@ import { useInstallation } from '../context/InstallationContext'
 import { installationParamsToRanges } from '../utils'
 import { PARAM_GUIDANCE, PARAM_ORDER } from '../paramGuidance'
 import type { Installation, InstallationParamsFull, InstallationWaterParams, ParamKey } from '../types'
-import {
-  celsiusToFahrenheit, fahrenheitToCelsius,
-  ppmToGramsPerLiter, gramsPerLiterToPpm,
-  ppmToGermanDegrees, germanDegreesToPpm,
-  ppmToFrenchDegrees, frenchDegreesToPpm,
-} from '../units'
+import { metricToDisplayConverter, displayToMetricConverter } from '../units'
 
 type Band = 'ideal' | 'acceptable'
 type Edge = 0 | 1
@@ -23,23 +18,13 @@ type Props = {
 }
 
 function metricToDisplay(param: ParamKey, value: number, installation: Installation): number {
-  if (param === 'temp' && installation.temp_unit === 'F') return celsiusToFahrenheit(value)
-  if (param === 'salt' && installation.salt_unit === 'g/L') return ppmToGramsPerLiter(value)
-  if (param === 'hardness') {
-    if (installation.hardness_unit === '°dH') return ppmToGermanDegrees(value)
-    if (installation.hardness_unit === '°f') return ppmToFrenchDegrees(value)
-  }
-  return value
+  const convert = metricToDisplayConverter(param, installation)
+  return convert ? convert(value) : value
 }
 
 function displayToMetric(param: ParamKey, value: number, installation: Installation): number {
-  if (param === 'temp' && installation.temp_unit === 'F') return fahrenheitToCelsius(value)
-  if (param === 'salt' && installation.salt_unit === 'g/L') return gramsPerLiterToPpm(value)
-  if (param === 'hardness') {
-    if (installation.hardness_unit === '°dH') return germanDegreesToPpm(value)
-    if (installation.hardness_unit === '°f') return frenchDegreesToPpm(value)
-  }
-  return value
+  const convert = displayToMetricConverter(param, installation)
+  return convert ? convert(value) : value
 }
 
 function unitLabel(param: ParamKey, installation: Installation): string {
@@ -64,7 +49,6 @@ export default function WaterChemistryTargets({ installation }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [values, setValues] = useState<DraftValues>({})
-  const [overridden, setOverridden] = useState<Set<ParamKey>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -76,7 +60,6 @@ export default function WaterChemistryTargets({ installation }: Props) {
         if (cancelled) return
         setFull(data)
         const draft: DraftValues = {}
-        const initiallyOverridden = new Set<ParamKey>()
         for (const param of Object.keys(data) as ParamKey[]) {
           const entry = data[param]
           if (!entry) continue
@@ -87,10 +70,8 @@ export default function WaterChemistryTargets({ installation }: Props) {
               String(round(metricToDisplay(param, max, installation))),
             ]
           }
-          if (entry.override) initiallyOverridden.add(param)
         }
         setValues(draft)
-        setOverridden(initiallyOverridden)
       })
       .catch(() => { if (!cancelled) setLoadError(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -146,17 +127,32 @@ export default function WaterChemistryTargets({ installation }: Props) {
 
   const hasErrors = paramKeys.some(p => errors[p])
 
+  // Single source of truth for "does this param differ from its default", derived
+  // from the same metric-space diff-against-default logic handleSave uses to decide
+  // what to send — avoids a separately-maintained overridden Set that could disagree.
+  const customized = useMemo(() => {
+    const out: Record<ParamKey, boolean> = {} as Record<ParamKey, boolean>
+    for (const param of paramKeys) {
+      const entry = full?.[param]
+      if (!entry) { out[param] = false; continue }
+      out[param] = (['ideal', 'acceptable'] as Band[]).some(band => {
+        const vals = parsed[key(param, band)]
+        if (!vals || vals.some(isNaN)) return true
+        const min = displayToMetric(param, vals[0], installation)
+        const max = displayToMetric(param, vals[1], installation)
+        const [defMin, defMax] = entry.default[band]
+        return Math.abs(min - defMin) > 1e-9 || Math.abs(max - defMax) > 1e-9
+      })
+    }
+    return out
+  }, [paramKeys, parsed, full, installation])
+
   const handleChange = (param: ParamKey, band: Band, edge: Edge, raw: string) => {
     setValues(prev => {
       const current = prev[key(param, band)] ?? ['', '']
       const next: [string, string] = [...current] as [string, string]
       next[edge] = raw
       return { ...prev, [key(param, band)]: next }
-    })
-    setOverridden(prev => {
-      const next = new Set(prev)
-      next.add(param)
-      return next
     })
   }
 
@@ -175,11 +171,6 @@ export default function WaterChemistryTargets({ installation }: Props) {
       }
       return next
     })
-    setOverridden(prev => {
-      const next = new Set(prev)
-      next.delete(param)
-      return next
-    })
   }
 
   const resetAll = () => {
@@ -193,7 +184,7 @@ export default function WaterChemistryTargets({ installation }: Props) {
     try {
       const payload: Record<string, Record<string, [number, number]>> = {}
       for (const param of paramKeys) {
-        if (!overridden.has(param)) continue
+        if (!customized[param]) continue
         const entry = full[param]
         if (!entry) continue
         const bands: Record<string, [number, number]> = {}
@@ -241,7 +232,8 @@ export default function WaterChemistryTargets({ installation }: Props) {
   const numInput: React.CSSProperties = { width: '100%' }
 
   return (
-    <div style={{ display: 'grid', gap: 4 }} data-testid="water-chemistry-targets">
+    <div className="flex flex-col flex-1 min-h-0" data-testid="water-chemistry-targets">
+      <div className="flex-1 overflow-y-auto overscroll-contain" style={{ display: 'grid', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"
@@ -259,7 +251,7 @@ export default function WaterChemistryTargets({ installation }: Props) {
       {paramKeys.map(param => {
         const guidance = PARAM_GUIDANCE[param]
         const unit = unitLabel(param, installation)
-        const isOverridden = overridden.has(param)
+        const isOverridden = customized[param]
         const error = errors[param]
         const idealVals = values[key(param, 'ideal')] ?? ['', '']
         const acceptableVals = values[key(param, 'acceptable')] ?? ['', '']
@@ -350,14 +342,15 @@ export default function WaterChemistryTargets({ installation }: Props) {
           </div>
         )
       })}
+      </div>
 
       {saveError && (
-        <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+        <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: '8px 0 0' }}>
           {saveError}
         </p>
       )}
 
-      <Button type="button" onClick={handleSave} disabled={saving || hasErrors} className="w-full">
+      <Button type="button" onClick={handleSave} disabled={saving || hasErrors} className="w-full" style={{ marginTop: 12, flexShrink: 0 }}>
         {saving ? t('modal_install_saving') : t('modal_install_save')}
       </Button>
     </div>

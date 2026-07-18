@@ -129,7 +129,7 @@ export default function InstallationModal({ open, onClose, installation }: Props
         </DialogHeader>
 
         {isEdit && (
-          <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+          <div className="flex-shrink-0" style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
             {(['general', 'water'] as Tab[]).map(tb => (
               <button
                 key={tb}
@@ -152,7 +152,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
         {isEdit && tab === 'water' && installation ? (
           <WaterChemistryTargets installation={installation} />
         ) : (
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18, paddingTop: 4 }}>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4" style={{ paddingTop: 4 }}>
           {/* Name */}
           <div style={{ display: 'grid', gap: 6 }}>
             <Label htmlFor="inst-name">{t('modal_install_name')}</Label>
@@ -295,8 +296,9 @@ export default function InstallationModal({ open, onClose, installation }: Props
               {error}
             </p>
           )}
+          </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button type="submit" disabled={loading} className="w-full" style={{ marginTop: 18, flexShrink: 0 }}>
             {loading
               ? (isEdit ? t('modal_install_saving') : t('modal_install_creating'))
               : (isEdit ? t('modal_install_save') : t('modal_install_create'))}

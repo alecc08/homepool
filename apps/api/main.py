@@ -22,7 +22,7 @@ from passlib.context import CryptContext
 from database import engine, get_session
 from models import Action, ApiKey, Installation, PasswordResetToken, Product, User
 from seeds import insert_seeds
-from water_params import extract_current_conditions, extract_history
+from water_params import compute_todo_status, extract_current_conditions, extract_history
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address)
@@ -428,6 +428,16 @@ class InstallationSummaryOut(BaseModel):
     type: str
 
 
+class TodoItemOut(BaseModel):
+    days_until_due: Optional[int] = None
+    last_date: Optional[date] = None
+
+
+class TodoStatusOut(BaseModel):
+    ph_measurement: TodoItemOut
+    filter_maintenance: TodoItemOut
+
+
 class HistoryEntryOut(BaseModel):
     # Unlike CurrentConditionsOut, this doesn't carry per-field units yet —
     # add them here too if/when history import is built.
@@ -513,6 +523,18 @@ def _resolve_installation(
         return installation_id
     default = _get_default_installation(user.id, session)
     return default.id if default else None
+
+
+def _get_owned_installation(
+    installation_id: int,
+    user: User,
+    session: Session,
+) -> Installation:
+    """Fetches an installation and 404s unless it belongs to `user`."""
+    installation = session.get(Installation, installation_id)
+    if not installation or installation.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Installation not found")
+    return installation
 
 
 # ── Health ─────────────────────────────────────────────────────────────────
@@ -784,9 +806,7 @@ def get_installation_params(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = session.get(Installation, installation_id)
-    if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation not found")
+    installation = _get_owned_installation(installation_id, user, session)
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     return _merge_range_overrides(defaults, installation.range_overrides)
 
@@ -797,19 +817,17 @@ def get_installation_params_full(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = session.get(Installation, installation_id)
-    if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation not found")
+    installation = _get_owned_installation(installation_id, user, session)
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     overrides = installation.range_overrides or {}
+    effective = _merge_range_overrides(defaults, overrides)
     result: Dict[str, Dict] = {}
     for param, bands in defaults.items():
         param_override = overrides.get(param, {})
-        effective = {band: list(param_override.get(band, value)) for band, value in bands.items()}
         result[param] = {
             "default": {band: list(value) for band, value in bands.items()},
             "override": {band: list(value) for band, value in param_override.items()} or None,
-            "effective": effective,
+            "effective": {band: list(value) for band, value in effective[param].items()},
         }
     return result
 
@@ -825,9 +843,7 @@ def update_installation_params(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = session.get(Installation, installation_id)
-    if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation not found")
+    installation = _get_owned_installation(installation_id, user, session)
 
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
 
@@ -1057,3 +1073,22 @@ def api_history(
         .limit(limit)
     ).all()
     return [HistoryEntryOut(**entry) for entry in extract_history(actions)]
+
+
+@app.get("/v1/todo", response_model=TodoStatusOut)
+@limiter.limit("60/minute")
+def api_todo_status(
+    request: Request,
+    installation_id: Optional[int] = None,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
+    cutoff = date.today() - timedelta(days=90)
+    actions = session.exec(
+        select(Action)
+        .where(Action.installation_id == resolved_id, Action.date >= cutoff)
+        .order_by(Action.date.desc())
+        .limit(500)
+    ).all()
+    return TodoStatusOut(**compute_todo_status(actions))

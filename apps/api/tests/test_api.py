@@ -1,5 +1,5 @@
 import copy
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -305,6 +305,36 @@ def test_put_installation_params_requires_ownership(client: TestClient):
     assert put_r.status_code == 404
 
 
+def test_get_installation_params_full_requires_ownership(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    client.post("/auth/logout")
+    r2 = client.post(
+        "/auth/register",
+        json={"first_name": "Other", "email": "other@example.com", "password": "OtherPass1"},
+    )
+    assert r2.status_code == 200
+    full_r = client.get(f"/installations/{installation_id}/params/full")
+    assert full_r.status_code == 404
+
+
+def test_put_installation_params_rejects_unknown_band(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"salt": {"extreme": [3600, 4400]}})
+    assert put_r.status_code == 400
+
+
+def test_put_installation_params_rejects_wrong_length_band_value(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Salt pool", "type": "pool", "sanitizer": "salt"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"salt": {"ideal": [3600, 4000, 4400]}})
+    assert put_r.status_code == 400
+
+
 def test_create_installation_with_volume(client: TestClient):
     login(client)
     r = client.post(
@@ -493,4 +523,90 @@ def test_v1_current_requires_api_key(client: TestClient):
     login(client)
     client.post("/installations", json={"name": "My pool"})
     r = client.get("/v1/current")
+    assert r.status_code == 401
+
+
+# ── /v1/todo ─────────────────────────────────────────────────────────────
+
+def test_v1_todo_ph_days_until_due(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    measured_date = (date.today() - timedelta(days=2)).isoformat()
+    client.post(
+        "/actions",
+        json={
+            "date": measured_date,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "qty": "7.4",
+        },
+    )
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ph_measurement"]["days_until_due"] == 5
+    assert data["ph_measurement"]["last_date"] == measured_date
+
+
+def test_v1_todo_ph_overdue_is_negative(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    measured_date = (date.today() - timedelta(days=10)).isoformat()
+    client.post(
+        "/actions",
+        json={
+            "date": measured_date,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "qty": "7.4",
+        },
+    )
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    assert r.json()["ph_measurement"]["days_until_due"] == -3
+
+
+def test_v1_todo_never_measured_is_null(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ph_measurement"]["days_until_due"] is None
+    assert data["ph_measurement"]["last_date"] is None
+    assert data["filter_maintenance"]["days_until_due"] is None
+    assert data["filter_maintenance"]["last_date"] is None
+
+
+def test_v1_todo_filter_maintenance_days_until_due(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    done_date = (date.today() - timedelta(days=5)).isoformat()
+    client.post(
+        "/actions",
+        json={
+            "date": done_date,
+            "action_type": "Cartridge cleaning",
+            "installation_id": installation_id,
+        },
+    )
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["filter_maintenance"]["days_until_due"] == 9
+    assert data["filter_maintenance"]["last_date"] == done_date
+
+
+def test_v1_todo_requires_api_key(client: TestClient):
+    login(client)
+    client.post("/installations", json={"name": "My pool"})
+    r = client.get("/v1/todo")
     assert r.status_code == 401

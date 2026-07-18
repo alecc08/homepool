@@ -32,10 +32,12 @@ class PoolyDataUpdateCoordinator(DataUpdateCoordinator[dict[int, dict]]):
             data: dict[int, dict] = {}
             for installation in installations:
                 fields = await self.client.get_current(installation["id"])
+                todo = await self.client.get_todo(installation["id"])
                 data[installation["id"]] = {
                     "name": installation["name"],
                     "type": installation["type"],
                     "fields": fields,
+                    "todo": todo,
                 }
             return data
         except PoolyApiError as err:

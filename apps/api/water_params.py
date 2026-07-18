@@ -8,11 +8,19 @@
 # of having to understand the internal notes-encoding scheme. If the encoding
 # ever changes, both places need to change together.
 import re
+from datetime import date as date_type
 from typing import Dict, List, Optional
 
 from models import Action, Installation
 
 MEASURE_ACTION_TYPES = {"pH Measurement", "Measurement"}
+
+# Mirrors ActionForm.tsx:43-45's raw action-type strings (also duplicated as
+# utils.ts's getTodoItems filterTypes).
+FILTER_MAINTENANCE_TYPES = {"Cartridge cleaning", "Skimmer filter cleaning", "Backwash"}
+
+PH_CYCLE_DAYS = 7
+FILTER_CYCLE_DAYS = 14
 
 _NUM = r"(\d+(?:\.\d+)?)"
 RX_PH = re.compile(r"pH\s*([\d.]+)", re.I)
@@ -112,3 +120,33 @@ def extract_history(actions: List[Action]) -> List[Dict]:
         entry = {"date": action.date, **parse_measurement_action(action)}
         history.append(entry)
     return history
+
+
+def _last_matching_date(matching: List[Action]) -> Optional[date_type]:
+    if not matching:
+        return None
+    return max(a.date for a in matching)
+
+
+def compute_todo_status(actions: List[Action]) -> Dict[str, Dict]:
+    """Server-side port of getNextMeasureInDays / getTodoItems in utils.ts.
+    Returns days_until_due (cycle length minus days since the last matching
+    action; negative once overdue) and the date of that last action, per task.
+    days_until_due and last_date are both None when the task has never been
+    logged for this installation (no baseline to count from)."""
+    today = date_type.today()
+
+    def status_for(matching: List[Action], cycle_days: int) -> Dict:
+        last_date = _last_matching_date(matching)
+        if last_date is None:
+            return {"days_until_due": None, "last_date": None}
+        days_since = (today - last_date).days
+        return {"days_until_due": cycle_days - days_since, "last_date": last_date}
+
+    ph_actions = [a for a in actions if a.action_type in MEASURE_ACTION_TYPES and a.qty]
+    filter_actions = [a for a in actions if a.action_type in FILTER_MAINTENANCE_TYPES]
+
+    return {
+        "ph_measurement": status_for(ph_actions, PH_CYCLE_DAYS),
+        "filter_maintenance": status_for(filter_actions, FILTER_CYCLE_DAYS),
+    }

@@ -1,5 +1,5 @@
 import type { Action, Installation, InstallationWaterParams } from './types'
-import { celsiusToFahrenheit, ppmToGramsPerLiter, ppmToGermanDegrees, ppmToFrenchDegrees, convertRange } from './units'
+import { convertRange, metricToDisplayConverter } from './units'
 import type { TranslationKey } from './i18n/translations'
 
 // ── Water status ──────────────────────────────────────────────────────────────
@@ -37,16 +37,15 @@ export type DynamicRanges = {
  * hardness falls back to PARAM_RANGES.hardness only for combos that don't return one from the backend.
  */
 export function installationParamsToRanges(params: InstallationWaterParams, installation?: Installation): DynamicRanges {
-  const temp = installation?.temp_unit === 'F' ? convertRange(params.temp, celsiusToFahrenheit) : params.temp
-  const salt = installation?.salt_unit === 'g/L' && params.salt ? convertRange(params.salt, ppmToGramsPerLiter) : params.salt
+  const tempConvert = metricToDisplayConverter('temp', installation)
+  const temp = tempConvert ? convertRange(params.temp, tempConvert) : params.temp
+
+  const saltConvert = metricToDisplayConverter('salt', installation)
+  const salt = saltConvert && params.salt ? convertRange(params.salt, saltConvert) : params.salt
 
   const hardnessBase = params.hardness ?? PARAM_RANGES.hardness
-  const hardnessUnit = installation?.hardness_unit ?? 'ppm'
-  const hardness = hardnessUnit === '°dH'
-    ? convertRange(hardnessBase, ppmToGermanDegrees)
-    : hardnessUnit === '°f'
-      ? convertRange(hardnessBase, ppmToFrenchDegrees)
-      : hardnessBase
+  const hardnessConvert = metricToDisplayConverter('hardness', installation)
+  const hardness = hardnessConvert ? convertRange(hardnessBase, hardnessConvert) : hardnessBase
 
   return {
     ph: params.ph,

@@ -22,6 +22,34 @@ export function convertRange(range: Range, convert: (n: number) => number): Rang
   }
 }
 
+type UnitSettings = { temp_unit?: TempUnit; salt_unit?: SaltUnit; hardness_unit?: HardnessUnit }
+
+/**
+ * Single source of truth for "which converter applies to this param, given an
+ * installation's chosen units". Only temp/salt/hardness ever convert — every
+ * other param (ph, cl, br, cc, tac) is display-label-only. Returns null for identity
+ * (no conversion needed), so callers do `const c = metricToDisplayConverter(...); c ? c(v) : v`.
+ */
+export function metricToDisplayConverter(param: string, installation?: UnitSettings): ((n: number) => number) | null {
+  if (param === 'temp' && installation?.temp_unit === 'F') return celsiusToFahrenheit
+  if (param === 'salt' && installation?.salt_unit === 'g/L') return ppmToGramsPerLiter
+  if (param === 'hardness') {
+    if (installation?.hardness_unit === '°dH') return ppmToGermanDegrees
+    if (installation?.hardness_unit === '°f') return ppmToFrenchDegrees
+  }
+  return null
+}
+
+export function displayToMetricConverter(param: string, installation?: UnitSettings): ((n: number) => number) | null {
+  if (param === 'temp' && installation?.temp_unit === 'F') return fahrenheitToCelsius
+  if (param === 'salt' && installation?.salt_unit === 'g/L') return gramsPerLiterToPpm
+  if (param === 'hardness') {
+    if (installation?.hardness_unit === '°dH') return germanDegreesToPpm
+    if (installation?.hardness_unit === '°f') return frenchDegreesToPpm
+  }
+  return null
+}
+
 /** Rounds for display purposes (avoid "75.19999999999999°F"). */
 export function formatUnitRange([min, max]: [number, number], decimals = 1): string {
   const round = (n: number) => {
