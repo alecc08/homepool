@@ -1,5 +1,5 @@
-import poolyLogo from '@/assets/pooly-logo.svg'
-import poolySidebarLogo from '@/assets/pooly-logo-sidebar.svg'
+import homepoolLogo from '@/assets/homepool-logo.svg'
+import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import type { User } from '../types'
 import type { Theme } from '../hooks/useTheme'
 import { useInstallation } from '../context/InstallationContext'
@@ -38,9 +38,9 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
           width: '52px',
           height: '28px',
           borderRadius: '100px',
-          background: isDark ? 'rgba(56,189,248,0.12)' : '#1e3a5f',
-          border: isDark ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(56,189,248,0.15)',
-          boxShadow: isDark ? '0 0 10px rgba(56,189,248,0.1)' : 'none',
+          background: isDark ? 'rgba(45,212,191,0.12)' : '#123852',
+          border: isDark ? '1px solid rgba(45,212,191,0.3)' : '1px solid rgba(45,212,191,0.15)',
+          boxShadow: isDark ? '0 0 10px rgba(45,212,191,0.1)' : 'none',
           position: 'relative',
           cursor: 'pointer',
           transition: 'background 0.3s, border-color 0.3s, box-shadow 0.3s',
@@ -54,8 +54,8 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
           width: '18px',
           height: '18px',
           borderRadius: '50%',
-          background: '#38bdf8',
-          boxShadow: '0 1px 4px rgba(56,189,248,0.5)',
+          background: '#2dd4bf',
+          boxShadow: '0 1px 4px rgba(45,212,191,0.5)',
           transform: isDark ? 'translateX(24px)' : 'translateX(0)',
           transition: 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }} />
@@ -92,8 +92,8 @@ function LocaleSwitch({ locale, setLocale }: { locale: Locale; setLocale: (l: Lo
               padding: '5px 0',
               borderRadius: '6px',
               border: 'none',
-              background: locale === l ? 'rgba(56,189,248,0.12)' : 'transparent',
-              color: locale === l ? '#38bdf8' : 'rgba(255,255,255,0.3)',
+              background: locale === l ? 'rgba(45,212,191,0.12)' : 'transparent',
+              color: locale === l ? '#2dd4bf' : 'rgba(255,255,255,0.3)',
               fontSize: '11px',
               fontWeight: 600,
               cursor: 'pointer',
@@ -155,8 +155,8 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
           gap: '10px',
         }}>
           <img
-            src={poolySidebarLogo}
-            alt="Pooly"
+            src={homepoolSidebarLogo}
+            alt="homepool"
             width={34}
             height={34}
             style={{ flexShrink: 0 }}
@@ -169,8 +169,8 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
               lineHeight: 1,
               fontFamily: 'Sora, sans-serif',
             }}>
-              <span style={{ color: 'white' }}>Pool</span>
-              <span style={{ color: 'var(--accent)' }}>y</span>
+              <span style={{ color: 'white' }}>home</span>
+              <span style={{ color: 'var(--accent)' }}>pool</span>
             </div>
             <div style={{
               fontSize: '9px',
@@ -355,14 +355,14 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
             letterSpacing: '0.03em',
             userSelect: 'none',
           }}>
-            Pooly v1.0.0 · MIT License
+            homepool v1.0.0 · MIT License
           </div>
         </div>
       </aside>
 
       {/* ── Mobile top header ───────────────────────────────── */}
       <header className="mobile-header">
-        <img src={poolyLogo} alt="Pooly" />
+        <img src={homepoolLogo} alt="homepool" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {onLogout && (
             <button className="mobile-header-logout" onClick={onLogout}>

@@ -55,10 +55,10 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: '10px',
-          background: 'rgba(56,189,248,0.08)',
+          background: 'rgba(45,212,191,0.08)',
         }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-            stroke="#38bdf8" strokeWidth="2.5">
+            stroke="#2dd4bf" strokeWidth="2.5">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
@@ -66,7 +66,7 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
         <span style={{
           fontSize: '9px',
           fontWeight: 600,
-          color: '#38bdf8',
+          color: '#2dd4bf',
           fontFamily: 'Sora, sans-serif',
         }}>{t('nav_new')}</span>
       </button>

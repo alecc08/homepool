@@ -114,9 +114,9 @@ export default function InstallationModal({ open, onClose, installation }: Props
     minWidth: 48,
     padding: '5px 10px',
     fontSize: 11,
-    borderColor: active ? 'rgba(56,189,248,0.35)' : 'var(--border)',
-    background: active ? 'rgba(56,189,248,0.1)' : 'var(--bg-surface-2)',
-    color: active ? '#38bdf8' : 'var(--text-secondary)',
+    borderColor: active ? 'rgba(45,212,191,0.35)' : 'var(--border)',
+    background: active ? 'rgba(45,212,191,0.1)' : 'var(--bg-surface-2)',
+    color: active ? '#2dd4bf' : 'var(--text-secondary)',
   })
 
   return (
@@ -138,8 +138,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
                 style={{
                   padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer',
                   fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600,
-                  color: tab === tb ? '#38bdf8' : 'var(--text-secondary)',
-                  borderBottom: tab === tb ? '2px solid #38bdf8' : '2px solid transparent',
+                  color: tab === tb ? '#2dd4bf' : 'var(--text-secondary)',
+                  borderBottom: tab === tb ? '2px solid #2dd4bf' : '2px solid transparent',
                   marginBottom: -1,
                 }}
               >
@@ -176,8 +176,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
                   onClick={() => setType(tp)}
                   style={{
                     ...cardBase,
-                    borderColor: type === tp ? 'rgba(56,189,248,0.35)' : 'var(--border)',
-                    background: type === tp ? 'rgba(56,189,248,0.1)' : 'var(--bg-surface-2)',
+                    borderColor: type === tp ? 'rgba(45,212,191,0.35)' : 'var(--border)',
+                    background: type === tp ? 'rgba(45,212,191,0.1)' : 'var(--bg-surface-2)',
                     color: type === tp ? 'var(--text-primary)' : 'var(--text-secondary)',
                   }}
                 >
@@ -199,9 +199,9 @@ export default function InstallationModal({ open, onClose, installation }: Props
                   onClick={() => setSanitizer(s)}
                   style={{
                     ...pillBase,
-                    borderColor: sanitizer === s ? 'rgba(56,189,248,0.35)' : 'var(--border)',
-                    background: sanitizer === s ? 'rgba(56,189,248,0.1)' : 'var(--bg-surface-2)',
-                    color: sanitizer === s ? '#38bdf8' : 'var(--text-secondary)',
+                    borderColor: sanitizer === s ? 'rgba(45,212,191,0.35)' : 'var(--border)',
+                    background: sanitizer === s ? 'rgba(45,212,191,0.1)' : 'var(--bg-surface-2)',
+                    color: sanitizer === s ? '#2dd4bf' : 'var(--text-secondary)',
                   }}
                 >
                   {label}
@@ -233,9 +233,9 @@ export default function InstallationModal({ open, onClose, installation }: Props
                     ...pillBase,
                     flex: 'none',
                     minWidth: 56,
-                    borderColor: volumeUnit === u ? 'rgba(56,189,248,0.35)' : 'var(--border)',
-                    background: volumeUnit === u ? 'rgba(56,189,248,0.1)' : 'var(--bg-surface-2)',
-                    color: volumeUnit === u ? '#38bdf8' : 'var(--text-secondary)',
+                    borderColor: volumeUnit === u ? 'rgba(45,212,191,0.35)' : 'var(--border)',
+                    background: volumeUnit === u ? 'rgba(45,212,191,0.1)' : 'var(--bg-surface-2)',
+                    color: volumeUnit === u ? '#2dd4bf' : 'var(--text-secondary)',
                   }}
                 >
                   {u}

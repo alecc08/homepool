@@ -139,14 +139,14 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
   const kpiCardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
     border: '1px solid var(--border)',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: '14px 16px',
   }
 
   const sectionCardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
     border: '1px solid var(--border)',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: '16px',
     marginBottom: 14,
   }
@@ -166,7 +166,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       {/* KPI grid */}
       <div className="kpi-grid">
         {/* Actions this month */}
-        <div style={kpiCardStyle}>
+        <div className="kpi-card" style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             {t('kpi_actions_month')}
           </div>
@@ -179,7 +179,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
 
         {/* Last action */}
-        <div style={kpiCardStyle}>
+        <div className="kpi-card" style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             {t('kpi_last_action')}
           </div>
@@ -192,7 +192,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
 
         {/* Next measurement */}
-        <div style={kpiCardStyle}>
+        <div className="kpi-card" style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             {t('kpi_next_measurement')}
           </div>
@@ -205,7 +205,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
 
         {/* Treatments this month */}
-        <div style={kpiCardStyle}>
+        <div className="kpi-card" style={kpiCardStyle}>
           <div className="kpi-label" style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             {t('kpi_treatments_month')}
           </div>
@@ -219,7 +219,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       </div>
 
       {/* Params banner */}
-      <div className="params-banner" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 0', display: 'flex', marginBottom: 14 }}>
+      <div className="params-banner" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 0', display: 'flex', marginBottom: 14 }}>
         <ParamBlock
           label={t('param_ph')}
           value={params.ph !== null ? params.ph.toFixed(1) : '—'}

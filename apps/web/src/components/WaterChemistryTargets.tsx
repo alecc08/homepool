@@ -272,7 +272,7 @@ export default function WaterChemistryTargets({ installation }: Props) {
                   onClick={() => resetParam(param)}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    fontFamily: '"Sora", sans-serif', fontSize: 11, color: '#38bdf8', padding: 0,
+                    fontFamily: '"Sora", sans-serif', fontSize: 11, color: '#2dd4bf', padding: 0,
                   }}
                 >
                   {t('ranges_reset_param')}

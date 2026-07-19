@@ -3,16 +3,16 @@
 
 :root {
   /* Brand vars, not themeable (always fixed) */
-  --pooly-primary: #1e3a5f;
-  --pooly-cyan: #38bdf8;
-  --pooly-indigo: #6366f1;
+  --pooly-primary: #123852;
+  --pooly-cyan: #2dd4bf;
+  --pooly-indigo: #8b5cf6;
 
   /* Themeable vars — light defaults (overridden by theme.css in dark) */
   --pooly-bg:           var(--bg-page);
   --pooly-surface:      var(--bg-surface);
   --pooly-border-color: var(--border);
-  --pooly-sidebar:      #0a1f3c;
-  --pooly-sidebar-active: #1e3a5f;
+  --pooly-sidebar:      #08121c;
+  --pooly-sidebar-active: #123852;
   --pooly-text:         var(--text-primary);
   --pooly-body:         var(--text-secondary);
   --pooly-muted:        var(--text-muted);
@@ -24,7 +24,7 @@
   --pooly-bad-bg:       var(--status-danger-bg);
 
   /* Shadcn tokens inherited from theme.css + local overrides */
-  --accent-foreground: 215 52% 24%;
+  --accent-foreground: 205 55% 22%;
 }
 
 @theme {
@@ -78,12 +78,14 @@ button {
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 .sidebar {
-  width: 220px;
+  width: 232px;
   flex-shrink: 0;
-  background: var(--pooly-sidebar);
+  background: linear-gradient(180deg, #0c1a28 0%, var(--pooly-sidebar) 100%);
+  border-right: 1px solid rgba(45, 212, 191, 0.08);
+  box-shadow: 6px 0 28px rgba(0, 0, 0, 0.22);
   display: flex;
   flex-direction: column;
-  padding: 24px 0;
+  padding: 22px 0;
   position: fixed;
   top: 0;
   left: 0;
@@ -92,20 +94,24 @@ button {
 }
 
 .sidebar-logo {
-  padding: 0 20px 28px;
+  padding: 0 20px 24px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-logo img {
   width: 120px;
   height: auto;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.2), 0 4px 16px rgba(45, 212, 191, 0.12);
 }
 
 .sidebar-nav {
   flex: 1;
-  padding: 0 12px;
+  padding: 16px 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .sidebar-nav-item {
@@ -113,23 +119,42 @@ button {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-family: "Sora", sans-serif;
   font-size: 13px;
+  font-weight: 500;
   color: rgba(255, 255, 255, 0.45);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
   text-decoration: none;
-  border: none;
+  border: 1px solid transparent;
   background: none;
   width: 100%;
   text-align: left;
+  position: relative;
 }
 
-.sidebar-nav-item.active,
 .sidebar-nav-item:hover {
-  background: var(--pooly-sidebar-active);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar-nav-item.active {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.16), rgba(139, 92, 246, 0.14));
+  border-color: rgba(45, 212, 191, 0.25);
   color: #ffffff;
+}
+
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-indigo));
 }
 
 .sidebar-footer {
@@ -140,22 +165,24 @@ button {
 }
 
 .btn-sidebar-add {
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
-  border-radius: 8px;
-  padding: 9px 16px;
+  border: none;
+  background: linear-gradient(135deg, #2dd4bf, #8b5cf6);
+  color: #0a1420;
+  border-radius: 10px;
+  padding: 10px 16px;
   font-family: "Sora", sans-serif;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   width: 100%;
   text-align: center;
-  transition: background 0.15s;
+  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.22);
+  transition: filter 0.15s, transform 0.15s;
 }
 
 .btn-sidebar-add:hover {
-  background: rgba(255, 255, 255, 0.13);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 .btn-sidebar-logout {
@@ -209,9 +236,37 @@ button {
 .stat-card {
   background: var(--pooly-surface);
   border: 1px solid var(--pooly-border-color);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   padding: 20px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+/* ── KPI cards (dashboard hero row) ───────────────────────── */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-indigo));
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .stat-value {
@@ -319,7 +374,7 @@ button {
   background: var(--pooly-bad-bg);
 }
 
-/* ── Pooly label ─────────────────────────────────────────── */
+/* ── homepool label ──────────────────────────────────────── */
 .pooly-label {
   font-family: "IBM Plex Mono", monospace !important;
   font-size: 11px !important;
@@ -337,7 +392,7 @@ button {
 
 /* ── Dark mode — KPI labels ──────────────────────────────── */
 [data-theme="dark"] .kpi-label {
-  color: #4a6080 !important;
+  color: #4a6478 !important;
 }
 
 /* ── Dark mode — history table row hover ─────────────────── */
@@ -353,7 +408,7 @@ input[type="date"] {
   color-scheme: light dark;
 }
 
-/* ── Checkboxes charte Pooly ─────────────────────────────── */
+/* ── Checkboxes charte homepool ──────────────────────────── */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -370,8 +425,8 @@ input[type="checkbox"] {
 }
 
 input[type="checkbox"]:checked {
-  background: #38bdf8;
-  border-color: #38bdf8;
+  background: #2dd4bf;
+  border-color: #2dd4bf;
 }
 
 input[type="checkbox"]:checked::after {
@@ -381,7 +436,7 @@ input[type="checkbox"]:checked::after {
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 10px;
-  color: #0a1f3c;
+  color: #123852;
   font-weight: 700;
   line-height: 1;
 }
@@ -403,7 +458,7 @@ input[type="checkbox"]:checked::after {
   border: 1px solid var(--pooly-border-color);
   border-radius: 16px;
   padding: 32px;
-  box-shadow: 0 4px 24px rgba(10, 31, 60, 0.08);
+  box-shadow: 0 4px 24px rgba(10, 20, 31, 0.08);
   width: 100%;
   max-width: 400px;
 }
@@ -521,7 +576,7 @@ input[type="checkbox"]:checked::after {
 }
 
 .bn-item.active {
-  color: #38bdf8;
+  color: #2dd4bf;
 }
 
 .bn-item svg {
@@ -533,14 +588,14 @@ input[type="checkbox"]:checked::after {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: #38bdf8;
-  color: #0a1f3c;
+  background: #2dd4bf;
+  color: #123852;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+  box-shadow: 0 4px 14px rgba(45, 212, 191, 0.35);
   flex-shrink: 0;
   transition: transform 0.1s;
 }
@@ -555,22 +610,22 @@ input[type="checkbox"]:checked::after {
   bottom: 80px;
   left: 16px;
   right: 16px;
-  background: #0a1f3c;
+  background: #123852;
   color: white;
   border-radius: 12px;
   padding: 12px 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 8px 24px rgba(10, 31, 60, 0.3);
+  box-shadow: 0 8px 24px rgba(10, 20, 31, 0.3);
   z-index: 200;
   animation: slideUp 0.3s ease;
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(45, 212, 191, 0.15);
 }
 
 .install-banner-btn {
-  background: #38bdf8;
-  color: #0a1f3c;
+  background: #2dd4bf;
+  color: #123852;
   font-family: "Sora", sans-serif;
   font-size: 12px;
   font-weight: 700;
@@ -625,7 +680,7 @@ input[type="checkbox"]:checked::after {
     left: 0;
     right: 0;
     z-index: 200;
-    background: rgba(10, 31, 60, 0.92);
+    background: rgba(10, 20, 31, 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
@@ -735,7 +790,7 @@ input[type="checkbox"]:checked::after {
     left: 0;
     right: 0;
     height: 64px;
-    background: #0a1f3c;
+    background: #123852;
     border-top: 1px solid rgba(255, 255, 255, 0.07);
     display: flex;
     align-items: center;

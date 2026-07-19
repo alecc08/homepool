@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 export type Theme = 'light' | 'dark' | 'auto'
 
 function getSavedTheme(): Theme {
-  return (localStorage.getItem('pooly_theme') as Theme) ?? 'auto'
+  return (localStorage.getItem('pooly_theme') as Theme) ?? 'dark'
 }
 
 function getEffectiveTheme(theme: Theme): 'light' | 'dark' {
