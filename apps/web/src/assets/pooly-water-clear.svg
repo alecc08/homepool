@@ -6,7 +6,7 @@
   <!-- face droite -->
   <path d="M110 52 L110 64 L60 88 L60 76 Z" fill="#b8cedd"/>
   <!-- eau dessus -->
-  <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="#38bdf8" opacity="0.9"/>
+  <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="#2dd4bf" opacity="0.9"/>
   <!-- reflet -->
   <path d="M10 52 L30 42 L50 52 L30 62 Z" fill="rgba(255,255,255,0.18)"/>
   <!-- vague 1 -->

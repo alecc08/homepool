@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 230 48" fill="none">
   <!-- Icon -->
-  <circle cx="24" cy="24" r="20" stroke="rgba(56,189,248,0.3)" stroke-width="1.5"/>
+  <circle cx="24" cy="24" r="20" stroke="rgba(45,212,191,0.3)" stroke-width="1.5"/>
   <circle cx="24" cy="24" r="20" stroke="url(#grad)" stroke-width="1.5"
     stroke-dasharray="40 90" stroke-linecap="round"
     transform="rotate(-90 24 24)"/>
   <!-- Water wave -->
   <path d="M7 27 Q12 22 17 27 Q22 32 27 27 Q32 22 37 25"
-    stroke="#38bdf8" stroke-width="2" fill="none" stroke-linecap="round"/>
+    stroke="#2dd4bf" stroke-width="2" fill="none" stroke-linecap="round"/>
   <!-- Center dot -->
-  <circle cx="24" cy="24" r="3" fill="#38bdf8"/>
+  <circle cx="24" cy="24" r="3" fill="#2dd4bf"/>
   <!-- Top tick -->
   <line x1="24" y1="9" x2="24" y2="16"
-    stroke="rgba(56,189,248,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+    stroke="rgba(45,212,191,0.5)" stroke-width="1.5" stroke-linecap="round"/>
 
   <!-- Wordmark -->
   <text x="56" y="31"
@@ -19,18 +19,18 @@
     font-size="22"
     font-weight="700"
     letter-spacing="-0.5"
-    fill="#1e3a5f">Pool</text>
-  <text x="110" y="31"
+    fill="#eef6fb">home</text>
+  <text x="140" y="31"
     font-family="Sora, sans-serif"
     font-size="22"
     font-weight="700"
     letter-spacing="-0.5"
-    fill="#38bdf8">y</text>
+    fill="#2dd4bf">pool</text>
 
   <defs>
     <linearGradient id="grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#6366f1"/>
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
     </linearGradient>
   </defs>
 </svg>

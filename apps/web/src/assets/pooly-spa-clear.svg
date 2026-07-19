@@ -10,7 +10,7 @@
   <!-- face avant-droite -->
   <path d="M94 85 L94 99 L118 79 L118 65 Z" fill="#7aacc0"/>
   <!-- surface eau hexagonale -->
-  <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#38bdf8" opacity="0.9"/>
+  <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#2dd4bf" opacity="0.9"/>
   <!-- reflet -->
   <path d="M22 65 L38 57 L54 65 L38 73 Z" fill="rgba(255,255,255,0.15)"/>
   <!-- vague 1 -->

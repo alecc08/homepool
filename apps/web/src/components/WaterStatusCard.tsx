@@ -26,14 +26,14 @@ function PoolClearSvg({ isDark, opacity }: SvgProps) {
   const deckStroke  = isDark ? '#1e2d3d' : '#dde3ec'
   const bodyLeft    = isDark ? '#0d3050' : '#a8d8f0'
   const bodyRight   = isDark ? '#091e3a' : '#98c8e0'
-  const waveFill    = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(200,236,255,0.9)'
-  const railStroke  = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.6)'
+  const waveFill    = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(200,236,255,0.9)'
+  const railStroke  = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(255,255,255,0.6)'
   return (
     <svg width="120" height="90" viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
       <path d="M10 52 L60 28 L110 52 L60 76 Z" style={deckStyle} stroke={deckStroke} strokeWidth="0.5"/>
       <path d="M10 52 L10 64 L60 88 L60 76 Z" fill={bodyLeft}/>
       <path d="M110 52 L110 64 L60 88 L60 76 Z" fill={bodyRight}/>
-      <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="#38bdf8" opacity="0.9"/>
+      <path d="M10 52 L60 28 L110 52 L60 76 Z" fill="#2dd4bf" opacity="0.9"/>
       <path d="M10 52 L30 42 L50 52 L30 62 Z" fill="rgba(255,255,255,0.18)"/>
       <path d="M18 54 Q35 48 52 54 Q69 60 86 54 Q100 49 106 53" stroke={waveFill} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
       <path d="M22 62 Q38 57 54 62 Q70 67 86 62" stroke={waveFill} strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.6"/>
@@ -54,8 +54,8 @@ function PoolCloudySvg({ isDark, opacity }: SvgProps) {
   const deckStroke  = isDark ? '#1e2d3d' : '#dde3ec'
   const bodyLeft    = isDark ? '#0d3050' : '#a8d8f0'
   const bodyRight   = isDark ? '#091e3a' : '#98c8e0'
-  const waveFill    = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(200,236,255,0.9)'
-  const railStroke  = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.6)'
+  const waveFill    = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(200,236,255,0.9)'
+  const railStroke  = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(255,255,255,0.6)'
   return (
     <svg width="120" height="90" viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
       <path d="M10 52 L60 28 L110 52 L60 76 Z" style={deckStyle} stroke={deckStroke} strokeWidth="0.5"/>
@@ -86,8 +86,8 @@ function PoolGreenSvg({ isDark, opacity }: SvgProps) {
   const deckStroke  = isDark ? '#1e2d3d' : '#dde3ec'
   const bodyLeft    = isDark ? '#0d3050' : '#a8d8f0'
   const bodyRight   = isDark ? '#091e3a' : '#98c8e0'
-  const waveFill    = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(200,236,255,0.9)'
-  const railStroke  = isDark ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.6)'
+  const waveFill    = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(200,236,255,0.9)'
+  const railStroke  = isDark ? 'rgba(45,212,191,0.3)' : 'rgba(255,255,255,0.6)'
   return (
     <svg width="120" height="90" viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
       <path d="M10 52 L60 28 L110 52 L60 76 Z" style={deckStyle} stroke={deckStroke} strokeWidth="0.5"/>
@@ -117,9 +117,9 @@ function SpaClearSvg({ opacity }: SvgProps) {
   return (
     <svg width="140" height="125" viewBox="0 0 140 125" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity, width: '100%', height: 'auto', maxWidth: 140 }}>
       {/* steam */}
-      <path d="M54 24 Q52 18 54 12 Q56 18 54 24" stroke="rgba(56,189,248,0.4)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-      <path d="M70 20 Q68 14 70 8 Q72 14 70 20" stroke="rgba(56,189,248,0.35)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-      <path d="M86 24 Q84 18 86 12 Q88 18 86 24" stroke="rgba(56,189,248,0.3)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+      <path d="M54 24 Q52 18 54 12 Q56 18 54 24" stroke="rgba(45,212,191,0.4)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+      <path d="M70 20 Q68 14 70 8 Q72 14 70 20" stroke="rgba(45,212,191,0.35)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+      <path d="M86 24 Q84 18 86 12 Q88 18 86 24" stroke="rgba(45,212,191,0.3)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
       {/* front-left face */}
       <path d="M22 65 L22 79 L46 99 L46 85 Z" fill="#9ac4d8"/>
       {/* front face */}
@@ -127,7 +127,7 @@ function SpaClearSvg({ opacity }: SvgProps) {
       {/* front-right face */}
       <path d="M94 85 L94 99 L118 79 L118 65 Z" fill="#7aacc0"/>
       {/* hexagonal water surface */}
-      <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#38bdf8" opacity="0.9"/>
+      <path d="M22 65 L46 45 L94 45 L118 65 L94 85 L46 85 Z" fill="#2dd4bf" opacity="0.9"/>
       {/* reflection */}
       <path d="M22 65 L38 57 L54 65 L38 73 Z" fill="rgba(255,255,255,0.15)"/>
       {/* wave 1 */}

@@ -1,11 +1,11 @@
 {
-  "name": "Pooly",
-  "short_name": "Pooly",
-  "description": "Maintenance log for pools and spas",
+  "name": "homepool",
+  "short_name": "homepool",
+  "description": "Self-hosted maintenance log for pools and spas",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a1f3c",
-  "theme_color": "#0a1f3c",
+  "background_color": "#0a1420",
+  "theme_color": "#0a1420",
   "orientation": "portrait-primary",
   "icons": [
     {

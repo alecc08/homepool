@@ -176,7 +176,7 @@ export const translations = {
     profile_password_mismatch: 'Les mots de passe ne correspondent pas',
     profile_password_weak: '8 caractères min, une majuscule et un chiffre',
     profile_api_access: 'Accès API',
-    profile_api_access_desc: "Pour connecter Pooly à Home Assistant ou un autre outil externe.",
+    profile_api_access_desc: "Pour connecter homepool à Home Assistant ou un autre outil externe.",
     profile_api_key_none: "Aucune clé générée.",
     profile_api_key_exists: 'Une clé est active. La régénérer en révoquera une nouvelle.',
     profile_api_key_generate: 'Générer une clé',
@@ -304,7 +304,7 @@ export const translations = {
     nav_logout_short: 'Déco',
 
     // Bandeau installation PWA
-    install_banner_title: 'Installer Pooly',
+    install_banner_title: 'Installer homepool',
     install_banner_subtitle: "Accès rapide depuis l'écran d'accueil",
     install_banner_button: 'Installer',
 
@@ -542,7 +542,7 @@ export const translations = {
     profile_password_mismatch: 'Passwords do not match',
     profile_password_weak: '8 chars min, one uppercase and one number',
     profile_api_access: 'API access',
-    profile_api_access_desc: 'Use this to connect Pooly to Home Assistant or another external tool.',
+    profile_api_access_desc: 'Use this to connect homepool to Home Assistant or another external tool.',
     profile_api_key_none: 'No key generated yet.',
     profile_api_key_exists: 'A key is active. Regenerating will revoke it and issue a new one.',
     profile_api_key_generate: 'Generate key',
@@ -670,7 +670,7 @@ export const translations = {
     nav_logout_short: 'Out',
 
     // Bandeau installation PWA
-    install_banner_title: 'Install Pooly',
+    install_banner_title: 'Install homepool',
     install_banner_subtitle: 'Quick access from your home screen',
     install_banner_button: 'Install',
 

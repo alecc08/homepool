@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import type { User } from '../types'
-import poolySidebarLogo from '@/assets/pooly-logo-sidebar.svg'
+import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import { useT } from '../context/LocaleContext'
 
 type AuthView = 'login' | 'register' | 'forgot' | 'reset'
@@ -332,11 +332,11 @@ export default function LoginPage({ onLogin }: Props) {
         }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
-            <img src={poolySidebarLogo} alt="Pooly" width={40} height={40} style={{ flexShrink: 0 }} />
+            <img src={homepoolSidebarLogo} alt="homepool" width={40} height={40} style={{ flexShrink: 0 }} />
             <div>
               <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1, fontFamily: 'Sora, sans-serif' }}>
-                <span style={{ color: 'var(--text-primary)' }}>Pool</span>
-                <span style={{ color: 'var(--accent)' }}>y</span>
+                <span style={{ color: 'var(--text-primary)' }}>home</span>
+                <span style={{ color: 'var(--accent)' }}>pool</span>
               </div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: "'IBM Plex Mono', monospace", marginTop: 3, letterSpacing: '0.04em' }}>
                 {t('auth_my_pool')}
