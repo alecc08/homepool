@@ -41,7 +41,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     # The ?v= cache-bust is mandatory: browsers/HA frontend aggressively cache
     # extra_js_url resources, so without a version bump on every card change,
     # users get served a stale card after an update.
-    frontend.async_register_extra_js_url(hass, f"{CARD_URL_PATH}?v={manifest['version']}")
+    frontend.add_extra_js_url(hass, f"{CARD_URL_PATH}?v={manifest['version']}")
     return True
 
 SERVICE_LOG_MEASUREMENT = "log_measurement"

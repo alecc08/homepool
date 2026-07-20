@@ -99,6 +99,8 @@ The app is available at `http://localhost:8090`. Create your account on first lo
 
 homepool ships a full Home Assistant integration: sensors for every water parameter, maintenance-due tracking, one-tap maintenance buttons, and a custom **homepool card** for your dashboard.
 
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=homepool)
+
 #### 1. Install via HACS
 
 Settings → HACS → custom repositories (⋮ menu) → add repository URL `https://github.com/alecc08/homepool`, category **Integration** → find "homepool" in HACS → Install.
