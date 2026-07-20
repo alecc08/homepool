@@ -22,6 +22,9 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
+# Only configurable via the UI config flow, never YAML.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 # Served by async_setup below. The Lovelace card (frontend/homepool-card.js) is a
 # hand-written vanilla ES module with no build step — this integration serves it
 # directly rather than shipping a separate HACS "plugin" repo (HACS allows only
