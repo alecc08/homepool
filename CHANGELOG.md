@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-20
+
 ## [0.2.0] - 2026-07-20 [RETRACTED]
 
 > Retracted: the integration shipped with a call to `frontend.async_register_extra_js_url`,
