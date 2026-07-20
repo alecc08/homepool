@@ -3,7 +3,7 @@ name: Release
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches: [main, 'release/**']
 
 permissions:
   contents: write
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          ref: ${{ github.event.pull_request.base.ref }}
 
       - name: Determine release level
         id: level
@@ -47,8 +47,7 @@ jobs:
         id: version
         run: |
           git fetch --tags
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          version="${latest_tag#v}"
+          version=$(jq -r '.version' custom_components/homepool/manifest.json)
           IFS='.' read -r major minor patch <<< "$version"
           case "${{ steps.level.outputs.level }}" in
             major) major=$((major + 1)); minor=0; patch=0 ;;
@@ -56,8 +55,15 @@ jobs:
             patch) patch=$((patch + 1)) ;;
           esac
           next_version="${major}.${minor}.${patch}"
+          next_tag="v${next_version}"
+
+          if git ls-remote --tags --exit-code origin "refs/tags/${next_tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${next_tag} already exists on origin — refusing to overwrite it. Check for a version mismatch between manifest.json (currently ${version} on ${{ github.event.pull_request.base.ref }}) and existing tags." >&2
+            exit 1
+          fi
+
           echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
-          echo "next_tag=v${next_version}" >> "$GITHUB_OUTPUT"
+          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
 
       - name: Bump manifest version
         if: steps.level.outputs.level != 'no-release'
@@ -97,7 +103,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add custom_components/homepool/manifest.json CHANGELOG.md
           git commit -m "chore: release ${{ steps.version.outputs.next_tag }} [skip ci]"
-          git push origin HEAD:main
+          git push origin HEAD:${{ github.event.pull_request.base.ref }}
 
       - name: Create tag and GitHub release
         if: steps.level.outputs.level != 'no-release'

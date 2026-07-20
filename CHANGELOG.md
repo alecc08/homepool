@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-07-20
+## [0.2.0] - 2026-07-20 [RETRACTED]
 
-## [0.2.0] - 2026-07-20
+> Retracted: the integration shipped with a call to `frontend.async_register_extra_js_url`,
+> an API removed from current HA core, which crashed integration setup entirely (see
+> [0.1.2](#012---2026-07-20)). Its git tag also pointed at an unrelated orphaned commit
+> due to a release-CI bug, and has been deleted. Do not install this version; use 0.1.2
+> or later.
 
 ### Added
 
@@ -22,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Lucide icons replace hand-inline SVGs and emoji throughout the UI (nav, theme switch, installation type picker, dialogs, etc.) (#22).
 - README reordered to lead with the Home Assistant story, including a new homepool-card section; stale Pooly-era `docs/api.md` and `docs/stack.md` removed (#22).
+
+## [0.1.2] - 2026-07-20
+
+### Fixed
+
+- `frontend.async_register_extra_js_url` was removed from current HA core, breaking setup of the integration entirely; switched to `frontend.add_extra_js_url` (#23).
 
 ## [0.1.1] - 2026-07-20
 
