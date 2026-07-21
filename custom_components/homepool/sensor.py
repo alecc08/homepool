@@ -32,6 +32,9 @@ async def async_setup_entry(
             entities.append(
                 HomepoolTodoSensor(coordinator, entry.entry_id, installation_id, task)
             )
+        entities.append(
+            HomepoolHistorySensor(coordinator, entry.entry_id, installation_id)
+        )
     async_add_entities(entities)
 
 
@@ -181,3 +184,60 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
         if not value or value.get("last_date") is None:
             return None
         return {"last_date": value["last_date"]}
+
+
+class HomepoolHistorySensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):
+    """Recent action history (measurements, treatments, maintenance) for a
+    single installation.
+
+    State is the number of entries; the entries themselves ride on the
+    `entries` attribute, which the homepool history Lovelace card renders as a
+    table. Frontend-facing only — hence no device/state class.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:history"
+    _attr_name = "History"
+
+    def __init__(
+        self,
+        coordinator: HomepoolDataUpdateCoordinator,
+        entry_id: str,
+        installation_id: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._installation_id = installation_id
+        self._attr_unique_id = f"{entry_id}_{installation_id}_history"
+
+    @property
+    def _installation(self) -> dict | None:
+        return self.coordinator.data.get(self._installation_id)
+
+    @property
+    def _history(self) -> list[dict]:
+        installation = self._installation
+        return installation.get("history", []) if installation else []
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        installation = self._installation
+        if not installation:
+            return None
+        return DeviceInfo(
+            identifiers={(DOMAIN, str(self._installation_id))},
+            name=installation["name"],
+            manufacturer="homepool",
+            model=installation["type"].capitalize(),
+        )
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._installation is not None
+
+    @property
+    def native_value(self) -> int:
+        return len(self._history)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"entries": self._history}

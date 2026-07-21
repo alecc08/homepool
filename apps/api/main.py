@@ -467,9 +467,16 @@ class TodoStatusOut(BaseModel):
 
 
 class HistoryEntryOut(BaseModel):
-    # Unlike CurrentConditionsOut, this doesn't carry per-field units yet —
-    # add them here too if/when history import is built.
+    # One row per logged action, across all three kinds. Measurement rows carry
+    # the parsed param fields (ph, chlorine, …); treatment/maintenance rows
+    # leave those None and rely on label/qty/unit/notes instead.
     date: date
+    kind: str  # "measurement" | "treatment" | "maintenance"
+    action_type: str
+    label: str
+    notes: str = ""
+    qty: Optional[str] = None
+    unit: Optional[str] = None
     ph: Optional[float] = None
     chlorine: Optional[float] = None
     bromine: Optional[float] = None
@@ -1179,19 +1186,25 @@ def api_history(
     request: Request,
     installation_id: Optional[int] = None,
     from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    type: str = "all",  # "all" | "measurement" | "maintenance" | "treatment"
     limit: Optional[int] = 200,
     user: User = Depends(get_current_user_by_api_key),
     session: Session = Depends(get_session),
 ):
     resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
     cutoff: date = date.fromisoformat(from_date) if from_date else date.today() - timedelta(days=90)
-    actions = session.exec(
-        select(Action)
-        .where(Action.installation_id == resolved_id, Action.date >= cutoff)
-        .order_by(Action.date.desc())
-        .limit(limit)
-    ).all()
-    return [HistoryEntryOut(**entry) for entry in extract_history(actions)]
+    query = select(Action).where(
+        Action.installation_id == resolved_id, Action.date >= cutoff
+    )
+    if to_date:
+        query = query.where(Action.date <= date.fromisoformat(to_date))
+    actions = session.exec(query.order_by(Action.date.desc()).limit(limit)).all()
+    product_names = {p.id: p.name for p in session.exec(select(Product)).all()}
+    entries = extract_history(actions, product_names)
+    if type != "all":
+        entries = [e for e in entries if e["kind"] == type]
+    return [HistoryEntryOut(**entry) for entry in entries]
 
 
 @app.get("/v1/todo", response_model=TodoStatusOut)

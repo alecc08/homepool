@@ -8,6 +8,13 @@ CONF_BASE_URL = CONF_URL
 
 DEFAULT_SCAN_INTERVAL_MINUTES = 5
 
+# How many recent history entries the coordinator pulls per installation and
+# stashes on the history sensor's `entries` attribute for the frontend table
+# card. Kept modest (and null fields stripped in the coordinator) so the
+# attribute stays well under HA's ~16 KB soft cap. This is the hard ceiling the
+# history card's own `max_items` slices down from.
+HISTORY_LIMIT = 50
+
 # field -> (device_class, state_class, icon)
 # Pool-chemistry fields have no matching HA device class; the display unit comes
 # from the API response instead, so device_class is left None for those.

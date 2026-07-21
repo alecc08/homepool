@@ -194,13 +194,48 @@ def extract_current_conditions(
     return result
 
 
-def extract_history(actions: List[Action]) -> List[Dict]:
-    """Returns one parsed entry per Measurement action, newest first."""
-    measurements = [a for a in actions if a.action_type in MEASURE_ACTION_TYPES]
-    sorted_actions = sorted(measurements, key=lambda a: a.date, reverse=True)
+def history_kind(action_type: str) -> str:
+    """Classifies an action into the three history categories the frontend
+    shows. Mirrors apps/web/src/components/HistoryPage.tsx's categoryOf:
+    measurement = pH/generic Measurement, treatment = "Add product", and
+    everything else (backwash, purge, calibration, …) is maintenance."""
+    if action_type in MEASURE_ACTION_TYPES:
+        return "measurement"
+    if action_type == "Add product":
+        return "treatment"
+    return "maintenance"
+
+
+def extract_history(
+    actions: List[Action],
+    product_names: Optional[Dict[int, str]] = None,
+) -> List[Dict]:
+    """Returns one parsed entry per action, newest first, across every action
+    type (measurements, treatments, maintenance). Each entry carries `kind`,
+    the raw `action_type`, a human `label` (product name for treatments, else
+    the action_type), `notes`, `qty`, `unit`, plus the parsed measurement
+    fields (ph, chlorine, …) for measurement rows. `product_names` maps
+    product_id -> name so treatment rows resolve a readable label."""
+    product_names = product_names or {}
+    sorted_actions = sorted(actions, key=lambda a: a.date, reverse=True)
     history: List[Dict] = []
     for action in sorted_actions:
-        entry = {"date": action.date, **parse_measurement_action(action)}
+        kind = history_kind(action.action_type)
+        if kind == "treatment":
+            label = product_names.get(action.product_id) or action.action_type
+        else:
+            label = action.action_type
+        entry = {
+            "date": action.date,
+            "kind": kind,
+            "action_type": action.action_type,
+            "label": label,
+            "notes": action.notes or "",
+            "qty": action.qty or None,
+            "unit": action.unit or None,
+        }
+        if kind == "measurement":
+            entry.update(parse_measurement_action(action))
         history.append(entry)
     return history
 

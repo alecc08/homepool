@@ -4,7 +4,9 @@ from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from main import WATER_PARAMS, _merge_range_overrides
+import database
+from main import WATER_PARAMS, _merge_range_overrides, app
+from models import Product
 
 TODAY = date.today().isoformat()
 
@@ -725,6 +727,129 @@ def test_v1_create_maintenance_requires_api_key(client: TestClient):
     login(client)
     client.post("/installations", json={"name": "My pool"})
     r = client.post("/v1/maintenance", json={"action_type": "Backwash"})
+    assert r.status_code == 401
+
+
+# ── /v1/history ──────────────────────────────────────────────────────────
+
+def test_v1_history_returns_all_kinds_newest_first(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    day = lambda n: (date.today() - timedelta(days=n)).isoformat()  # noqa: E731
+    client.post("/actions", json={
+        "date": day(2), "action_type": "Measurement", "installation_id": installation_id,
+        "qty": "7.4", "notes": "chlorine: 3. TAC: 80.",
+    })
+    client.post("/actions", json={
+        "date": day(1), "action_type": "Backwash", "installation_id": installation_id, "notes": "rinsed",
+    })
+    client.post("/actions", json={
+        "date": day(0), "action_type": "Add product", "installation_id": installation_id,
+        "qty": "200", "unit": "g", "notes": "shock",
+    })
+
+    r = client.get(f"/v1/history?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    entries = r.json()
+    assert [e["kind"] for e in entries] == ["treatment", "maintenance", "measurement"]
+
+    treatment, maintenance, measurement = entries
+    assert treatment["qty"] == "200"
+    assert treatment["unit"] == "g"
+    assert treatment["notes"] == "shock"
+    assert maintenance["label"] == "Backwash"
+    assert measurement["ph"] == 7.4
+    assert measurement["chlorine"] == 3
+    assert measurement["tac"] == 80
+
+
+def test_v1_history_type_filter(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    client.post("/actions", json={
+        "date": TODAY, "action_type": "Measurement", "installation_id": installation_id, "qty": "7.4",
+    })
+    client.post("/actions", json={
+        "date": TODAY, "action_type": "Backwash", "installation_id": installation_id,
+    })
+
+    r = client.get(
+        f"/v1/history?installation_id={installation_id}&type=maintenance",
+        headers=auth_headers(key),
+    )
+    assert r.status_code == 200
+    entries = r.json()
+    assert len(entries) == 1
+    assert entries[0]["kind"] == "maintenance"
+    assert entries[0]["action_type"] == "Backwash"
+
+
+def test_v1_history_treatment_label_resolves_product_name(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+
+    # No product-creation endpoint exists; insert one straight into the test
+    # DB via the same session the app is overridden to use.
+    session = next(app.dependency_overrides[database.get_session]())
+    product = Product(name="Chlore choc", type="seed", unit_default="g")
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+
+    client.post("/actions", json={
+        "date": TODAY, "action_type": "Add product", "installation_id": installation_id,
+        "product_id": product.id, "qty": "200", "unit": "g",
+    })
+
+    r = client.get(f"/v1/history?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    entries = r.json()
+    assert entries[0]["kind"] == "treatment"
+    assert entries[0]["label"] == "Chlore choc"
+
+
+def test_v1_history_date_range_and_limit(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    for n in range(5):
+        client.post("/actions", json={
+            "date": (date.today() - timedelta(days=n)).isoformat(),
+            "action_type": "Backwash", "installation_id": installation_id,
+        })
+
+    from_date = (date.today() - timedelta(days=3)).isoformat()
+    to_date = (date.today() - timedelta(days=1)).isoformat()
+    r = client.get(
+        f"/v1/history?installation_id={installation_id}&from_date={from_date}&to_date={to_date}",
+        headers=auth_headers(key),
+    )
+    assert r.status_code == 200
+    dates = [e["date"] for e in r.json()]
+    assert dates == [
+        (date.today() - timedelta(days=1)).isoformat(),
+        (date.today() - timedelta(days=2)).isoformat(),
+        (date.today() - timedelta(days=3)).isoformat(),
+    ]
+
+    r_limited = client.get(
+        f"/v1/history?installation_id={installation_id}&limit=2",
+        headers=auth_headers(key),
+    )
+    assert len(r_limited.json()) == 2
+
+
+def test_v1_history_requires_api_key(client: TestClient):
+    login(client)
+    client.post("/installations", json={"name": "My pool"})
+    r = client.get("/v1/history")
     assert r.status_code == 401
 
 

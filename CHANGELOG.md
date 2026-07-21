@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-21
+
+### Added
+
+- Lovelace card: tapping a parameter tile opens the log-measurement popup focused on that field, and a 📈 icon on each tile opens Home Assistant's native more-info dialog for that sensor (#32).
+- Quick-maintenance buttons now flash a "✓ Logged" confirmation when pressed (#32).
+- New `homepool-history-card` — a read-only table of recent measurements, treatments and maintenance with a configurable `max_items` and type filters, backed by a new `sensor.<installation>_history` entity.
+- `/v1/history` now returns all action kinds (measurement/treatment/maintenance) with `type`, `from_date`, `to_date` and `limit` filters.
+
+### Fixed
+
+- Lovelace card: logging a measurement no longer loses input focus / drops keystrokes when the card refreshes — the form is now a popup that background updates don't rebuild (#32).
+
 ## [1.1.1] - 2026-07-21
 
 ## [1.1.0] - 2026-07-20

@@ -123,13 +123,16 @@ Each installation gets a device with the following entities:
 |---|---|
 | `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks. Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
+| `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
 | `button.<installation>_log_cartridge_cleaning`, `_log_skimmer_filter_cleaning`, `_log_backwash`, `_log_ph_calibration`, `_log_purge`, `_log_water_change` | Press to log that maintenance action against homepool immediately, no app needed. |
 
 ![Home Assistant sensors](docs/screenshots/ha-sensors.png)
 
 #### 5. The homepool card
 
-A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus the six maintenance buttons and an inline mini-form for logging a full measurement that adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes.
+A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus the six maintenance buttons and a "Log measurement" button that opens a popup form for logging a full measurement. The form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes.
+
+Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
 
 Add it from the card picker (search "homepool") or with YAML:
 
@@ -142,13 +145,23 @@ show_buttons: true
 show_due: true
 ```
 
-`entity_prefix` should match the prefix HA generated for your installation's sensors (e.g. `sensor.my_pool_ph` → prefix `sensor.my_pool`). `installation_id` is only needed if you want the inline "Log measurement" mini-form — find it in the homepool web app's URL or API. In the card's visual editor, you can skip typing either by hand: pick any one of your installation's sensors from the entity picker and both fields are derived from it automatically.
+`entity_prefix` should match the prefix HA generated for your installation's sensors (e.g. `sensor.my_pool_ph` → prefix `sensor.my_pool`). `installation_id` is only needed if you want the "Log measurement" popup and tile-tap logging — find it in the homepool web app's URL or API. In the card's visual editor, you can skip typing either by hand: pick any one of your installation's sensors from the entity picker and both fields are derived from it automatically.
 
 > If the card doesn't appear after installing/updating, hard-refresh your browser — the resource is cache-busted per release, but browsers occasionally hold onto a stale copy. As a manual fallback, add the resource yourself: Settings → Dashboards → ⋮ → Resources → Add Resource → URL `/homepool/homepool-card.js`, type JavaScript Module.
 
 Prefer a more configurable, general-purpose pool widget instead? The [Pool Monitor Card](https://github.com/wilsto/pool-monitor-card) (installable via HACS as a frontend repository) also works against homepool's sensor entities.
 
 > Dosage recommendations are web-app-only for now — the card doesn't surface them yet.
+
+**History card.** A companion `homepool-history-card` renders a compact, read-only table of recent activity — measurements, treatments and maintenance — sourced from the `sensor.<prefix>_history` entity the integration exposes. Set `max_items` to cap the rows, and optionally filter with `types`:
+
+```yaml
+type: custom:homepool-history-card
+title: My pool
+entity_prefix: sensor.my_pool
+max_items: 20
+types: [measurement, treatment, maintenance]
+```
 
 #### 6. The `homepool.log_measurement` service
 

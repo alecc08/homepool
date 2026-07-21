@@ -57,6 +57,19 @@ class HomepoolClient:
     async def get_todo(self, installation_id: int) -> dict:
         return await self._get("/v1/todo", params={"installation_id": installation_id})
 
+    async def get_history(
+        self,
+        installation_id: int,
+        *,
+        limit: int = 100,
+        type: str = "all",
+        from_date: str | None = None,
+    ) -> list[dict]:
+        params: dict = {"installation_id": installation_id, "limit": limit, "type": type}
+        if from_date is not None:
+            params["from_date"] = from_date
+        return await self._get("/v1/history", params=params)
+
     async def create_maintenance(
         self,
         installation_id: int,
