@@ -3,7 +3,6 @@
 
 :root {
   /* Shadcn tokens inherited from theme.css + local overrides */
-  --accent-foreground: 189 85% 53%;
 }
 
 @theme {
@@ -20,7 +19,7 @@
   --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: var(--accent);
-  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-foreground: var(--accent-fg);
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: var(--border);
