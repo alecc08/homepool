@@ -39,6 +39,11 @@ export type Installation = {
   salt_unit?: SaltUnit
   conc_unit?: ConcUnit
   hardness_unit?: HardnessUnit
+  address?: string | null
+  contact_name?: string | null
+  phone?: string | null
+  email?: string | null
+  notes?: string | null
   created_at: string
 }
 

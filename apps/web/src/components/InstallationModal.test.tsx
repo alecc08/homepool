@@ -53,4 +53,42 @@ describe('InstallationModal', () => {
     const arg = mockAddInstallation.mock.calls[0][0]
     expect(arg.volume).toBeUndefined()
   })
+
+  it('submits optional contact fields when provided', async () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+    fireEvent.change(screen.getByPlaceholderText('Adresse'), { target: { value: '123 rue Principale' } })
+    fireEvent.change(screen.getByPlaceholderText('Nom du contact'), { target: { value: 'Jean Tremblay' } })
+    fireEvent.change(screen.getByPlaceholderText('Téléphone'), { target: { value: '555-1234' } })
+    fireEvent.change(screen.getByPlaceholderText('Courriel'), { target: { value: 'jean@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('Notes'), { target: { value: 'Portail à gauche' } })
+    fireEvent.click(screen.getByText("Créer l'installation"))
+
+    await waitFor(() => expect(mockAddInstallation).toHaveBeenCalledTimes(1))
+    expect(mockAddInstallation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: '123 rue Principale',
+        contact_name: 'Jean Tremblay',
+        phone: '555-1234',
+        email: 'jean@example.com',
+        notes: 'Portail à gauche',
+      })
+    )
+  })
+
+  it('omits contact fields when left empty', async () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+    fireEvent.click(screen.getByText("Créer l'installation"))
+
+    await waitFor(() => expect(mockAddInstallation).toHaveBeenCalledTimes(1))
+    const arg = mockAddInstallation.mock.calls[0][0]
+    expect(arg.address).toBeUndefined()
+    expect(arg.contact_name).toBeUndefined()
+    expect(arg.phone).toBeUndefined()
+    expect(arg.email).toBeUndefined()
+    expect(arg.notes).toBeUndefined()
+  })
 })

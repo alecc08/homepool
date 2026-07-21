@@ -207,6 +207,14 @@ def _ensure_range_overrides_column(session: Session) -> None:
     session.commit()
 
 
+def _ensure_contact_columns(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    for col in ("address", "contact_name", "phone", "email", "notes"):
+        session.exec(text(f"ALTER TABLE installation ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+    session.commit()
+
+
 def _migrate_installations(session: Session) -> None:
     if engine.dialect.name != "postgresql":
         return
@@ -298,6 +306,7 @@ async def lifespan(app: FastAPI):
         _ensure_volume_columns(session)
         _ensure_measurement_unit_columns(session)
         _ensure_range_overrides_column(session)
+        _ensure_contact_columns(session)
         insert_seeds(session)
         _ensure_admin_user(session)
         _migrate_installations(session)
@@ -385,6 +394,11 @@ class InstallationIn(BaseModel):
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
     hardness_unit: str = "ppm"
+    address: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class InstallationPatchIn(BaseModel):
@@ -397,6 +411,11 @@ class InstallationPatchIn(BaseModel):
     salt_unit: Optional[str] = None
     conc_unit: Optional[str] = None
     hardness_unit: Optional[str] = None
+    address: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class InstallationOut(BaseModel):
@@ -410,6 +429,11 @@ class InstallationOut(BaseModel):
     salt_unit: str = "ppm"
     conc_unit: str = "mg/L"
     hardness_unit: str = "ppm"
+    address: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
     created_at: datetime
 
 
@@ -803,6 +827,11 @@ def create_installation(
         salt_unit=payload.salt_unit,
         conc_unit=payload.conc_unit,
         hardness_unit=payload.hardness_unit,
+        address=payload.address,
+        contact_name=payload.contact_name,
+        phone=payload.phone,
+        email=payload.email,
+        notes=payload.notes,
     )
     session.add(installation)
     session.commit()
@@ -838,6 +867,16 @@ def update_installation(
         installation.conc_unit = payload.conc_unit
     if payload.hardness_unit is not None:
         installation.hardness_unit = payload.hardness_unit
+    if payload.address is not None:
+        installation.address = payload.address
+    if payload.contact_name is not None:
+        installation.contact_name = payload.contact_name
+    if payload.phone is not None:
+        installation.phone = payload.phone
+    if payload.email is not None:
+        installation.email = payload.email
+    if payload.notes is not None:
+        installation.notes = payload.notes
     session.add(installation)
     session.commit()
     session.refresh(installation)

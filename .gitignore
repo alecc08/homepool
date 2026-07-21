@@ -38,7 +38,6 @@ yarn-error.log*
 .pytest_cache/
 
 # Claude Code & internal development
-CLAUDE.md
 .claude/
 *.private
 *.bak

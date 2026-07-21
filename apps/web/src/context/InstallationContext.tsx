@@ -19,6 +19,11 @@ type InstallationCtx = {
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
     hardness_unit?: HardnessUnit
+    address?: string
+    contact_name?: string
+    phone?: string
+    email?: string
+    notes?: string
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
   updateRanges: (ranges: DynamicRanges) => void
@@ -96,6 +101,11 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     salt_unit?: SaltUnit
     conc_unit?: ConcUnit
     hardness_unit?: HardnessUnit
+    address?: string
+    contact_name?: string
+    phone?: string
+    email?: string
+    notes?: string
   }): Promise<Installation> => {
     const res = await fetch('/api/installations', {
       method: 'POST',

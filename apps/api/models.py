@@ -42,6 +42,13 @@ class Installation(SQLModel, table=True):
     salt_unit: str = Field(default="ppm")       # "ppm" | "g/L"
     conc_unit: str = Field(default="mg/L")      # "mg/L" | "ppm"
     hardness_unit: str = Field(default="ppm")     # "ppm" | "°dH" | "°f"
+    # Optional contact / location info — free-text, used when managing several
+    # pools at different addresses. All optional; no format validation.
+    address: Optional[str] = Field(default=None)
+    contact_name: Optional[str] = Field(default=None)
+    phone: Optional[str] = Field(default=None)
+    email: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
     # Sparse per-installation overrides layered on top of WATER_PARAMS, e.g.
     # {"ph": {"ideal": [7.0, 7.6]}}. NULL/{} = no customization. Values are always
     # stored in canonical/metric units, independent of temp_unit/salt_unit/hardness_unit.

@@ -126,6 +126,58 @@ def test_patch_installation_sanitizer_to_salt(client: TestClient):
     assert patch_r.json()["sanitizer"] == "salt"
 
 
+def test_create_installation_with_contact_info(client: TestClient):
+    login(client)
+    r = client.post(
+        "/installations",
+        json={
+            "name": "Rental pool",
+            "type": "pool",
+            "sanitizer": "chlorine",
+            "address": "123 Main St",
+            "contact_name": "Jane Doe",
+            "phone": "555-1234",
+            "email": "jane@example.com",
+            "notes": "Gate code 4321",
+        },
+    )
+    assert r.status_code == 200
+    installation_id = r.json()["id"]
+    # Fields round-trip through a fresh GET.
+    listing = client.get("/installations").json()
+    created = next(i for i in listing if i["id"] == installation_id)
+    assert created["address"] == "123 Main St"
+    assert created["contact_name"] == "Jane Doe"
+    assert created["phone"] == "555-1234"
+    assert created["email"] == "jane@example.com"
+    assert created["notes"] == "Gate code 4321"
+
+
+def test_create_installation_contact_info_defaults_null(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Plain pool"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["address"] is None
+    assert data["contact_name"] is None
+    assert data["phone"] is None
+    assert data["email"] is None
+    assert data["notes"] is None
+
+
+def test_patch_installation_contact_info(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    patch_r = client.patch(
+        f"/installations/{installation_id}",
+        json={"address": "9 Ocean Ave", "phone": "555-9999"},
+    )
+    assert patch_r.status_code == 200
+    data = patch_r.json()
+    assert data["address"] == "9 Ocean Ave"
+    assert data["phone"] == "555-9999"
+
+
 def test_get_installation_params_pool_salt(client: TestClient):
     login(client)
     r = client.post(

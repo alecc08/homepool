@@ -32,6 +32,11 @@ export default function InstallationModal({ open, onClose, installation }: Props
   const [saltUnit, setSaltUnit] = useState<SaltUnit>(installation?.salt_unit ?? 'ppm')
   const [concUnit, setConcUnit] = useState<ConcUnit>(installation?.conc_unit ?? 'mg/L')
   const [hardnessUnit, setHardnessUnit] = useState<HardnessUnit>(installation?.hardness_unit ?? 'ppm')
+  const [address, setAddress] = useState(installation?.address ?? '')
+  const [contactName, setContactName] = useState(installation?.contact_name ?? '')
+  const [phone, setPhone] = useState(installation?.phone ?? '')
+  const [email, setEmail] = useState(installation?.email ?? '')
+  const [notes, setNotes] = useState(installation?.notes ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,6 +50,11 @@ export default function InstallationModal({ open, onClose, installation }: Props
     setSaltUnit('ppm')
     setConcUnit('mg/L')
     setHardnessUnit('ppm')
+    setAddress('')
+    setContactName('')
+    setPhone('')
+    setEmail('')
+    setNotes('')
     setTab('general')
   }
 
@@ -68,6 +78,11 @@ export default function InstallationModal({ open, onClose, installation }: Props
         salt_unit: saltUnit,
         conc_unit: concUnit,
         hardness_unit: hardnessUnit,
+        address: address.trim() || undefined,
+        contact_name: contactName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        notes: notes.trim() || undefined,
         ...(parsedVolume !== undefined && !isNaN(parsedVolume) ? { volume: parsedVolume, volume_unit: volumeUnit } : {}),
       }
       if (isEdit && installation) {
@@ -290,6 +305,50 @@ export default function InstallationModal({ open, onClose, installation }: Props
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Contact / location (all optional) */}
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Label>{t('modal_install_contact_section')}</Label>
+            <Input
+              id="inst-address"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder={t('modal_install_address')}
+            />
+            <Input
+              id="inst-contact-name"
+              value={contactName}
+              onChange={e => setContactName(e.target.value)}
+              placeholder={t('modal_install_contact_name')}
+            />
+            <Input
+              id="inst-phone"
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder={t('modal_install_phone')}
+            />
+            <Input
+              id="inst-email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder={t('modal_install_email')}
+            />
+            <textarea
+              id="inst-notes"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder={t('modal_install_notes')}
+              rows={2}
+              style={{
+                width: '100%', resize: 'vertical', borderRadius: 8,
+                border: '1px solid var(--border)', background: 'var(--bg-surface-2)',
+                color: 'var(--text-primary)', padding: '8px 10px',
+                fontFamily: '"Sora", sans-serif', fontSize: 14,
+              }}
+            />
           </div>
 
           {error && (
