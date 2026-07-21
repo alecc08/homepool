@@ -47,6 +47,24 @@ export type Installation = {
   created_at: string
 }
 
+/** A configurable maintenance task with its derived due status, as returned by
+ * GET /installations/{id}/maintenance. `key` is stable across renames
+ * (builtin_key or custom_<id>); built-in tasks localize via builtin_key and
+ * fall back to `label`. days_until_due / last_date are null when never logged. */
+export type MaintenanceTask = {
+  id: number
+  key: string
+  builtin_key: string | null
+  label: string
+  icon: string
+  action_types: string[]
+  interval_days: number
+  enabled: boolean
+  sort_order: number
+  days_until_due: number | null
+  last_date: string | null
+}
+
 export type InstallationWaterParams = {
   ph: { ideal: [number, number]; acceptable: [number, number] }
   tac: { ideal: [number, number]; acceptable: [number, number] }

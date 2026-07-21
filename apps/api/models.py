@@ -56,6 +56,26 @@ class Installation(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class MaintenanceTask(SQLModel, table=True):
+    """A configurable maintenance task for one installation. Completing a task
+    means logging an Action whose action_type is one of this task's
+    action_types; "due" is derived (interval_days minus days since the last such
+    action) and never stored. Built-in tasks carry a builtin_key so clients can
+    localize their name; custom tasks (builtin_key=None) use `label` verbatim."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    installation_id: int = Field(foreign_key="installation.id", index=True)
+    builtin_key: Optional[str] = Field(default=None)  # e.g. "ph_measurement"; None = custom
+    label: str = Field(default="")                     # display / fallback label
+    # action_types that count as completing this task; action_types[0] is logged
+    # on "mark done".
+    action_types: list = Field(default_factory=list, sa_column=Column(JSON))
+    interval_days: int = Field(default=7)
+    icon: str = Field(default="mdi:calendar-clock")
+    enabled: bool = Field(default=True)
+    sort_order: int = Field(default=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class ApiKey(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)

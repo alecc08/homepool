@@ -1,4 +1,4 @@
-import type { Action, Installation, InstallationWaterParams } from './types'
+import type { Action, Installation, InstallationWaterParams, MaintenanceTask } from './types'
 import { convertRange, metricToDisplayConverter } from './units'
 import type { TranslationKey } from './i18n/translations'
 
@@ -392,18 +392,6 @@ export function getDaysSince(dateStr: string): number {
 }
 
 /**
- * Days until the next pH measurement (7-day cycle).
- * Negative = overdue. null = never measured.
- */
-export function getNextMeasureInDays(actions: Action[]): number | null {
-  const phActions = actions.filter(a => MEASURE_ACTION_TYPES.includes(a.action_type) && a.qty)
-  if (phActions.length === 0) return null
-  const sorted = [...phActions].sort((a, b) => b.date.localeCompare(a.date))
-  const daysSince = getDaysSince(sorted[0].date)
-  return 7 - daysSince
-}
-
-/**
  * Treatment counts for a given year-month string (YYYY-MM).
  * maintenance = Cartridge cleaning / skimmer filter / pH calibration
  * additions   = Add product
@@ -419,48 +407,66 @@ export function getTreatmentsThisMonth(
   return { total: monthActions.length, maintenance, additions }
 }
 
+// Show a maintenance task on the dashboard's attention panel when it is
+// never-done, overdue, or coming due within this many days.
+const MAINTENANCE_WARN_WITHIN_DAYS = 5
+
+/** Localized display name for a maintenance task: built-in tasks resolve via
+ * `maint_task_<builtin_key>`, everything else uses the stored label. */
+export function maintenanceTaskLabel(
+  task: { builtin_key: string | null; label: string },
+  t: (key: TranslationKey) => string,
+): string {
+  if (task.builtin_key) {
+    const key = `maint_task_${task.builtin_key}` as TranslationKey
+    const translated = t(key)
+    // t() returns the raw key when a translation is missing — fall back to the
+    // stored label rather than surfacing the key.
+    if (translated && translated !== key) return translated
+  }
+  return task.label
+}
+
 /**
- * Computes recommended to-do items based on action history and measured params.
+ * Maps configured maintenance tasks (with derived due status from the API) to
+ * dashboard attention-panel items, keeping only enabled tasks that are
+ * never-done, overdue, or due within the warn window.
  */
-export function getTodoItems(actions: Action[], params: MeasuredParams, t: (key: TranslationKey) => string): TodoItem[] {
+export function maintenanceTodoItems(
+  tasks: MaintenanceTask[],
+  t: (key: TranslationKey) => string,
+): TodoItem[] {
+  const items: TodoItem[] = []
+  for (const task of tasks) {
+    if (!task.enabled) continue
+    const days = task.days_until_due
+    if (days !== null && days > MAINTENANCE_WARN_WITHIN_DAYS) continue
+    const neverDone = days === null
+    const overdue = days !== null && days < 0
+    items.push({
+      id: `maint-${task.key}`,
+      kind: task.builtin_key === 'ph_measurement' ? 'measure' : 'maintenance',
+      title: maintenanceTaskLabel(task, t),
+      subtitle: `${t('maint_every')} ${task.interval_days} ${t('todo_day_abbr')}`,
+      delay: neverDone
+        ? t('todo_never_done')
+        : overdue
+          ? `${t('kpi_overdue')} (${Math.abs(days as number)} ${t('todo_day_abbr')})`
+          : `${t('kpi_in')} ${days} ${t('todo_day_abbr')}`,
+      isOverdue: overdue || neverDone,
+    })
+  }
+  return items
+}
+
+/**
+ * Chemistry-based to-do items derived from the latest measured params (e.g. low
+ * chlorine). Scheduled maintenance now comes from maintenanceTodoItems, which is
+ * driven by the configurable tasks stored server-side.
+ */
+export function getChemistryTodoItems(params: MeasuredParams, t: (key: TranslationKey) => string): TodoItem[] {
   const items: TodoItem[] = []
 
-  // pH measurement: warn after 5 days, cycle 7 days
-  const nextPh = getNextMeasureInDays(actions)
-  if (nextPh === null || nextPh <= 5) {
-    const overdue = nextPh !== null && nextPh < 0
-    items.push({
-      id: 'ph-measure',
-      kind: 'measure',
-      title: t('todo_ph_title'),
-      subtitle: t('todo_ph_subtitle'),
-      delay: nextPh === null
-        ? t('kpi_never_measured')
-        : overdue
-          ? `${t('kpi_overdue')} (${Math.abs(nextPh)} ${t('todo_day_abbr')})`
-          : `${t('kpi_in')} ${nextPh} ${t('todo_day_abbr')}`,
-      isOverdue: overdue || nextPh === null,
-    })
-  }
-
-  // Filter maintenance: warn after 14 days
-  const filterTypes = ['Cartridge cleaning', 'Skimmer filter cleaning', 'Backwash']
-  const lastFilter = [...actions]
-    .filter(a => filterTypes.includes(a.action_type))
-    .sort((a, b) => b.date.localeCompare(a.date))[0]
-  const filterDays = lastFilter ? getDaysSince(lastFilter.date) : null
-  if (filterDays === null || filterDays > 14) {
-    items.push({
-      id: 'filter-maintenance',
-      kind: 'maintenance',
-      title: t('todo_filter_title'),
-      subtitle: t('todo_filter_subtitle'),
-      delay: filterDays === null ? t('todo_never_done') : `${t('kpi_overdue')} (${filterDays} ${t('todo_day_abbr')})`,
-      isOverdue: true,
-    })
-  }
-
-  // Chlorine check
   if (params.chlorine !== null && params.chlorine < 1) {
     items.push({
       id: 'chlorine-low',

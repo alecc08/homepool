@@ -11,6 +11,7 @@ import DashboardPage from './components/DashboardPage'
 import MeasurementsPage from './components/MeasurementsPage'
 import HistoryPage from './components/HistoryPage'
 import RecommendationsPage from './components/RecommendationsPage'
+import MaintenancePage from './components/MaintenancePage'
 import LoginPage from './components/LoginPage'
 import InstallationModal from './components/InstallationModal'
 import InstallBanner from './components/InstallBanner'
@@ -21,13 +22,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-type Page = 'log' | 'measurements' | 'history' | 'recommendations'
+type Page = 'log' | 'measurements' | 'history' | 'recommendations' | 'maintenance'
 
 function getPageFromHash(): Page {
   const hash = window.location.hash.replace(/^#\/?/, '')
   if (hash === 'measurements') return 'measurements'
   if (hash === 'history') return 'history'
   if (hash === 'recommendations') return 'recommendations'
+  if (hash === 'maintenance') return 'maintenance'
   return 'log'
 }
 
@@ -206,6 +208,8 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           ? <HistoryPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} />
           : page === 'recommendations'
           ? <RecommendationsPage actions={actions} />
+          : page === 'maintenance'
+          ? <MaintenancePage onActionLogged={loadData} />
           : <DashboardPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} onExport={handleExport} onImport={handleImport} onNavigate={navigate} onAdd={() => setShowForm(true)} />
         }
       </main>

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check } from 'lucide-react'
-import type { Action, Product, RecommendationsResponse } from '../types'
+import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { Locale } from '../i18n/translations'
@@ -18,8 +18,10 @@ import {
   getHardnessStatus,
   getParamHistory,
   getDaysSince,
-  getTodoItems,
+  getChemistryTodoItems,
+  maintenanceTodoItems,
   translateLabel,
+  type TodoItem,
   type ParamStatus,
   type HistoryParamKey,
   type DynamicRanges,
@@ -50,7 +52,7 @@ type Props = {
   onDelete: (action: Action) => void
   onExport?: () => void
   onImport?: (file: File) => Promise<void>
-  onNavigate?: (page: 'measurements' | 'history' | 'recommendations') => void
+  onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
   onAdd?: () => void
 }
 
@@ -73,8 +75,23 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
   const today = new Date()
 
   const params = useMemo(() => extractMeasuredParams(actions), [actions])
-  const todoItems = useMemo(() => getTodoItems(actions, params, t), [actions, params, t])
   const phHistory = useMemo(() => getParamHistory(actions, 'ph', 12), [actions])
+
+  const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
+  useEffect(() => {
+    if (!active) return
+    fetch(`/api/installations/${active.id}/maintenance`, { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: MaintenanceTask[] | null) => setMaintenanceTasks(data ?? []))
+      .catch(() => setMaintenanceTasks([]))
+    // Refetch when the action log changes so completed maintenance clears its
+    // due status here too.
+  }, [active?.id, actions])
+
+  const todoItems = useMemo<TodoItem[]>(
+    () => [...maintenanceTodoItems(maintenanceTasks, t), ...getChemistryTodoItems(params, t)],
+    [maintenanceTasks, params, t],
+  )
 
   const [recommendationsCount, setRecommendationsCount] = useState<number | null>(null)
   useEffect(() => {
@@ -395,9 +412,9 @@ function AttentionPanel({
   recommendationsCount,
   onNavigate,
 }: {
-  todoItems: ReturnType<typeof getTodoItems>
+  todoItems: TodoItem[]
   recommendationsCount: number | null
-  onNavigate?: (page: 'measurements' | 'history' | 'recommendations') => void
+  onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
 }) {
   const { t } = useT()
   const KIND_ICON = {
@@ -426,7 +443,7 @@ function AttentionPanel({
             return (
               <button
                 key={item.id}
-                onClick={() => onNavigate?.('recommendations')}
+                onClick={() => onNavigate?.(item.kind === 'chemistry' ? 'recommendations' : 'maintenance')}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                   padding: '8px 8px', margin: '0 -8px', borderRadius: 'var(--radius-sm)',

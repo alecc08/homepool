@@ -23,23 +23,35 @@ const FIELD_SUFFIXES = {
   temp: 'temperature',
 };
 
-// Ordered by real-world frequency of use (most-used first). The
-// `log_measurement` entry is the form-toggle button, kept in this same list
-// so ordering and per-item show/hide (config.quick_add) apply uniformly.
-const QUICK_ADD_ITEMS = [
-  { key: 'log_measurement', kind: 'form-toggle' },
-  { key: 'backwash', label: 'Backwash', suffix: 'log_backwash' },
-  { key: 'skimmer_filter_cleaning', label: 'Skimmer filter cleaning', suffix: 'log_skimmer_filter_cleaning' },
-  { key: 'ph_calibration', label: 'pH calibration', suffix: 'log_ph_calibration' },
-  { key: 'purge', label: 'Purge', suffix: 'log_purge' },
-  { key: 'water_change', label: 'Water change', suffix: 'log_water_change' },
-  { key: 'cartridge_cleaning', label: 'Cartridge cleaning', suffix: 'log_cartridge_cleaning' },
-];
+// The form-toggle "Log measurement" button is still a fixed quick-add entry
+// (it opens the measurement form). Maintenance quick-add buttons and the
+// "days until due" chips are no longer a fixed set: they're discovered from the
+// homepool task entities by their `task_key` attribute (see discoverTaskEntities),
+// so the card stays in sync with whatever configurable tasks the API returns.
+const FORM_TOGGLE_KEY = 'log_measurement';
 
-const DUE_SUFFIXES = {
-  ph_measurement: 'days_until_ph_measurement_due',
-  filter_maintenance: 'days_until_filter_maintenance_due',
-};
+// Finds the homepool maintenance-task entities (todo "days until due" sensors,
+// or "mark done" buttons) for one installation by their `task_key` attribute.
+// `idPrefix` is the entity-id prefix those entities share, derived from the
+// card's entity_prefix. Sorted by entity_id for a stable display order.
+function discoverTaskEntities(hass, idPrefix) {
+  if (!hass || !idPrefix) return [];
+  return Object.keys(hass.states)
+    .filter((id) => id.startsWith(idPrefix))
+    .map((id) => ({ entityId: id, attrs: hass.states[id].attributes || {} }))
+    .filter(({ attrs }) => attrs.task_key !== undefined)
+    .map(({ entityId, attrs }) => ({
+      key: attrs.task_key,
+      label: attrs.label || attrs.task_key,
+      entityId,
+    }))
+    .sort((a, b) => a.entityId.localeCompare(b.entityId));
+}
+
+// button.<x> entity-id prefix for the given entity_prefix (sensor.<x> → button.<x>_).
+function taskButtonPrefix(entityPrefix) {
+  return `button.${entityPrefix.replace(/^sensor\./, '')}_`;
+}
 
 const FORM_FIELD_LABELS = {
   ph: 'pH',
@@ -74,8 +86,6 @@ const STRINGS = {
     measured_days_ago: (n) => `measured ${n} days ago`,
     never_measured: 'never measured',
     no_data: 'No homepool entities found for this card configuration.',
-    due_ph: 'pH measurement',
-    due_filter: 'Filter maintenance',
     due_today: 'due today',
     due_overdue: (n) => `overdue by ${n}d`,
     due_in: (n) => `due in ${n}d`,
@@ -103,8 +113,6 @@ const STRINGS = {
     measured_days_ago: (n) => `mesuré il y a ${n} jours`,
     never_measured: 'jamais mesuré',
     no_data: 'Aucune entité homepool trouvée pour cette configuration.',
-    due_ph: 'Mesure du pH',
-    due_filter: 'Entretien du filtre',
     due_today: "aujourd'hui",
     due_overdue: (n) => `en retard de ${n}j`,
     due_in: (n) => `dans ${n}j`,
@@ -214,8 +222,6 @@ class HomepoolCard extends HTMLElement {
     if (!config || !config.entity_prefix) {
       throw new Error('homepool-card: `entity_prefix` is required (e.g. sensor.my_pool)');
     }
-    const defaultQuickAdd = {};
-    QUICK_ADD_ITEMS.forEach((item) => { defaultQuickAdd[item.key] = true; });
     this._config = {
       title: config.title ?? 'homepool',
       entity_prefix: config.entity_prefix,
@@ -225,7 +231,9 @@ class HomepoolCard extends HTMLElement {
       show_header: config.show_header !== false,
       show_logo: config.show_logo !== false,
       parameters: config.parameters ?? null,
-      quick_add: { ...defaultQuickAdd, ...(config.quick_add || {}) },
+      // Quick-add buttons (form toggle + discovered per-task buttons) are shown
+      // by default; a `{ <key>: false }` entry hides a specific one.
+      quick_add: config.quick_add || {},
     };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._modalOpen = false;
@@ -273,23 +281,13 @@ class HomepoolCard extends HTMLElement {
   }
 
   _buttonEntities() {
-    const hass = this._hass;
-    if (!hass) return [];
     const quickAdd = this._config.quick_add || {};
-    return QUICK_ADD_ITEMS.filter((item) => item.kind !== 'form-toggle' && quickAdd[item.key] !== false)
-      .map((item) => ({
-        label: item.label,
-        entityId: `button.${this._config.entity_prefix.replace(/^sensor\./, '')}_${item.suffix}`,
-      }))
-      .filter((e) => hass.states[e.entityId] !== undefined);
+    return discoverTaskEntities(this._hass, taskButtonPrefix(this._config.entity_prefix))
+      .filter((e) => quickAdd[e.key] !== false);
   }
 
   _dueEntities() {
-    const hass = this._hass;
-    if (!hass) return [];
-    return Object.entries(DUE_SUFFIXES)
-      .map(([key, suffix]) => ({ key, entityId: this._entityId(suffix) }))
-      .filter((e) => hass.states[e.entityId] !== undefined);
+    return discoverTaskEntities(this._hass, `${this._config.entity_prefix}_`);
   }
 
   // Fires the button and flashes a transient "✓" success state so the user
@@ -403,11 +401,10 @@ class HomepoolCard extends HTMLElement {
       `;
     }).join('');
 
-    const dueHtml = dues.map(({ key, entityId }) => {
+    const dueHtml = dues.map(({ label, entityId }) => {
       const st = hass.states[entityId];
       const days = st.state === 'unavailable' || st.state === 'unknown' ? null : parseFloat(st.state);
-      if (days === null) return '';
-      const label = key === 'ph_measurement' ? t(hass, 'due_ph') : t(hass, 'due_filter');
+      if (days === null || Number.isNaN(days)) return '';
       const overdue = days < 0;
       const dueSoon = days >= 0 && days <= 3;
       const chipClass = overdue ? 'hp-chip-danger' : dueSoon ? 'hp-chip-warn' : 'hp-chip-neutral';
@@ -417,25 +414,17 @@ class HomepoolCard extends HTMLElement {
       return `<span class="hp-chip ${chipClass}">${label}: ${text}</span>`;
     }).join('');
 
-    const buttonsByEntity = new Map(buttons.map((b) => [b.entityId, b]));
-    const showFormToggle = config.installation_id && config.quick_add?.log_measurement !== false;
-    const buttonsHtml = QUICK_ADD_ITEMS.map((item) => {
-      if (item.kind === 'form-toggle') {
-        return showFormToggle
-          ? `<button class="hp-btn hp-btn-accent" id="hp-form-toggle">${t(hass, 'log_measurement')}</button>`
-          : '';
-      }
-      const entityId = `button.${config.entity_prefix.replace(/^sensor\./, '')}_${item.suffix}`;
-      const btn = buttonsByEntity.get(entityId);
-      if (!btn) return '';
-      const label = (hass.states[entityId] && hass.states[entityId].attributes.friendly_name || btn.label).replace(/^.*?\s/, '');
-      const pressed = this._pressed[entityId];
-      return `
-        <button class="hp-btn${pressed ? ' hp-btn-success' : ''}" data-entity="${entityId}">${
-          pressed ? `✓ ${t(hass, 'logged')}` : label
-        }</button>
-      `;
+    const showFormToggle = config.installation_id && config.quick_add?.[FORM_TOGGLE_KEY] !== false;
+    const formToggleHtml = showFormToggle
+      ? `<button class="hp-btn hp-btn-accent" id="hp-form-toggle">${t(hass, 'log_measurement')}</button>`
+      : '';
+    const taskButtonsHtml = buttons.map((btn) => {
+      const pressed = this._pressed[btn.entityId];
+      return `<button class="hp-btn${pressed ? ' hp-btn-success' : ''}" data-entity="${btn.entityId}">${
+        pressed ? `✓ ${t(hass, 'logged')}` : btn.label
+      }</button>`;
     }).join('');
+    const buttonsHtml = formToggleHtml + taskButtonsHtml;
 
     this._cardMount.innerHTML = `
       <ha-card>
@@ -908,9 +897,19 @@ class HomepoolCardEditor extends HTMLElement {
   }
 
   _build() {
-    const quickAddChipsHtml = QUICK_ADD_ITEMS.filter((i) => i.kind !== 'form-toggle')
-      .map((item) => `<button type="button" class="chip" data-quick-add="${item.key}">${item.label}</button>`)
-      .join('');
+    // Maintenance quick-add buttons are discovered from the task entities, so
+    // the editor's toggle chips reflect the installation's configured tasks
+    // (with the "Log measurement" form toggle always available). Discovery
+    // needs both hass and a configured entity_prefix; before then only the
+    // form-toggle chip shows, and the rest appear when the editor is reopened.
+    const editorPrefix = this._config && this._config.entity_prefix;
+    const taskChips = editorPrefix
+      ? discoverTaskEntities(this._hass, taskButtonPrefix(editorPrefix))
+      : [];
+    const quickAddChipsHtml = [
+      `<button type="button" class="chip" data-quick-add="${FORM_TOGGLE_KEY}">${STRINGS.en.log_measurement}</button>`,
+      ...taskChips.map((tb) => `<button type="button" class="chip" data-quick-add="${tb.key}">${tb.label}</button>`),
+    ].join('');
     const parameterChipsHtml = Object.keys(FIELD_SUFFIXES)
       .map((key) => `<button type="button" class="chip" data-parameter="${key}">${FORM_FIELD_LABELS[key] || key}</button>`)
       .join('');

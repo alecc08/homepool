@@ -8,8 +8,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import HomepoolConfigEntry
-from .const import DOMAIN, FIELD_META, FIELD_NAMES, TODO_META
+from .const import DOMAIN, FIELD_META, FIELD_NAMES
 from .coordinator import HomepoolDataUpdateCoordinator
+
+# Fallback icon when a task payload carries no icon of its own.
+DEFAULT_TODO_ICON = "mdi:calendar-clock"
 
 
 async def async_setup_entry(
@@ -26,16 +29,33 @@ async def async_setup_entry(
             entities.append(
                 HomepoolSensor(coordinator, entry.entry_id, installation_id, field)
             )
-        for task in installation.get("todo", {}):
-            if task not in TODO_META:
-                continue
-            entities.append(
-                HomepoolTodoSensor(coordinator, entry.entry_id, installation_id, task)
-            )
         entities.append(
             HomepoolHistorySensor(coordinator, entry.entry_id, installation_id)
         )
+
+    # Maintenance-task sensors are fully data-driven: one "days until due" sensor
+    # per configurable task. Because tasks can be added/enabled after setup, a
+    # coordinator listener adds sensors for task keys first seen on a later poll
+    # (HA only calls async_setup_entry once).
+    known_tasks: set[tuple[int, str]] = set()
+
+    def _add_task_sensors() -> None:
+        new: list[SensorEntity] = []
+        for installation_id, installation in coordinator.data.items():
+            for task_key in installation.get("todo", {}):
+                marker = (installation_id, task_key)
+                if marker in known_tasks:
+                    continue
+                known_tasks.add(marker)
+                new.append(
+                    HomepoolTodoSensor(coordinator, entry.entry_id, installation_id, task_key)
+                )
+        if new:
+            async_add_entities(new)
+
+    _add_task_sensors()
     async_add_entities(entities)
+    entry.async_on_unload(coordinator.async_add_listener(_add_task_sensors))
 
 
 class HomepoolSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):
@@ -134,17 +154,14 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
         coordinator: HomepoolDataUpdateCoordinator,
         entry_id: str,
         installation_id: int,
-        task: str,
+        task_key: str,
     ) -> None:
         super().__init__(coordinator)
         self._installation_id = installation_id
-        self._task = task
-
-        icon, name = TODO_META[task]
-        self._attr_icon = icon
-        self._attr_name = name
-        # Namespaced with "_todo_" so this can never collide with a field-based unique_id.
-        self._attr_unique_id = f"{entry_id}_{installation_id}_todo_{task}"
+        self._task_key = task_key
+        # Namespaced with "_todo_" so this can never collide with a field-based
+        # unique_id. Keyed by the task's stable `key` so it survives renames.
+        self._attr_unique_id = f"{entry_id}_{installation_id}_todo_{task_key}"
 
     @property
     def _installation(self) -> dict | None:
@@ -155,7 +172,18 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
         installation = self._installation
         if not installation:
             return None
-        return installation.get("todo", {}).get(self._task)
+        return installation.get("todo", {}).get(self._task_key)
+
+    @property
+    def name(self) -> str:
+        value = self._task_value
+        label = value.get("label") if value else None
+        return f"Days Until {label} Due" if label else f"Days Until {self._task_key} Due"
+
+    @property
+    def icon(self) -> str:
+        value = self._task_value
+        return (value.get("icon") if value else None) or DEFAULT_TODO_ICON
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -181,9 +209,19 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
     @property
     def extra_state_attributes(self) -> dict | None:
         value = self._task_value
-        if not value or value.get("last_date") is None:
+        if not value:
             return None
-        return {"last_date": value["last_date"]}
+        # task_key lets the Lovelace card discover due sensors reliably instead
+        # of guessing entity-id suffixes; label gives it a display name without
+        # having to parse the friendly_name.
+        attrs: dict = {"task_key": self._task_key}
+        if value.get("label") is not None:
+            attrs["label"] = value["label"]
+        if value.get("last_date") is not None:
+            attrs["last_date"] = value["last_date"]
+        if value.get("interval_days") is not None:
+            attrs["interval_days"] = value["interval_days"]
+        return attrs
 
 
 class HomepoolHistorySensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):

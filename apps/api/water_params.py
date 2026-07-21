@@ -11,7 +11,7 @@ import re
 from datetime import date as date_type
 from typing import Dict, List, Optional, Tuple
 
-from models import Action, Installation
+from models import Action, Installation, MaintenanceTask
 
 MEASURE_ACTION_TYPES = {"pH Measurement", "Measurement"}
 
@@ -23,6 +23,67 @@ FILTER_MAINTENANCE_TYPES = {"Cartridge cleaning", "Skimmer filter cleaning", "Ba
 # (own endpoint, /v1/measurements) and "Add product" (needs a product_id lookup
 # that isn't meaningful for an external caller like Home Assistant).
 MAINTENANCE_ACTION_TYPES = FILTER_MAINTENANCE_TYPES | {"pH calibration", "Purge", "Water change"}
+
+# Built-in maintenance-task defaults, keyed by installation type. Each installation
+# is seeded with these on creation (see main.py); users can then enable/disable
+# them, change intervals, or add custom tasks. `builtin_key` lets clients localize
+# the task name (falling back to `label`). action_types[0] is what "mark done"
+# logs; the full list is what counts as completing the task (reusing the existing
+# action-type strings so history classification stays consistent).
+DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
+    "pool": [
+        {
+            "builtin_key": "ph_measurement",
+            "label": "pH measurement",
+            "action_types": ["Measurement", "pH Measurement"],
+            "interval_days": 7,
+            "icon": "mdi:test-tube",
+        },
+        {
+            "builtin_key": "filter_maintenance",
+            "label": "Filter maintenance",
+            "action_types": ["Cartridge cleaning", "Skimmer filter cleaning", "Backwash"],
+            "interval_days": 14,
+            "icon": "mdi:air-filter",
+        },
+        {
+            "builtin_key": "water_change",
+            "label": "Water change",
+            "action_types": ["Water change"],
+            "interval_days": 90,
+            "icon": "mdi:water-sync",
+        },
+    ],
+    "spa": [
+        {
+            "builtin_key": "ph_measurement",
+            "label": "pH measurement",
+            "action_types": ["Measurement", "pH Measurement"],
+            "interval_days": 3,
+            "icon": "mdi:test-tube",
+        },
+        {
+            "builtin_key": "filter_maintenance",
+            "label": "Filter maintenance",
+            "action_types": ["Cartridge cleaning", "Skimmer filter cleaning", "Backwash"],
+            "interval_days": 7,
+            "icon": "mdi:air-filter",
+        },
+        {
+            "builtin_key": "water_change",
+            "label": "Water change",
+            "action_types": ["Water change"],
+            "interval_days": 30,
+            "icon": "mdi:water-sync",
+        },
+    ],
+}
+
+
+def default_maintenance_tasks(installation_type: str) -> List[Dict]:
+    """Default task specs to seed a new installation of the given type with.
+    Falls back to the pool set for unknown types."""
+    return [dict(spec) for spec in DEFAULT_MAINTENANCE_TASKS.get(installation_type, DEFAULT_MAINTENANCE_TASKS["pool"])]
 
 # Maps parsed-field name to the label ActionForm.tsx's toPayload writes into
 # Action.notes for that field (see toPayload in ActionForm.tsx:892-905). "ph"
@@ -37,9 +98,6 @@ _MEASUREMENT_NOTE_LABELS = {
     "cc": "combined",
     "temp": "temperature",
 }
-
-PH_CYCLE_DAYS = 7
-FILTER_CYCLE_DAYS = 14
 
 _NUM = r"(\d+(?:\.\d+)?)"
 RX_PH = re.compile(r"pH\s*([\d.]+)", re.I)
@@ -246,25 +304,41 @@ def _last_matching_date(matching: List[Action]) -> Optional[date_type]:
     return max(a.date for a in matching)
 
 
-def compute_todo_status(actions: List[Action]) -> Dict[str, Dict]:
-    """Server-side port of getNextMeasureInDays / getTodoItems in utils.ts.
-    Returns days_until_due (cycle length minus days since the last matching
-    action; negative once overdue) and the date of that last action, per task.
-    days_until_due and last_date are both None when the task has never been
-    logged for this installation (no baseline to count from)."""
-    today = date_type.today()
+def maintenance_task_key(task: MaintenanceTask) -> str:
+    """Stable client-facing key for a task: its builtin_key, or custom_<id>."""
+    return task.builtin_key or f"custom_{task.id}"
 
-    def status_for(matching: List[Action], cycle_days: int) -> Dict:
+
+def compute_task_status(tasks: List[MaintenanceTask], actions: List[Action]) -> List[Dict]:
+    """Per-task maintenance status. For each task, finds the most recent action
+    whose action_type is one of the task's action_types and derives
+    days_until_due (interval_days minus days since that action; negative once
+    overdue). days_until_due and last_date are both None when the task has never
+    been logged for this installation (no baseline to count from). Returns tasks
+    in (sort_order, id) order."""
+    today = date_type.today()
+    ordered = sorted(tasks, key=lambda t: (t.sort_order, t.id or 0))
+    result: List[Dict] = []
+    for task in ordered:
+        matching = [a for a in actions if a.action_type in (task.action_types or [])]
         last_date = _last_matching_date(matching)
         if last_date is None:
-            return {"days_until_due": None, "last_date": None}
-        days_since = (today - last_date).days
-        return {"days_until_due": cycle_days - days_since, "last_date": last_date}
-
-    ph_actions = [a for a in actions if a.action_type in MEASURE_ACTION_TYPES and a.qty]
-    filter_actions = [a for a in actions if a.action_type in FILTER_MAINTENANCE_TYPES]
-
-    return {
-        "ph_measurement": status_for(ph_actions, PH_CYCLE_DAYS),
-        "filter_maintenance": status_for(filter_actions, FILTER_CYCLE_DAYS),
-    }
+            days_until_due = None
+        else:
+            days_until_due = task.interval_days - (today - last_date).days
+        result.append(
+            {
+                "id": task.id,
+                "key": maintenance_task_key(task),
+                "builtin_key": task.builtin_key,
+                "label": task.label,
+                "icon": task.icon,
+                "action_types": list(task.action_types or []),
+                "interval_days": task.interval_days,
+                "enabled": task.enabled,
+                "sort_order": task.sort_order,
+                "days_until_due": days_until_due,
+                "last_date": last_date,
+            }
+        )
+    return result

@@ -619,6 +619,29 @@ def test_v1_current_includes_status_and_ideal_range(client: TestClient):
 
 # ── /v1/todo ─────────────────────────────────────────────────────────────
 
+def _task_by_key(todo_list, builtin_key):
+    """Finds a task in a /v1/todo list (or /installations/.../maintenance list)
+    by its builtin_key."""
+    return next(t for t in todo_list if t["builtin_key"] == builtin_key)
+
+
+def test_v1_todo_returns_default_task_list(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    keys = {t["builtin_key"] for t in data}
+    assert {"ph_measurement", "filter_maintenance", "water_change"} <= keys
+    ph = _task_by_key(data, "ph_measurement")
+    assert ph["interval_days"] == 7
+    assert ph["enabled"] is True
+    assert ph["key"] == "ph_measurement"
+
+
 def test_v1_todo_ph_days_until_due(client: TestClient):
     login(client)
     key = get_api_key(client)
@@ -636,9 +659,9 @@ def test_v1_todo_ph_days_until_due(client: TestClient):
     )
     r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
     assert r.status_code == 200
-    data = r.json()
-    assert data["ph_measurement"]["days_until_due"] == 5
-    assert data["ph_measurement"]["last_date"] == measured_date
+    ph = _task_by_key(r.json(), "ph_measurement")
+    assert ph["days_until_due"] == 5
+    assert ph["last_date"] == measured_date
 
 
 def test_v1_todo_ph_overdue_is_negative(client: TestClient):
@@ -658,7 +681,7 @@ def test_v1_todo_ph_overdue_is_negative(client: TestClient):
     )
     r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
     assert r.status_code == 200
-    assert r.json()["ph_measurement"]["days_until_due"] == -3
+    assert _task_by_key(r.json(), "ph_measurement")["days_until_due"] == -3
 
 
 def test_v1_todo_never_measured_is_null(client: TestClient):
@@ -669,10 +692,12 @@ def test_v1_todo_never_measured_is_null(client: TestClient):
     r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
     assert r.status_code == 200
     data = r.json()
-    assert data["ph_measurement"]["days_until_due"] is None
-    assert data["ph_measurement"]["last_date"] is None
-    assert data["filter_maintenance"]["days_until_due"] is None
-    assert data["filter_maintenance"]["last_date"] is None
+    ph = _task_by_key(data, "ph_measurement")
+    assert ph["days_until_due"] is None
+    assert ph["last_date"] is None
+    filt = _task_by_key(data, "filter_maintenance")
+    assert filt["days_until_due"] is None
+    assert filt["last_date"] is None
 
 
 def test_v1_todo_filter_maintenance_days_until_due(client: TestClient):
@@ -691,9 +716,27 @@ def test_v1_todo_filter_maintenance_days_until_due(client: TestClient):
     )
     r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
     assert r.status_code == 200
-    data = r.json()
-    assert data["filter_maintenance"]["days_until_due"] == 9
-    assert data["filter_maintenance"]["last_date"] == done_date
+    filt = _task_by_key(r.json(), "filter_maintenance")
+    assert filt["days_until_due"] == 9
+    assert filt["last_date"] == done_date
+
+
+def test_v1_todo_excludes_disabled_tasks(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    inst_r = client.post("/installations", json={"name": "My pool"})
+    installation_id = inst_r.json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    water_change = _task_by_key(tasks, "water_change")
+    client.patch(
+        f"/installations/{installation_id}/maintenance/{water_change['id']}",
+        json={"enabled": False},
+    )
+    r = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    keys = {t["builtin_key"] for t in r.json()}
+    assert "water_change" not in keys
+    assert "ph_measurement" in keys
 
 
 def test_v1_todo_requires_api_key(client: TestClient):
@@ -760,7 +803,7 @@ def test_v1_create_maintenance_is_readable_back(client: TestClient):
     assert r.json()["action_type"] == "Backwash"
 
     todo = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
-    assert todo.json()["filter_maintenance"]["days_until_due"] == 14
+    assert _task_by_key(todo.json(), "filter_maintenance")["days_until_due"] == 14
 
 
 def test_v1_create_maintenance_rejects_unknown_action_type(client: TestClient):
@@ -780,6 +823,131 @@ def test_v1_create_maintenance_requires_api_key(client: TestClient):
     client.post("/installations", json={"name": "My pool"})
     r = client.post("/v1/maintenance", json={"action_type": "Backwash"})
     assert r.status_code == 401
+
+
+def test_v1_maintenance_complete_resets_due(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    filt = _task_by_key(tasks, "filter_maintenance")
+    r = client.post(
+        "/v1/maintenance/complete",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "task_id": filt["id"]},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["days_until_due"] == filt["interval_days"]  # just done today
+    assert body["last_date"] == date.today().isoformat()
+
+
+def test_v1_maintenance_complete_rejects_foreign_task(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    r = client.post(
+        "/v1/maintenance/complete",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "task_id": 99999},
+    )
+    assert r.status_code == 404
+
+
+# ── /installations/{id}/maintenance (config) ─────────────────────────────
+
+def test_maintenance_seeded_on_installation_create(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    keys = {t["builtin_key"] for t in tasks}
+    assert {"ph_measurement", "filter_maintenance", "water_change"} <= keys
+
+
+def test_maintenance_spa_defaults_differ_from_pool(client: TestClient):
+    login(client)
+    spa_id = client.post("/installations", json={"name": "My spa", "type": "spa"}).json()["id"]
+    tasks = client.get(f"/installations/{spa_id}/maintenance").json()
+    ph = _task_by_key(tasks, "ph_measurement")
+    assert ph["interval_days"] == 3  # spa cadence, vs 7 for a pool
+
+
+def test_maintenance_create_custom_task(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    r = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Vacuum floor", "interval_days": 10},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["builtin_key"] is None
+    assert body["label"] == "Vacuum floor"
+    assert body["action_types"] == ["Vacuum floor"]  # defaults to [label]
+    assert body["key"] == f"custom_{body['id']}"
+
+
+def test_maintenance_complete_custom_task(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    task = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Vacuum floor", "interval_days": 10},
+    ).json()
+    r = client.post(
+        f"/installations/{installation_id}/maintenance/{task['id']}/complete"
+    )
+    assert r.status_code == 200
+    assert r.json()["last_date"] == date.today().isoformat()
+    # The completion is a readable Action with the custom action_type.
+    actions = client.get(f"/actions?installation_id={installation_id}").json()
+    assert any(a["action_type"] == "Vacuum floor" for a in actions)
+
+
+def test_maintenance_update_task(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    ph = _task_by_key(tasks, "ph_measurement")
+    r = client.patch(
+        f"/installations/{installation_id}/maintenance/{ph['id']}",
+        json={"interval_days": 4, "enabled": False},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["interval_days"] == 4
+    assert body["enabled"] is False
+
+
+def test_maintenance_builtin_cannot_be_deleted(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    ph = _task_by_key(tasks, "ph_measurement")
+    r = client.delete(f"/installations/{installation_id}/maintenance/{ph['id']}")
+    assert r.status_code == 400
+
+
+def test_maintenance_custom_can_be_deleted(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    task = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Vacuum floor", "interval_days": 10},
+    ).json()
+    r = client.delete(f"/installations/{installation_id}/maintenance/{task['id']}")
+    assert r.status_code == 204
+    remaining = client.get(f"/installations/{installation_id}/maintenance").json()
+    assert all(t["id"] != task["id"] for t in remaining)
+
+
+def test_maintenance_unknown_task_404s(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    r = client.patch(
+        f"/installations/{installation_id}/maintenance/99999", json={"interval_days": 5}
+    )
+    assert r.status_code == 404
 
 
 # ── /v1/history ──────────────────────────────────────────────────────────

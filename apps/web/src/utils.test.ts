@@ -12,7 +12,9 @@ import {
   getWaterStatus,
   extractMeasuredParams,
   installationParamsToRanges,
-  getTodoItems,
+  getChemistryTodoItems,
+  maintenanceTodoItems,
+  maintenanceTaskLabel,
   type MeasuredParams,
   type WaterParams,
   type DynamicRanges,
@@ -20,12 +22,6 @@ import {
 import { translations } from './i18n/translations'
 
 const t = (key: string) => (translations.fr as Record<string, string>)[key] ?? key
-
-function daysAgo(n: number): string {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() - n)
-  return d.toISOString().slice(0, 10)
-}
 
 const makeInstallation = (overrides: Partial<Installation> = {}): Installation => ({
   id: 1,
@@ -321,63 +317,78 @@ describe('installationParamsToRanges — unit-aware temp/salt/hardness', () => {
   })
 })
 
-describe('getTodoItems', () => {
+const makeTask = (overrides: Partial<import('./types').MaintenanceTask> = {}): import('./types').MaintenanceTask => ({
+  id: 1,
+  key: 'ph_measurement',
+  builtin_key: 'ph_measurement',
+  label: 'pH measurement',
+  icon: 'mdi:test-tube',
+  action_types: ['Measurement'],
+  interval_days: 7,
+  enabled: true,
+  sort_order: 0,
+  days_until_due: null,
+  last_date: null,
+  ...overrides,
+})
+
+describe('maintenanceTaskLabel', () => {
+  it('localizes built-in tasks via their builtin_key', () => {
+    expect(maintenanceTaskLabel({ builtin_key: 'filter_maintenance', label: 'x' }, t))
+      .toBe('Entretien du filtre')
+  })
+
+  it('uses the stored label for custom tasks', () => {
+    expect(maintenanceTaskLabel({ builtin_key: null, label: 'Vacuum floor' }, t))
+      .toBe('Vacuum floor')
+  })
+})
+
+describe('maintenanceTodoItems', () => {
+  it('flags a never-done task as overdue', () => {
+    const items = maintenanceTodoItems([makeTask({ days_until_due: null })], t)
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('maint-ph_measurement')
+    expect(items[0].delay).toBe('Jamais fait')
+    expect(items[0].isOverdue).toBe(true)
+  })
+
+  it('flags an overdue task with the days overdue', () => {
+    const items = maintenanceTodoItems([makeTask({ days_until_due: -3 })], t)
+    expect(items[0].delay).toBe('En retard (3 j)')
+    expect(items[0].isOverdue).toBe(true)
+  })
+
+  it('shows a task coming due within the warn window', () => {
+    const items = maintenanceTodoItems([makeTask({ days_until_due: 4 })], t)
+    expect(items[0].delay).toBe('Dans 4 j')
+    expect(items[0].isOverdue).toBe(false)
+  })
+
+  it('hides a task that is well within its cycle', () => {
+    const items = maintenanceTodoItems([makeTask({ days_until_due: 30 })], t)
+    expect(items).toHaveLength(0)
+  })
+
+  it('skips disabled tasks', () => {
+    const items = maintenanceTodoItems([makeTask({ enabled: false, days_until_due: null })], t)
+    expect(items).toHaveLength(0)
+  })
+
+  it('marks non-pH tasks as maintenance kind', () => {
+    const items = maintenanceTodoItems([makeTask({ builtin_key: 'filter_maintenance', days_until_due: -1 })], t)
+    expect(items[0].kind).toBe('maintenance')
+  })
+})
+
+describe('getChemistryTodoItems', () => {
   const emptyParams: MeasuredParams = {
     ph: null, chlorine: null, tac: null, temp: null, bromine: null,
     hardness: null, salt: null, stabilizer: null, cc: null, date: null,
   }
 
-  it('flags pH as never measured when there is no measurement history', () => {
-    const items = getTodoItems([], emptyParams, t)
-    const ph = items.find(i => i.id === 'ph-measure')
-    expect(ph).toBeDefined()
-    expect(ph!.delay).toBe('Jamais mesuré')
-    expect(ph!.isOverdue).toBe(true)
-  })
-
-  it('flags pH as overdue past the 7-day cycle', () => {
-    const actions = [makeAction({ action_type: 'Measurement', qty: '7.2', date: daysAgo(10) })]
-    const items = getTodoItems(actions, emptyParams, t)
-    const ph = items.find(i => i.id === 'ph-measure')
-    expect(ph!.delay).toBe('En retard (3 j)')
-    expect(ph!.isOverdue).toBe(true)
-  })
-
-  it('shows an upcoming pH measurement within the 5-day warn window', () => {
-    const actions = [makeAction({ action_type: 'Measurement', qty: '7.2', date: daysAgo(3) })]
-    const items = getTodoItems(actions, emptyParams, t)
-    const ph = items.find(i => i.id === 'ph-measure')
-    expect(ph!.delay).toBe('Dans 4 j')
-    expect(ph!.isOverdue).toBe(false)
-  })
-
-  it('does not flag pH when well within the cycle (more than 5 days left)', () => {
-    const actions = [makeAction({ action_type: 'Measurement', qty: '7.2', date: daysAgo(1) })]
-    const items = getTodoItems(actions, emptyParams, t)
-    expect(items.find(i => i.id === 'ph-measure')).toBeUndefined()
-  })
-
-  it('flags filter maintenance as never done with no history', () => {
-    const items = getTodoItems([], emptyParams, t)
-    const filter = items.find(i => i.id === 'filter-maintenance')
-    expect(filter!.delay).toBe('Jamais fait')
-  })
-
-  it('flags filter maintenance as overdue past 14 days', () => {
-    const actions = [makeAction({ action_type: 'Cartridge cleaning', date: daysAgo(20) })]
-    const items = getTodoItems(actions, emptyParams, t)
-    const filter = items.find(i => i.id === 'filter-maintenance')
-    expect(filter!.delay).toBe('En retard (20 j)')
-  })
-
-  it('does not flag filter maintenance when recently done', () => {
-    const actions = [makeAction({ action_type: 'Cartridge cleaning', date: daysAgo(2) })]
-    const items = getTodoItems(actions, emptyParams, t)
-    expect(items.find(i => i.id === 'filter-maintenance')).toBeUndefined()
-  })
-
   it('flags low chlore', () => {
-    const items = getTodoItems([], { ...emptyParams, chlorine: 0.5 }, t)
+    const items = getChemistryTodoItems({ ...emptyParams, chlorine: 0.5 }, t)
     const chlore = items.find(i => i.id === 'chlorine-low')
     expect(chlore!.title).toBe('Chlore faible')
     expect(chlore!.subtitle).toBe('Chlore libre : 0.5 mg/L (min. recommandé : 1 mg/L)')
@@ -385,7 +396,7 @@ describe('getTodoItems', () => {
   })
 
   it('does not flag chlore when at or above the minimum', () => {
-    const items = getTodoItems([], { ...emptyParams, chlorine: 1.2 }, t)
+    const items = getChemistryTodoItems({ ...emptyParams, chlorine: 1.2 }, t)
     expect(items.find(i => i.id === 'chlorine-low')).toBeUndefined()
   })
 })

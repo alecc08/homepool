@@ -22,13 +22,22 @@ from passlib.context import CryptContext
 
 from database import engine, get_session
 from dosage import compute_recommendations
-from models import Action, ApiKey, Installation, PasswordResetToken, Product, User
+from models import (
+    Action,
+    ApiKey,
+    Installation,
+    MaintenanceTask,
+    PasswordResetToken,
+    Product,
+    User,
+)
 from seeds import insert_seeds
 from simulator import simulate_dosage, simulate_heating_energy
 from water_params import (
     MAINTENANCE_ACTION_TYPES,
     attach_status,
-    compute_todo_status,
+    compute_task_status,
+    default_maintenance_tasks,
     encode_measurement_notes,
     extract_current_conditions,
     extract_history,
@@ -295,6 +304,48 @@ def _ensure_admin_user(session: Session) -> None:
     session.commit()
 
 
+def _seed_maintenance_tasks_for_installation(
+    session: Session, installation: Installation
+) -> None:
+    """Seed an installation with its type's default maintenance tasks. Called on
+    installation create and (via the boot backfill) for installations that have
+    none yet."""
+    for order, spec in enumerate(default_maintenance_tasks(installation.type)):
+        session.add(
+            MaintenanceTask(
+                installation_id=installation.id,
+                builtin_key=spec["builtin_key"],
+                label=spec["label"],
+                action_types=spec["action_types"],
+                interval_days=spec["interval_days"],
+                icon=spec["icon"],
+                enabled=True,
+                sort_order=order,
+            )
+        )
+
+
+def _seed_maintenance_tasks(session: Session) -> None:
+    """Boot backfill: give every installation with zero maintenance tasks its
+    type's defaults. Idempotent — once an installation has any task (even after
+    the user deletes some), it is skipped, so user edits are never clobbered and
+    deleted tasks are not re-added."""
+    installations = session.exec(select(Installation)).all()
+    seeded = False
+    for installation in installations:
+        has_task = session.exec(
+            select(MaintenanceTask.id).where(
+                MaintenanceTask.installation_id == installation.id
+            )
+        ).first()
+        if has_task is not None:
+            continue
+        _seed_maintenance_tasks_for_installation(session, installation)
+        seeded = True
+    if seeded:
+        session.commit()
+
+
 # ── Lifespan ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -310,6 +361,7 @@ async def lifespan(app: FastAPI):
         insert_seeds(session)
         _ensure_admin_user(session)
         _migrate_installations(session)
+        _seed_maintenance_tasks(session)
     yield
 
 
@@ -480,14 +532,44 @@ class InstallationSummaryOut(BaseModel):
     sanitizer: str
 
 
-class TodoItemOut(BaseModel):
+class MaintenanceTaskOut(BaseModel):
+    # A configurable maintenance task with its derived due status. `key` is
+    # stable across renames (builtin_key or custom_<id>); clients localize
+    # built-in tasks via builtin_key and fall back to `label`. days_until_due /
+    # last_date are None when the task has never been logged.
+    id: int
+    key: str
+    builtin_key: Optional[str] = None
+    label: str
+    icon: str
+    action_types: List[str]
+    interval_days: int
+    enabled: bool
+    sort_order: int
     days_until_due: Optional[int] = None
     last_date: Optional[date] = None
 
 
-class TodoStatusOut(BaseModel):
-    ph_measurement: TodoItemOut
-    filter_maintenance: TodoItemOut
+class MaintenanceTaskIn(BaseModel):
+    # Create a custom task. action_types defaults to [label] when omitted.
+    label: str
+    action_types: Optional[List[str]] = None
+    interval_days: int = 7
+    icon: str = "mdi:calendar-clock"
+
+
+class MaintenanceTaskUpdateIn(BaseModel):
+    label: Optional[str] = None
+    action_types: Optional[List[str]] = None
+    interval_days: Optional[int] = None
+    icon: Optional[str] = None
+    enabled: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class MaintenanceCompleteIn(BaseModel):
+    installation_id: Optional[int] = None
+    task_id: int
 
 
 class HistoryEntryOut(BaseModel):
@@ -836,6 +918,8 @@ def create_installation(
     session.add(installation)
     session.commit()
     session.refresh(installation)
+    _seed_maintenance_tasks_for_installation(session, installation)
+    session.commit()
     return installation
 
 
@@ -900,6 +984,11 @@ def delete_installation(
     # Cascade delete of attached actions
     for action in session.exec(select(Action).where(Action.installation_id == installation_id)).all():
         session.delete(action)
+    # Cascade delete of maintenance tasks
+    for task in session.exec(
+        select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+    ).all():
+        session.delete(task)
     session.delete(installation)
     session.commit()
 
@@ -1036,6 +1125,181 @@ def update_installation_params(
     session.commit()
     session.refresh(installation)
     return _merge_range_overrides(defaults, installation.range_overrides)
+
+
+# ── Maintenance tasks ──────────────────────────────────────────────────────
+#
+# Per-installation configurable maintenance. Each installation is seeded with
+# its type's defaults (see _seed_maintenance_tasks_for_installation); tasks can
+# be enabled/disabled, retimed, relabelled, or added (custom). "Due" is derived
+# from the action log, never stored (see compute_task_status).
+
+def _installation_actions_for_status(session: Session, installation_id: int) -> List[Action]:
+    cutoff = date.today() - timedelta(days=365)
+    return session.exec(
+        select(Action)
+        .where(Action.installation_id == installation_id, Action.date >= cutoff)
+        .order_by(Action.date.desc())
+        .limit(1000)
+    ).all()
+
+
+def _maintenance_status(session: Session, installation_id: int) -> List[Dict]:
+    tasks = session.exec(
+        select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+    ).all()
+    actions = _installation_actions_for_status(session, installation_id)
+    return compute_task_status(tasks, actions)
+
+
+def _get_owned_task(
+    installation_id: int, task_id: int, user: User, session: Session
+) -> MaintenanceTask:
+    _get_owned_installation(installation_id, user, session)
+    task = session.get(MaintenanceTask, task_id)
+    if not task or task.installation_id != installation_id:
+        raise HTTPException(status_code=404, detail="Maintenance task not found")
+    return task
+
+
+def _complete_maintenance_task(session: Session, user: User, task: MaintenanceTask) -> Action:
+    """Logs a completion for a task: an Action with the task's primary
+    action_type on today's date. Shared by the web and /v1 complete routes."""
+    action_type = (task.action_types or [task.label])[0]
+    action = Action(
+        date=date.today(),
+        action_type=action_type,
+        user_id=user.id,
+        installation_id=task.installation_id,
+        notes="",
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(action)
+    session.commit()
+    session.refresh(action)
+    return action
+
+
+@app.get("/installations/{installation_id}/maintenance", response_model=List[MaintenanceTaskOut])
+def list_maintenance_tasks(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    return [MaintenanceTaskOut(**t) for t in _maintenance_status(session, installation_id)]
+
+
+@app.post("/installations/{installation_id}/maintenance", response_model=MaintenanceTaskOut)
+def create_maintenance_task(
+    installation_id: int,
+    payload: MaintenanceTaskIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="label is required")
+    action_types = payload.action_types or [label]
+    if payload.interval_days < 1:
+        raise HTTPException(status_code=422, detail="interval_days must be at least 1")
+    max_order = session.exec(
+        select(MaintenanceTask.sort_order).where(
+            MaintenanceTask.installation_id == installation_id
+        )
+    ).all()
+    task = MaintenanceTask(
+        installation_id=installation_id,
+        builtin_key=None,
+        label=label,
+        action_types=action_types,
+        interval_days=payload.interval_days,
+        icon=payload.icon,
+        enabled=True,
+        sort_order=(max(max_order) + 1) if max_order else 0,
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    status_list = _maintenance_status(session, installation_id)
+    match = next(t for t in status_list if t["id"] == task.id)
+    return MaintenanceTaskOut(**match)
+
+
+@app.patch(
+    "/installations/{installation_id}/maintenance/{task_id}",
+    response_model=MaintenanceTaskOut,
+)
+def update_maintenance_task(
+    installation_id: int,
+    task_id: int,
+    payload: MaintenanceTaskUpdateIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    task = _get_owned_task(installation_id, task_id, user, session)
+    if payload.label is not None:
+        label = payload.label.strip()
+        if not label:
+            raise HTTPException(status_code=422, detail="label cannot be empty")
+        task.label = label
+    if payload.action_types is not None:
+        if not payload.action_types:
+            raise HTTPException(status_code=422, detail="action_types cannot be empty")
+        task.action_types = payload.action_types
+    if payload.interval_days is not None:
+        if payload.interval_days < 1:
+            raise HTTPException(status_code=422, detail="interval_days must be at least 1")
+        task.interval_days = payload.interval_days
+    if payload.icon is not None:
+        task.icon = payload.icon
+    if payload.enabled is not None:
+        task.enabled = payload.enabled
+    if payload.sort_order is not None:
+        task.sort_order = payload.sort_order
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    status_list = _maintenance_status(session, installation_id)
+    match = next(t for t in status_list if t["id"] == task.id)
+    return MaintenanceTaskOut(**match)
+
+
+@app.delete("/installations/{installation_id}/maintenance/{task_id}", status_code=204)
+def delete_maintenance_task(
+    installation_id: int,
+    task_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    task = _get_owned_task(installation_id, task_id, user, session)
+    # Built-in tasks are disabled (enabled=false), not deleted, so the boot
+    # backfill never re-adds them and users keep a consistent default set.
+    if task.builtin_key is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Built-in tasks cannot be deleted; disable them instead.",
+        )
+    session.delete(task)
+    session.commit()
+
+
+@app.post(
+    "/installations/{installation_id}/maintenance/{task_id}/complete",
+    response_model=MaintenanceTaskOut,
+)
+def complete_maintenance_task(
+    installation_id: int,
+    task_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    task = _get_owned_task(installation_id, task_id, user, session)
+    _complete_maintenance_task(session, user, task)
+    status_list = _maintenance_status(session, installation_id)
+    match = next(t for t in status_list if t["id"] == task.id)
+    return MaintenanceTaskOut(**match)
 
 
 # ── Actions ────────────────────────────────────────────────────────────────
@@ -1246,7 +1510,7 @@ def api_history(
     return [HistoryEntryOut(**entry) for entry in entries]
 
 
-@app.get("/v1/todo", response_model=TodoStatusOut)
+@app.get("/v1/todo", response_model=List[MaintenanceTaskOut])
 @limiter.limit("60/minute")
 def api_todo_status(
     request: Request,
@@ -1254,15 +1518,14 @@ def api_todo_status(
     user: User = Depends(get_current_user_by_api_key),
     session: Session = Depends(get_session),
 ):
+    # Returns the installation's enabled maintenance tasks with derived due
+    # status. The shape changed from the old fixed {ph_measurement,
+    # filter_maintenance} object to a self-describing list when maintenance
+    # became configurable — the HA integration ships in lockstep and consumes
+    # the list directly.
     resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
-    cutoff = date.today() - timedelta(days=90)
-    actions = session.exec(
-        select(Action)
-        .where(Action.installation_id == resolved_id, Action.date >= cutoff)
-        .order_by(Action.date.desc())
-        .limit(500)
-    ).all()
-    return TodoStatusOut(**compute_todo_status(actions))
+    status_list = _maintenance_status(session, resolved_id)
+    return [MaintenanceTaskOut(**t) for t in status_list if t["enabled"]]
 
 
 @app.post("/v1/measurements", response_model=ActionOut)
@@ -1304,6 +1567,28 @@ def api_create_measurement(
     session.commit()
     session.refresh(action)
     return action
+
+
+@app.post("/v1/maintenance/complete", response_model=MaintenanceTaskOut)
+@limiter.limit("60/minute")
+def api_complete_maintenance_task(
+    request: Request,
+    payload: MaintenanceCompleteIn,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    # "Mark done" for the HA per-task buttons: completes a task by id (logs its
+    # primary action_type), so custom tasks with their own action types work
+    # without the caller needing to know the string. Shares the completion path
+    # with the web route.
+    resolved_id = _resolve_installation_for_api_key(payload.installation_id, user, session)
+    task = session.get(MaintenanceTask, payload.task_id)
+    if not task or task.installation_id != resolved_id:
+        raise HTTPException(status_code=404, detail="Maintenance task not found")
+    _complete_maintenance_task(session, user, task)
+    status_list = _maintenance_status(session, resolved_id)
+    match = next(t for t in status_list if t["id"] == task.id)
+    return MaintenanceTaskOut(**match)
 
 
 @app.post("/v1/maintenance", response_model=ActionOut)

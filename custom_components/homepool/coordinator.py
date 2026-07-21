@@ -32,7 +32,12 @@ class HomepoolDataUpdateCoordinator(DataUpdateCoordinator[dict[int, dict]]):
             data: dict[int, dict] = {}
             for installation in installations:
                 fields = await self.client.get_current(installation["id"])
-                todo = await self.client.get_todo(installation["id"])
+                # /v1/todo is a list of task objects; key it by each task's
+                # stable `key` (builtin_key or custom_<id>) so the sensor and
+                # button entities can look their task up in O(1) and keep a
+                # stable unique_id across renames.
+                todo_list = await self.client.get_todo(installation["id"])
+                todo = {task["key"]: task for task in todo_list}
                 # History is a nice-to-have for the frontend table card; a
                 # failure here must not sink the whole update (which the params
                 # and todo sensors depend on), so degrade to an empty list.

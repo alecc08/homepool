@@ -54,7 +54,10 @@ class HomepoolClient:
     async def get_current(self, installation_id: int) -> dict:
         return await self._get("/v1/current", params={"installation_id": installation_id})
 
-    async def get_todo(self, installation_id: int) -> dict:
+    async def get_todo(self, installation_id: int) -> list[dict]:
+        # As of configurable maintenance, /v1/todo returns a list of task
+        # objects ({id, key, builtin_key, label, icon, interval_days,
+        # days_until_due, last_date}) rather than the old fixed two-key object.
         return await self._get("/v1/todo", params={"installation_id": installation_id})
 
     async def get_history(
@@ -83,6 +86,15 @@ class HomepoolClient:
         if date is not None:
             payload["date"] = date
         return await self._post("/v1/maintenance", payload)
+
+    async def complete_task(self, installation_id: int, task_id: int) -> dict:
+        # "Mark done" for a configurable maintenance task: logs a completion for
+        # the task's primary action_type server-side, so custom tasks work
+        # without the caller knowing the action_type string.
+        return await self._post(
+            "/v1/maintenance/complete",
+            {"installation_id": installation_id, "task_id": task_id},
+        )
 
     async def create_measurement(self, installation_id: int, **fields: object) -> dict:
         payload = {"installation_id": installation_id, **{k: v for k, v in fields.items() if v is not None}}

@@ -1,4 +1,4 @@
-import { Sun, Moon, Bath, Waves, Pencil, Trash2, Home, Activity, Clock, ClipboardList, LogOut, User as UserIcon } from 'lucide-react'
+import { Sun, Moon, Bath, Waves, Pencil, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, User as UserIcon } from 'lucide-react'
 import homepoolLogo from '@/assets/homepool-logo.svg'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import type { User } from '../types'
@@ -8,7 +8,7 @@ import { useT } from '../context/LocaleContext'
 import type { Locale } from '../i18n/translations'
 import BottomNav from './BottomNav'
 
-type Page = 'log' | 'measurements' | 'history' | 'recommendations'
+type Page = 'log' | 'measurements' | 'history' | 'recommendations' | 'maintenance'
 
 function getIsDark(theme: Theme): boolean {
   if (theme === 'dark') return true
@@ -112,9 +112,10 @@ type Props = {
   setTheme?: (t: Theme) => void
 }
 
-const NAV_ITEMS: { page: Page; labelKey: 'nav_log' | 'nav_measurements' | 'nav_history' | 'nav_recommendations'; Icon: typeof Home }[] = [
+const NAV_ITEMS: { page: Page; labelKey: 'nav_log' | 'nav_measurements' | 'nav_history' | 'nav_recommendations' | 'nav_maintenance'; Icon: typeof Home }[] = [
   { page: 'log', labelKey: 'nav_log', Icon: Home },
   { page: 'measurements', labelKey: 'nav_measurements', Icon: Activity },
+  { page: 'maintenance', labelKey: 'nav_maintenance', Icon: Wrench },
   { page: 'history', labelKey: 'nav_history', Icon: Clock },
   { page: 'recommendations', labelKey: 'nav_recommendations', Icon: ClipboardList },
 ]
