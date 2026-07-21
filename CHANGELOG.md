@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-21
+
 ### Added
 
 - Installations now have optional contact / location fields — address, contact name, phone, email and notes — for users managing multiple pools at different addresses (#35).
