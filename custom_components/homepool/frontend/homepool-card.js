@@ -23,14 +23,18 @@ const FIELD_SUFFIXES = {
   temp: 'temperature',
 };
 
-const BUTTON_SUFFIXES = {
-  'Cartridge cleaning': 'log_cartridge_cleaning',
-  'Skimmer filter cleaning': 'log_skimmer_filter_cleaning',
-  Backwash: 'log_backwash',
-  'pH calibration': 'log_ph_calibration',
-  Purge: 'log_purge',
-  'Water change': 'log_water_change',
-};
+// Ordered by real-world frequency of use (most-used first). The
+// `log_measurement` entry is the form-toggle button, kept in this same list
+// so ordering and per-item show/hide (config.quick_add) apply uniformly.
+const QUICK_ADD_ITEMS = [
+  { key: 'log_measurement', kind: 'form-toggle' },
+  { key: 'backwash', label: 'Backwash', suffix: 'log_backwash' },
+  { key: 'skimmer_filter_cleaning', label: 'Skimmer filter cleaning', suffix: 'log_skimmer_filter_cleaning' },
+  { key: 'ph_calibration', label: 'pH calibration', suffix: 'log_ph_calibration' },
+  { key: 'purge', label: 'Purge', suffix: 'log_purge' },
+  { key: 'water_change', label: 'Water change', suffix: 'log_water_change' },
+  { key: 'cartridge_cleaning', label: 'Cartridge cleaning', suffix: 'log_cartridge_cleaning' },
+];
 
 const DUE_SUFFIXES = {
   ph_measurement: 'days_until_ph_measurement_due',
@@ -134,6 +138,17 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
+// Inlined from apps/web/src/assets/homepool-icon.svg — the card is a
+// single self-contained JS file, so no static-path registration/fetch.
+const HOMEPOOL_ICON_SVG = `
+  <svg class="hp-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+    <rect width="48" height="48" rx="11" fill="#0B0F14"/>
+    <line x1="24" y1="10" x2="24" y2="29" stroke="#8B98A9" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M8 24 C13 19 18.5 19 24 24 C29.5 29 35 29 40 24" stroke="#22D3EE" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <circle cx="24" cy="35" r="3.4" fill="#22D3EE"/>
+  </svg>
+`;
+
 // A small horizontal scale: the acceptable band (or, lacking that, a padded
 // ideal band) as the track, the ideal band highlighted within it, and a
 // marker at the current value — same status palette as the tile's dot/rail.
@@ -164,6 +179,8 @@ class HomepoolCard extends HTMLElement {
       installation_id: 1,
       show_buttons: true,
       show_due: true,
+      show_header: true,
+      show_logo: true,
     };
   }
 
@@ -171,13 +188,18 @@ class HomepoolCard extends HTMLElement {
     if (!config || !config.entity_prefix) {
       throw new Error('homepool-card: `entity_prefix` is required (e.g. sensor.my_pool)');
     }
+    const defaultQuickAdd = {};
+    QUICK_ADD_ITEMS.forEach((item) => { defaultQuickAdd[item.key] = true; });
     this._config = {
       title: config.title ?? 'homepool',
       entity_prefix: config.entity_prefix,
       installation_id: config.installation_id ?? null,
       show_buttons: config.show_buttons !== false,
       show_due: config.show_due !== false,
+      show_header: config.show_header !== false,
+      show_logo: config.show_logo !== false,
       parameters: config.parameters ?? null,
+      quick_add: { ...defaultQuickAdd, ...(config.quick_add || {}) },
     };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._formOpen = false;
@@ -223,10 +245,11 @@ class HomepoolCard extends HTMLElement {
   _buttonEntities() {
     const hass = this._hass;
     if (!hass) return [];
-    return Object.entries(BUTTON_SUFFIXES)
-      .map(([label, suffix]) => ({
-        label,
-        entityId: `button.${this._config.entity_prefix.replace(/^sensor\./, '')}_${suffix}`,
+    const quickAdd = this._config.quick_add || {};
+    return QUICK_ADD_ITEMS.filter((item) => item.kind !== 'form-toggle' && quickAdd[item.key] !== false)
+      .map((item) => ({
+        label: item.label,
+        entityId: `button.${this._config.entity_prefix.replace(/^sensor\./, '')}_${item.suffix}`,
       }))
       .filter((e) => hass.states[e.entityId] !== undefined);
   }
@@ -269,7 +292,12 @@ class HomepoolCard extends HTMLElement {
       this.shadowRoot.innerHTML = `
         ${this._styles()}
         <ha-card>
-          <div class="hp-header">${config.title}</div>
+          ${config.show_header ? `
+            <div class="hp-header">
+              ${config.show_logo ? HOMEPOOL_ICON_SVG : ''}
+              <span>${config.title}</span>
+            </div>
+          ` : ''}
           <div class="hp-empty">${t(hass, 'no_data')}</div>
         </ha-card>
       `;
@@ -295,7 +323,7 @@ class HomepoolCard extends HTMLElement {
             : t(hass, 'measured_days_ago', da)
           }</div>`;
       return `
-        <div class="hp-tile" style="--hp-rail:${rail}">
+        <div class="hp-tile${config.installation_id ? ' hp-tile-tappable' : ''}" data-field="${field}" style="--hp-rail:${rail}">
           <div class="hp-tile-top">
             <span class="hp-label">${attrs.friendly_name ? attrs.friendly_name.replace(/^.*?\s/, '') : field}</span>
             ${status ? `<span class="hp-dot" style="background:${rail}"></span>` : ''}
@@ -325,27 +353,43 @@ class HomepoolCard extends HTMLElement {
       return `<span class="hp-chip ${chipClass}">${label}: ${text}</span>`;
     }).join('');
 
-    const buttonsHtml = buttons.map(({ label, entityId }) => `
-      <button class="hp-btn" data-entity="${entityId}">${
-        (hass.states[entityId] && hass.states[entityId].attributes.friendly_name || label).replace(/^.*?\s/, '')
-      }</button>
-    `).join('');
+    const buttonsByEntity = new Map(buttons.map((b) => [b.entityId, b]));
+    const showFormToggle = config.installation_id && config.quick_add?.log_measurement !== false;
+    const buttonsHtml = QUICK_ADD_ITEMS.map((item) => {
+      if (item.kind === 'form-toggle') {
+        return showFormToggle
+          ? `<button class="hp-btn hp-btn-accent" id="hp-form-toggle">${t(hass, 'log_measurement')}</button>`
+          : '';
+      }
+      const entityId = `button.${config.entity_prefix.replace(/^sensor\./, '')}_${item.suffix}`;
+      const btn = buttonsByEntity.get(entityId);
+      if (!btn) return '';
+      return `
+        <button class="hp-btn" data-entity="${entityId}">${
+          (hass.states[entityId] && hass.states[entityId].attributes.friendly_name || btn.label).replace(/^.*?\s/, '')
+        }</button>
+      `;
+    }).join('');
 
     const formHtml = this._formOpen ? this._formHtml(hass, this._sanitizer()) : '';
+
+    const formState = this._formOpen ? this._captureFormState() : null;
 
     this.shadowRoot.innerHTML = `
       ${this._styles()}
       <ha-card>
-        <div class="hp-header">
-          <span>${config.title}</span>
-        </div>
+        ${config.show_header ? `
+          <div class="hp-header">
+            ${config.show_logo ? HOMEPOOL_ICON_SVG : ''}
+            <span>${config.title}</span>
+          </div>
+        ` : ''}
         ${dueHtml ? `<div class="hp-due-row">${dueHtml}</div>` : ''}
         ${params.length ? `<div class="hp-grid">${tilesHtml}</div>` : ''}
-        ${buttons.length ? `
+        ${buttons.length || showFormToggle ? `
           <div class="hp-section-label">${t(hass, 'quick_add')}</div>
           <div class="hp-buttons">
             ${buttonsHtml}
-            ${config.installation_id ? `<button class="hp-btn hp-btn-accent" id="hp-form-toggle">${t(hass, 'log_measurement')}</button>` : ''}
           </div>
         ` : ''}
         ${formHtml}
@@ -362,6 +406,12 @@ class HomepoolCard extends HTMLElement {
         this._render();
       });
     }
+    if (config.installation_id) {
+      this.shadowRoot.querySelectorAll('.hp-tile[data-field]').forEach((tile) => {
+        tile.addEventListener('click', () => this._openFormOnField(tile.dataset.field));
+      });
+    }
+    this._restoreFormState(formState);
     const formEl = this.shadowRoot.getElementById('hp-form');
     if (formEl) {
       formEl.addEventListener('submit', (e) => {
@@ -377,6 +427,53 @@ class HomepoolCard extends HTMLElement {
           this._formMoreOpen = !this._formMoreOpen;
           this._render();
         });
+      }
+    }
+  }
+
+  // Opens the log-measurement form focused on a tapped tile's field,
+  // expanding "more fields" first if the field isn't in the sanitizer's
+  // default set.
+  _openFormOnField(field) {
+    const primary = SANITIZER_FORM_FIELDS[this._sanitizer()] || DEFAULT_FORM_FIELDS;
+    this._formOpen = true;
+    if (!primary.includes(field)) this._formMoreOpen = true;
+    this._render();
+    const formEl = this.shadowRoot.getElementById('hp-form');
+    if (formEl && formEl.elements[field]) formEl.elements[field].focus();
+  }
+
+  // Captures the open form's live values + focus/cursor position before a
+  // hass-triggered _render() blows away and rebuilds the shadow DOM via
+  // innerHTML, so uncontrolled <input> state survives the rebuild. Mirrors
+  // the capture/restore idiom already used by HomepoolCardEditor._sync().
+  _captureFormState() {
+    const formEl = this.shadowRoot.getElementById('hp-form');
+    if (!formEl) return null;
+    const active = this.shadowRoot.activeElement;
+    const values = {};
+    formEl.querySelectorAll('input').forEach((el) => { values[el.name] = el.value; });
+    return {
+      values,
+      activeName: active && active.name,
+      selectionStart: active && active.selectionStart,
+      selectionEnd: active && active.selectionEnd,
+    };
+  }
+
+  _restoreFormState(captured) {
+    if (!captured) return;
+    const formEl = this.shadowRoot.getElementById('hp-form');
+    if (!formEl) return;
+    Object.entries(captured.values).forEach(([name, value]) => {
+      const el = formEl.elements[name];
+      if (el) el.value = value;
+    });
+    if (captured.activeName) {
+      const el = formEl.elements[captured.activeName];
+      if (el) {
+        el.focus();
+        if (typeof captured.selectionStart === 'number') el.setSelectionRange(captured.selectionStart, captured.selectionEnd);
       }
     }
   }
@@ -440,7 +537,13 @@ class HomepoolCard extends HTMLElement {
           margin-bottom: 10px;
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          gap: 8px;
+        }
+        .hp-logo {
+          width: 20px;
+          height: 20px;
+          flex-shrink: 0;
+          border-radius: 5px;
         }
         .hp-empty {
           color: var(--hp-text-muted);
@@ -483,6 +586,9 @@ class HomepoolCard extends HTMLElement {
           left: 0; top: 0; bottom: 0;
           width: 3px;
           background: var(--hp-rail, transparent);
+        }
+        .hp-tile-tappable {
+          cursor: pointer;
         }
         .hp-tile-top {
           display: flex;
@@ -656,12 +762,36 @@ class HomepoolCardEditor extends HTMLElement {
   }
 
   _build() {
+    const quickAddChipsHtml = QUICK_ADD_ITEMS.filter((i) => i.kind !== 'form-toggle')
+      .map((item) => `<button type="button" class="chip" data-quick-add="${item.key}">${item.label}</button>`)
+      .join('');
+    const parameterChipsHtml = Object.keys(FIELD_SUFFIXES)
+      .map((key) => `<button type="button" class="chip" data-parameter="${key}">${FORM_FIELD_LABELS[key] || key}</button>`)
+      .join('');
+
     this.shadowRoot.innerHTML = `
       <style>
         .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
         label { font-size: 12px; font-weight: 600; }
         input { padding: 6px 8px; font-size: 13px; }
         .hint { font-size: 11px; font-weight: 400; color: var(--secondary-text-color); }
+        .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+          font-size: 12px;
+          font-weight: 500;
+          padding: 5px 10px;
+          border-radius: 999px;
+          border: 1px solid var(--divider-color, #ccc);
+          background: transparent;
+          color: var(--secondary-text-color);
+          cursor: pointer;
+        }
+        .chip.active {
+          background: var(--accent-color, #22D3EE);
+          color: #06181D;
+          border-color: transparent;
+          font-weight: 700;
+        }
       </style>
       <div class="row">
         <label>Title</label>
@@ -680,10 +810,24 @@ class HomepoolCardEditor extends HTMLElement {
         <input id="installation_id" type="number" />
       </div>
       <div class="row">
+        <label><input id="show_header" type="checkbox" /> Show title bar</label>
+      </div>
+      <div class="row">
+        <label><input id="show_logo" type="checkbox" /> Show logo</label>
+      </div>
+      <div class="row">
         <label><input id="show_buttons" type="checkbox" /> Show quick-add buttons</label>
       </div>
       <div class="row">
         <label><input id="show_due" type="checkbox" /> Show due chips</label>
+      </div>
+      <div class="row">
+        <label>Quick add actions</label>
+        <div class="chip-row" id="quick-add-chips">${quickAddChipsHtml}</div>
+      </div>
+      <div class="row">
+        <label>Parameters shown</label>
+        <div class="chip-row" id="parameter-chips">${parameterChipsHtml}</div>
       </div>
     `;
 
@@ -702,8 +846,14 @@ class HomepoolCardEditor extends HTMLElement {
     this.shadowRoot.getElementById('installation_id').addEventListener('input', (e) => {
       this._update('installation_id', e.target.value ? parseInt(e.target.value, 10) : null);
     });
-    ['show_buttons', 'show_due'].forEach((id) => {
+    ['show_header', 'show_logo', 'show_buttons', 'show_due'].forEach((id) => {
       this.shadowRoot.getElementById(id).addEventListener('change', (e) => this._update(id, e.target.checked));
+    });
+    this.shadowRoot.querySelectorAll('#quick-add-chips .chip').forEach((chip) => {
+      chip.addEventListener('click', () => this._toggleQuickAdd(chip.dataset.quickAdd));
+    });
+    this.shadowRoot.querySelectorAll('#parameter-chips .chip').forEach((chip) => {
+      chip.addEventListener('click', () => this._toggleParameter(chip.dataset.parameter));
     });
   }
 
@@ -730,16 +880,49 @@ class HomepoolCardEditor extends HTMLElement {
     syncInput('entity_prefix', c.entity_prefix);
     syncInput('installation_id', c.installation_id ?? '');
 
+    const showHeader = this.shadowRoot.getElementById('show_header');
+    if (showHeader && showHeader !== active) showHeader.checked = c.show_header !== false;
+    const showLogo = this.shadowRoot.getElementById('show_logo');
+    if (showLogo && showLogo !== active) showLogo.checked = c.show_logo !== false;
     const showButtons = this.shadowRoot.getElementById('show_buttons');
     if (showButtons && showButtons !== active) showButtons.checked = c.show_buttons !== false;
     const showDue = this.shadowRoot.getElementById('show_due');
     if (showDue && showDue !== active) showDue.checked = c.show_due !== false;
+
+    // Chips aren't focusable text inputs with in-progress typed state, so
+    // it's safe to just re-sync their visual state unconditionally.
+    const quickAdd = c.quick_add || {};
+    this.shadowRoot.querySelectorAll('#quick-add-chips .chip').forEach((chip) => {
+      chip.classList.toggle('active', quickAdd[chip.dataset.quickAdd] !== false);
+    });
+    const activeParams = c.parameters && c.parameters.length ? c.parameters : Object.keys(FIELD_SUFFIXES);
+    this.shadowRoot.querySelectorAll('#parameter-chips .chip').forEach((chip) => {
+      chip.classList.toggle('active', activeParams.includes(chip.dataset.parameter));
+    });
 
     if (this._picker && this._hass) {
       this._picker.hass = this._hass;
       const derived = this._guessEntity(c.entity_prefix);
       if (this._picker.value !== derived) this._picker.value = derived;
     }
+  }
+
+  _toggleQuickAdd(key) {
+    const quickAdd = { ...(this._config.quick_add || {}) };
+    quickAdd[key] = quickAdd[key] === false;
+    this._config = { ...this._config, quick_add: quickAdd };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+    this._sync();
+  }
+
+  _toggleParameter(key) {
+    const current = this._config.parameters && this._config.parameters.length
+      ? this._config.parameters
+      : Object.keys(FIELD_SUFFIXES);
+    const next = current.includes(key) ? current.filter((f) => f !== key) : [...current, key];
+    this._config = { ...this._config, parameters: next };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+    this._sync();
   }
 
   // Picking one sensor derives both entity_prefix (strip the known field
