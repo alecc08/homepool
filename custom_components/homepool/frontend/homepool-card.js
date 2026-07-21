@@ -1468,19 +1468,31 @@ class HomepoolHistoryCardEditor extends HTMLElement {
 HomepoolCard.getConfigElement = () => document.createElement('homepool-card-editor');
 HomepoolHistoryCard.getConfigElement = () => document.createElement('homepool-history-card-editor');
 
-customElements.define('homepool-card', HomepoolCard);
-customElements.define('homepool-card-editor', HomepoolCardEditor);
-customElements.define('homepool-history-card', HomepoolHistoryCard);
-customElements.define('homepool-history-card-editor', HomepoolHistoryCardEditor);
+// Register defensively: HA injects this module globally (add_extra_js_url), and it can be
+// evaluated more than once (frontend reloads, re-added resources). A bare customElements.define
+// on an already-registered tag throws "Failed to execute 'define'… already used", which would
+// abort the rest of this block and leave registration half-done. Guarding each define keeps a
+// re-run a harmless no-op. (This does not eliminate HA's own render/whenDefined race — where a
+// dashboard paints before this module has executed — which is timing on the HA side.)
+const defineCard = (tag, cls) => {
+  if (!customElements.get(tag)) customElements.define(tag, cls);
+};
+defineCard('homepool-card', HomepoolCard);
+defineCard('homepool-card-editor', HomepoolCardEditor);
+defineCard('homepool-history-card', HomepoolHistoryCard);
+defineCard('homepool-history-card-editor', HomepoolHistoryCardEditor);
 
 window.customCards = window.customCards || [];
-window.customCards.push({
+const registerCard = (entry) => {
+  if (!window.customCards.some((c) => c.type === entry.type)) window.customCards.push(entry);
+};
+registerCard({
   type: 'homepool-card',
   name: 'homepool',
   description: 'Water chemistry status board for a homepool installation.',
   preview: false,
 });
-window.customCards.push({
+registerCard({
   type: 'homepool-history-card',
   name: 'homepool history',
   description: 'Recent measurements, treatments and maintenance for a homepool installation.',

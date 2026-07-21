@@ -60,9 +60,13 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 |---|---|
 | ![Dashboard dark](docs/screenshots/dashboard-dark.png) | ![Dashboard light](docs/screenshots/dashboard-light.png) |
 
-| Measurements | History |
+| Measurements | Maintenance |
 |---|---|
-| ![Measurements](docs/screenshots/measurements-light.png) | ![History](docs/screenshots/history-light.png) |
+| ![Measurements](docs/screenshots/measurements-dark.png) | ![Maintenance](docs/screenshots/maintenance-dark.png) |
+
+| History | Recommendations |
+|---|---|
+| ![History](docs/screenshots/history-dark.png) | ![Recommendations](docs/screenshots/recommendations-dark.png) |
 
 | New entry — AquaChek strip |
 |---|
@@ -134,6 +138,12 @@ A hand-written Lovelace card ships with the integration (no separate frontend in
 
 Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
 
+<div align="center">
+
+<img src="docs/screenshots/hass-main-card.png" alt="homepool card in Home Assistant" width="360">
+
+</div>
+
 Add it from the card picker (search "homepool") or with YAML:
 
 ```yaml
@@ -154,6 +164,12 @@ Prefer a more configurable, general-purpose pool widget instead? The [Pool Monit
 > Dosage recommendations are web-app-only for now — the card doesn't surface them yet.
 
 **History card.** A companion `homepool-history-card` renders a compact, read-only table of recent activity — measurements, treatments and maintenance — sourced from the `sensor.<prefix>_history` entity the integration exposes. Set `max_items` to cap the rows, and optionally filter with `types`:
+
+<div align="center">
+
+<img src="docs/screenshots/hass-history-card.png" alt="homepool history card in Home Assistant" width="360">
+
+</div>
 
 ```yaml
 type: custom:homepool-history-card
