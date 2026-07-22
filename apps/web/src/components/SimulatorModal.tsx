@@ -364,10 +364,27 @@ function DosageTab({
                   {t(opt.notes_key as TranslationKey)}
                 </div>
               )}
+              {opt.side_effect && (
+                <SideEffectLine side={opt.side_effect} />
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// A product's secondary-parameter shift (issue #40): the translated caveat plus the
+// signed estimate. pH shifts carry no unit; everything else is ppm.
+function SideEffectLine({ side }: { side: NonNullable<DosageOption['side_effect']> }) {
+  const { t } = useT()
+  const sign = side.delta >= 0 ? '+' : '−'
+  const magnitude = Math.abs(side.delta)
+  const unit = side.param === 'ph' ? '' : ' ppm'
+  return (
+    <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
+      {t(side.notes_key as TranslationKey)} ({sign}{magnitude}{unit})
     </div>
   )
 }

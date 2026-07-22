@@ -102,6 +102,10 @@ export type DosageOption = {
   amount_grams: number | null
   amount_ml: number | null
   notes_key: string | null
+  /** Secondary parameter this product also shifts as a side effect (issue #40) —
+   * e.g. muriatic acid also lowers TA. Null when the product has no meaningful
+   * secondary effect. `delta` is signed; `param` picks the display unit (pH → none). */
+  side_effect: { param: ParamKey; delta: number; notes_key: string } | null
 }
 
 export type Recommendation = {

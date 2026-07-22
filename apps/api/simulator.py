@@ -45,7 +45,13 @@ def simulate_dosage(
             param, current_value, target_value, direction, True, direction_entry["notes_key"],
         )
 
-    options_out = _options_with_amounts(direction_entry["options"], delta, volume_L)
+    # The simulator only has the one param the user is adjusting. For a tac sim that value
+    # IS the current TA, so pass it through; otherwise leave TA/pH None and let
+    # _compute_side_effect fall back to typical values (the caveat text covers the estimate).
+    current_ta = current_value if param == "tac" else None
+    options_out = _options_with_amounts(
+        direction_entry["options"], delta, volume_L, current_ta=current_ta, current_ph=None,
+    )
     return {
         "param": param,
         "current_value": current_value,

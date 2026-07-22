@@ -26,6 +26,34 @@ def test_simulate_dosage_lower_direction():
     assert exact_option["amount_ml"] is not None
 
 
+def test_simulate_dosage_soda_ash_reports_ta_side_effect():
+    result = simulate_dosage("ph", current_value=6.5, target_value=7.4, volume_L=1000, sanitizer="chlorine")
+    option = next(o for o in result["options"] if o["product_id"] == "soda_ash")
+    # delta +0.9 = 4.5 chunks of 0.2; +5 ppm TA/chunk => +22.5 ppm.
+    assert option["side_effect"] == {
+        "param": "tac", "delta": 22.5, "notes_key": "dosage_soda_ash_raises_ta_too",
+    }
+
+
+def test_simulate_dosage_muriatic_reports_ta_side_effect():
+    result = simulate_dosage("ph", current_value=8.2, target_value=7.4, volume_L=1000, sanitizer="chlorine")
+    exact_option = next(o for o in result["options"] if o["exact"])
+    # delta -0.8 = 4 chunks of 0.2; -10 ppm TA/chunk => -40.0 ppm.
+    assert exact_option["side_effect"] == {
+        "param": "tac", "delta": -40.0, "notes_key": "dosage_ph_lowers_ta_too",
+    }
+
+
+def test_simulate_dosage_baking_soda_ph_side_effect_uses_defaults():
+    # The simulator has only the tac value; current_value IS the current TA, pH defaults to 7.5.
+    result = simulate_dosage("tac", current_value=50, target_value=130, volume_L=1000, sanitizer="bromine")
+    option = result["options"][0]
+    # (8.3 - 7.5) * 80/(50+80) = 0.8 * 0.6154 = 0.49
+    assert option["side_effect"] == {
+        "param": "ph", "delta": 0.49, "notes_key": "dosage_baking_soda_raises_ph_too",
+    }
+
+
 def test_simulate_dosage_salt_pool_chlorine_uses_swg_guidance():
     result = simulate_dosage("cl", current_value=1.0, target_value=4.0, volume_L=1000, sanitizer="salt")
     assert result["direction"] == "raise"

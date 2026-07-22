@@ -68,11 +68,94 @@ def test_ph_lower_muriatic_acid_tagged_ta_side_effect():
     assert ph_rec["direction"] == "lower"
     exact_option = next(o for o in ph_rec["options"] if o["exact"])
     assert exact_option["product_id"] == "muriatic_acid"
-    assert exact_option["notes_key"] == "dosage_ph_lowers_ta_too"
     assert exact_option["amount_ml"] is not None
+    # ph 8.2 -> target 7.4: delta -0.8 = 4 chunks of 0.2; -10 ppm TA/chunk => -40.0 ppm.
+    assert exact_option["side_effect"] == {
+        "param": "tac", "delta": -40.0, "notes_key": "dosage_ph_lowers_ta_too",
+    }
+    # dry acid is guidance-only but still carries the directional -TA note (no number).
     inexact_option = next(o for o in ph_rec["options"] if not o["exact"])
-    assert inexact_option["notes_key"] == "dosage_follow_label"
+    assert inexact_option["notes_key"] == "dosage_ph_lowers_ta_too"
     assert inexact_option["amount_grams"] is None
+    assert inexact_option["side_effect"] is None
+
+
+def test_soda_ash_raise_reports_ta_side_effect():
+    installation = make_installation(sanitizer="chlorine", volume=1000, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(ph=6.5, chlorine=2.0, tac=100)
+    recs = compute_recommendations(current, ranges, installation)
+    ph_rec = next(r for r in recs if r["param"] == "ph")
+    assert ph_rec["direction"] == "raise"
+    option = next(o for o in ph_rec["options"] if o["product_id"] == "soda_ash")
+    # ph 6.5 -> target 7.4: delta +0.9 = 4.5 chunks of 0.2; +5 ppm TA/chunk => +22.5 ppm.
+    assert option["side_effect"] == {
+        "param": "tac", "delta": 22.5, "notes_key": "dosage_soda_ash_raises_ta_too",
+    }
+
+
+def test_baking_soda_raise_reports_ph_side_effect():
+    installation = make_installation(sanitizer="chlorine", volume=1000, volume_unit="L")
+    ranges = ranges_for(installation)
+    # tac 50 -> target 130 (ideal midpoint): ta_delta 80. pH 7.2.
+    recs = compute_recommendations(current_of(tac=50, ph=7.2, chlorine=2.0), ranges, installation)
+    tac_rec = next(r for r in recs if r["param"] == "tac")
+    option = tac_rec["options"][0]
+    # (8.3 - 7.2) * 80/(50+80) = 1.1 * 0.6154 = 0.68
+    assert option["side_effect"] == {
+        "param": "ph", "delta": 0.68, "notes_key": "dosage_baking_soda_raises_ph_too",
+    }
+    # Same TA add but a higher measured pH => a smaller nudge (uses the reading, not a constant).
+    recs_high = compute_recommendations(current_of(tac=50, ph=7.8, chlorine=2.0), ranges, installation)
+    option_high = next(r for r in recs_high if r["param"] == "tac")["options"][0]
+    assert option_high["side_effect"]["delta"] == 0.31
+    assert option_high["side_effect"]["delta"] < option["side_effect"]["delta"]
+
+
+def test_cya_raise_reports_ph_side_effect_ta_scaled():
+    installation = make_installation(sanitizer="salt", volume=1000, volume_unit="L")
+    ranges = ranges_for(installation)
+    # cya 50 -> target 70 (ideal midpoint): +20 ppm CYA. Vary the measured TA.
+    recs = compute_recommendations(
+        current_of(stabilizer=50, tac=120, ph=7.5, salt=3000, chlorine=4.0), ranges, installation)
+    cya_rec = next(r for r in recs if r["param"] == "cya")
+    for opt in cya_rec["options"]:
+        # -0.19 * (120/120) * (20/10) = -0.38, present on both granular and liquid.
+        assert opt["side_effect"] == {
+            "param": "ph", "delta": -0.38, "notes_key": "dosage_cya_lowers_ph_too",
+        }
+    # Doubling the TA halves the pH drop (inverse scaling).
+    recs_high_ta = compute_recommendations(
+        current_of(stabilizer=50, tac=240, ph=7.5, salt=3000, chlorine=4.0), ranges, installation)
+    high_ta_opt = next(r for r in recs_high_ta if r["param"] == "cya")["options"][0]
+    assert high_ta_opt["side_effect"]["delta"] == -0.19
+    # Very low TA would extrapolate past -0.5 pH; the model clamps the magnitude.
+    recs_low_ta = compute_recommendations(
+        current_of(stabilizer=50, tac=40, ph=7.5, salt=3000, chlorine=4.0), ranges, installation)
+    low_ta_opt = next(r for r in recs_low_ta if r["param"] == "cya")["options"][0]
+    assert low_ta_opt["side_effect"]["delta"] == -0.5
+
+
+def test_side_effect_present_without_volume():
+    installation = make_installation(sanitizer="chlorine", volume=None)
+    ranges = ranges_for(installation)
+    current = current_of(ph=8.2, chlorine=2.0, tac=100)
+    recs = compute_recommendations(current, ranges, installation)
+    ph_rec = next(r for r in recs if r["param"] == "ph")
+    exact_option = next(o for o in ph_rec["options"] if o["exact"])
+    # No volume => no amount, but the stoichiometric TA side effect is still reported.
+    assert exact_option["amount_ml"] is None
+    assert exact_option["side_effect"]["param"] == "tac"
+    assert exact_option["side_effect"]["delta"] == -40.0
+
+
+def test_no_side_effect_for_plain_products():
+    installation = make_installation(sanitizer="salt", volume=1000, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(salt=2000, ph=7.4, stabilizer=70, chlorine=4.0)
+    recs = compute_recommendations(current, ranges, installation)
+    salt_rec = next(r for r in recs if r["param"] == "salt")
+    assert salt_rec["options"][0]["side_effect"] is None
 
 
 def test_missing_volume_returns_none_amounts_without_error():

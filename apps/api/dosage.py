@@ -38,6 +38,7 @@ def _exact_option(
     purity: Optional[float] = None,
     notes_key: Optional[str] = None,
     amount_unit: Optional[str] = None,
+    side_effect: Optional[Dict] = None,
 ) -> Dict:
     return {
         "product_id": product_id,
@@ -53,6 +54,11 @@ def _exact_option(
         # e.g. cya_liquid states its dose in grams of active ingredient, not a poured
         # volume, since liquid CYA concentration varies too much by brand to convert.
         "amount_unit": amount_unit or ("grams" if form == "solid" else "ml"),
+        # Optional secondary-parameter shift this product causes (issue #40). A spec
+        # ({"kind": ..., ...}) resolved to a concrete {param, delta, notes_key} at
+        # compute time by _compute_side_effect; None for products with no meaningful
+        # secondary effect.
+        "side_effect": side_effect,
     }
 
 
@@ -93,35 +99,48 @@ TREATMENT_TABLE: Dict[str, Dict] = {
     "cya": {
         "raise": {
             "options": [
-                _exact_option("cya_granular", "solid", 9.7, 10.0, notes_key="dosage_cya_granular_test_lag"),
+                _exact_option(
+                    "cya_granular", "solid", 9.7, 10.0,
+                    notes_key="dosage_cya_granular_test_lag",
+                    side_effect={"kind": "cya_lowers_ph", "notes_key": "dosage_cya_lowers_ph_too"},
+                ),
                 # Same active-ingredient dose as granular -- liquid CYA is just cyanuric
                 # acid pre-dissolved at a brand-specific concentration, so we state the
                 # active mass needed (grams) rather than guessing a volume.
                 _exact_option(
                     "cya_liquid", "liquid", 9.7, 10.0,
                     amount_unit="grams", notes_key="dosage_cya_liquid_active_grams",
+                    side_effect={"kind": "cya_lowers_ph", "notes_key": "dosage_cya_lowers_ph_too"},
                 ),
             ]
         },
         "lower": _DILUTION_GUIDANCE,
     },
     "tac": {
-        "raise": {"options": [_exact_option("baking_soda", "solid", 17.5, 10.0, purity=0.974)]},
+        "raise": {"options": [_exact_option(
+            "baking_soda", "solid", 17.5, 10.0, purity=0.974,
+            side_effect={"kind": "ph_toward_8_3", "notes_key": "dosage_baking_soda_raises_ph_too"},
+        )]},
         "lower": _DILUTION_GUIDANCE,
     },
     "ph": {
         "raise": {
             "options": [
-                _exact_option("soda_ash", "solid", 4.5, 0.2, notes_key="dosage_ph_approximate"),
+                _exact_option(
+                    "soda_ash", "solid", 4.5, 0.2, notes_key="dosage_ph_approximate",
+                    side_effect={"kind": "linear_ta", "delta_per_chunk": 5.0,
+                                 "notes_key": "dosage_soda_ash_raises_ta_too"},
+                ),
             ]
         },
         "lower": {
             "options": [
                 _exact_option(
-                    "muriatic_acid", "liquid", 25.0, 0.2,
-                    purity=0.3145, notes_key="dosage_ph_lowers_ta_too",
+                    "muriatic_acid", "liquid", 25.0, 0.2, purity=0.3145,
+                    side_effect={"kind": "linear_ta", "delta_per_chunk": -10.0,
+                                 "notes_key": "dosage_ph_lowers_ta_too"},
                 ),
-                _inexact_option("dry_acid", "solid", notes_key="dosage_follow_label"),
+                _inexact_option("dry_acid", "solid", notes_key="dosage_ph_lowers_ta_too"),
             ]
         },
     },
@@ -158,7 +177,63 @@ def _volume_in_liters(installation: Installation) -> Optional[float]:
     return installation.volume
 
 
-def _options_with_amounts(options: List[Dict], delta: float, volume_L: Optional[float]) -> List[Dict]:
+def _compute_side_effect(
+    spec: Optional[Dict],
+    delta: float,
+    dose_param_delta: Optional[float],
+    current_ta: Optional[float],
+    current_ph: Optional[float],
+) -> Optional[Dict]:
+    """Resolves a TREATMENT_TABLE option's secondary-effect spec (issue #40) into a
+    concrete {param, delta, notes_key}, or None if the option has no side effect.
+
+    `delta` is how far the *primary* param is being moved (same value the amount math
+    uses); `dose_param_delta` is that option's per-chunk primary step. The pH-shift
+    kinds are water-chemistry-aware because a fixed "pH per ppm" is off by 2-3x across
+    the normal TA range -- pH sensitivity scales roughly inversely with buffering (TA),
+    so we lean on the measured TA/pH when we have them and fall back to typical values
+    otherwise."""
+    if not spec:
+        return None
+    kind = spec["kind"]
+
+    if kind == "linear_ta":
+        # Stoichiometric, volume-independent: the TA shift scales with the same dose
+        # multiplier the primary amount uses. soda ash: +5 ppm TA per 0.2-pH chunk;
+        # muriatic acid: -10 ppm TA per 0.2-pH chunk.
+        multiplier = abs(delta) / dose_param_delta
+        ta_shift = round(multiplier * spec["delta_per_chunk"], 1)
+        return {"param": "tac", "delta": ta_shift, "notes_key": spec["notes_key"]}
+
+    if kind == "ph_toward_8_3":
+        # Adding bicarbonate (baking soda) pulls pH toward its equilibrium ~8.3 by a
+        # fraction set by how much buffer you add relative to what's already there.
+        # Self-bounding: shrinks near 8.3, and can go negative if pH already exceeds it.
+        ta_delta = abs(delta)
+        ta_before = current_ta if current_ta is not None else 90.0
+        ph_eff = current_ph if current_ph is not None else 7.5
+        dph = round((8.3 - ph_eff) * (ta_delta / (ta_before + ta_delta)), 2)
+        return {"param": "ph", "delta": dph, "notes_key": spec["notes_key"]}
+
+    if kind == "cya_lowers_ph":
+        # Cyanuric acid is mildly acidic; the pH drop scales inversely with TA (buffer).
+        # Anchored on -0.19 pH per 10 ppm CYA at TA 120. First-order only, so clamp the
+        # magnitude to <=0.5 pH to avoid an unphysical extrapolation at low TA / big adds.
+        ta_eff = current_ta if current_ta is not None else 90.0
+        dph = -0.19 * (120.0 / ta_eff) * (abs(delta) / 10.0)
+        dph = max(-0.5, min(0.5, dph))
+        return {"param": "ph", "delta": round(dph, 2), "notes_key": spec["notes_key"]}
+
+    return None
+
+
+def _options_with_amounts(
+    options: List[Dict],
+    delta: float,
+    volume_L: Optional[float],
+    current_ta: Optional[float] = None,
+    current_ph: Optional[float] = None,
+) -> List[Dict]:
     """Computes amount_grams/amount_ml for each TREATMENT_TABLE option, given how far the
     param needs to move (delta) and the installation's volume. Shared by
     compute_recommendations (delta from a stored reading) and simulate_dosage (delta from
@@ -178,6 +253,9 @@ def _options_with_amounts(options: List[Dict], delta: float, volume_L: Optional[
             "amount_grams": amount if amount is not None and opt["amount_unit"] == "grams" else None,
             "amount_ml": amount if amount is not None and opt["amount_unit"] == "ml" else None,
             "notes_key": opt.get("notes_key"),
+            "side_effect": _compute_side_effect(
+                opt.get("side_effect"), delta, opt.get("dose_param_delta"), current_ta, current_ph,
+            ),
         })
     return options_out
 
@@ -199,6 +277,7 @@ def _guidance_only_recommendation(
             "amount_grams": None,
             "amount_ml": None,
             "notes_key": notes_key,
+            "side_effect": None,
         }],
     }
 
@@ -213,6 +292,14 @@ def compute_recommendations(current: Dict, ranges: Dict, installation: Installat
     are None in those cases."""
     volume_L = _volume_in_liters(installation)
     volume_known = volume_L is not None
+
+    # Measured TA/pH drive the water-chemistry-aware pH side-effect estimates (issue #40);
+    # None when the reading lacks them, in which case _compute_side_effect falls back to
+    # typical values.
+    ta_entry = current.get("tac")
+    current_ta = ta_entry["value"] if ta_entry else None
+    ph_entry = current.get("ph")
+    current_ph = ph_entry["value"] if ph_entry else None
 
     recommendations: List[Dict] = []
     for param, bands in ranges.items():
@@ -253,7 +340,9 @@ def compute_recommendations(current: Dict, ranges: Dict, installation: Installat
             ))
             continue
 
-        options_out = _options_with_amounts(direction_entry["options"], delta, volume_L)
+        options_out = _options_with_amounts(
+            direction_entry["options"], delta, volume_L, current_ta, current_ph,
+        )
 
         recommendations.append({
             "param": param,
