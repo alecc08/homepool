@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to homepool",
-        "description": "Enter your homepool server URL and API key (from Settings → API Key in the homepool web app). The URL must include the /api path, e.g. https://your-domain/api",
+        "description": "Enter your homepool server URL and API key (from Settings → API Key in the homepool web app), e.g. https://your-domain/api. If you leave out the scheme (http:// or https://) or the /api path, we'll try adding them automatically.",
         "data": {
           "url": "Base URL",
           "api_key": "API Key"
@@ -12,6 +12,9 @@
     },
     "error": {
       "invalid_auth": "Invalid API key",
+      "timeout": "Timed out waiting for a response from the homepool server",
+      "cannot_resolve_host": "Could not resolve the homepool server's hostname — check the URL",
+      "connection_refused": "Connection refused by the homepool server — check the URL and port",
       "cannot_connect": "Failed to connect to the homepool server",
       "no_installations": "This account has no pools or spas set up yet"
     },
