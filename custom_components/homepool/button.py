@@ -7,9 +7,10 @@ the action_type string.
 """
 from __future__ import annotations
 
-from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button import ENTITY_ID_FORMAT, ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import async_generate_entity_id
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -67,6 +68,15 @@ class HomepoolMaintenanceButton(CoordinatorEntity[HomepoolDataUpdateCoordinator]
         self._installation_id = installation_id
         self._task_key = task_key
         self._attr_unique_id = f"{entry_id}_{installation_id}_button_{task_key}"
+
+        # Deterministic, area-free entity-id (see issue #42) so buttons share the
+        # installation's prefix and the card's sensor->button matching finds them
+        # (e.g. button.home_log_ph_measurement). `self.name` already falls back
+        # to task_key when the label is missing.
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} {self.name}", hass=coordinator.hass
+        )
 
     @property
     def _installation(self) -> dict | None:

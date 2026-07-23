@@ -849,6 +849,12 @@ class HomepoolCard extends HTMLElement {
         .hp-form-field-wide {
           grid-column: 1 / -1;
         }
+        .hp-form-more[hidden] {
+          /* The [hidden] attribute must win over .hp-form-grid's display:grid,
+             which otherwise outranks the UA [hidden]{display:none} rule and
+             leaves the collapsible "more fields" block permanently visible. */
+          display: none;
+        }
         .hp-form-more-toggle {
           background: none;
           border: none;
