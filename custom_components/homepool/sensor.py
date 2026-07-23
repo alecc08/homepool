@@ -1,9 +1,14 @@
 """Sensor platform for homepool."""
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    ENTITY_ID_FORMAT,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import async_generate_entity_id
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -80,6 +85,16 @@ class HomepoolSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEnt
         self._attr_icon = icon
         self._attr_name = FIELD_NAMES[field]
         self._attr_unique_id = f"{entry_id}_{installation_id}_{field}"
+
+        # Pin the entity-id to a deterministic, area-free slug so every entity
+        # for one installation shares a single prefix (e.g. sensor.home_ph).
+        # Passing this via async_generate_entity_id makes HA treat it as a
+        # suggested object-id and skip prefixing the area name at first-time
+        # registration (see issue #42) — friendly names are unaffected.
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} {FIELD_NAMES[field]}", hass=coordinator.hass
+        )
 
     @property
     def _installation(self) -> dict | None:
@@ -162,6 +177,13 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
         # Namespaced with "_todo_" so this can never collide with a field-based
         # unique_id. Keyed by the task's stable `key` so it survives renames.
         self._attr_unique_id = f"{entry_id}_{installation_id}_todo_{task_key}"
+
+        # Deterministic, area-free entity-id (see issue #42 / HomepoolSensor).
+        # `self.name` already falls back to task_key when the label is missing.
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} {self.name}", hass=coordinator.hass
+        )
 
     @property
     def _installation(self) -> dict | None:
@@ -246,6 +268,13 @@ class HomepoolHistorySensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Se
         super().__init__(coordinator)
         self._installation_id = installation_id
         self._attr_unique_id = f"{entry_id}_{installation_id}_history"
+
+        # Deterministic, area-free entity-id (see issue #42 / HomepoolSensor).
+        # The history card requires exactly <prefix>_history.
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} History", hass=coordinator.hass
+        )
 
     @property
     def _installation(self) -> dict | None:
