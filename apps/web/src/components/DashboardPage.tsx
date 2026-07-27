@@ -48,8 +48,9 @@ function statusColor(s: ParamStatus): string {
 type Props = {
   actions: Action[]
   products: Product[]
-  onEdit: (action: Action) => void
-  onDelete: (action: Action) => void
+  // Omitted for read-only (viewer) access to a shared installation.
+  onEdit?: (action: Action) => void
+  onDelete?: (action: Action) => void
   onExport?: () => void
   onImport?: (file: File) => Promise<void>
   onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
@@ -327,22 +328,26 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                     </td>
                     <td style={{ width: 56 }}>
                       <div className="row-actions" style={{ display: 'flex', gap: 2, opacity: hoveredRowId === action.id ? 1 : 0, transition: 'opacity 0.15s' }}>
-                        <button
-                          onClick={() => onEdit(action)}
-                          title={t('modal_edit')}
-                          aria-label={t('modal_edit')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
-                        >
-                          <Pencil size={14} strokeWidth={1.75} />
-                        </button>
-                        <button
-                          onClick={() => onDelete(action)}
-                          title={t('modal_delete')}
-                          aria-label={t('modal_delete')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
-                        >
-                          <Trash2 size={14} strokeWidth={1.75} />
-                        </button>
+                        {onEdit && (
+                          <button
+                            onClick={() => onEdit(action)}
+                            title={t('modal_edit')}
+                            aria-label={t('modal_edit')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Pencil size={14} strokeWidth={1.75} />
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            onClick={() => onDelete(action)}
+                            title={t('modal_delete')}
+                            aria-label={t('modal_delete')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Trash2 size={14} strokeWidth={1.75} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

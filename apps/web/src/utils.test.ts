@@ -25,7 +25,7 @@ const t = (key: string) => (translations.fr as Record<string, string>)[key] ?? k
 
 const makeInstallation = (overrides: Partial<Installation> = {}): Installation => ({
   id: 1,
-  user_id: 1,
+  role: 'owner',
   name: 'My pool',
   type: 'pool',
   sanitizer: 'chlorine',

@@ -123,7 +123,7 @@ const NAV_ITEMS: { page: Page; labelKey: 'nav_log' | 'nav_measurements' | 'nav_h
 ]
 
 export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInstallation, onEditInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
-  const { installations, active, setActive, deleteInstallation } = useInstallation()
+  const { installations, active, setActive, deleteInstallation, isOwner } = useInstallation()
   const { t, locale, setLocale } = useT()
 
   const installationLabel = active?.type === 'spa'
@@ -141,6 +141,12 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
       alert(t('installation_delete_error'))
     }
   }
+
+  // Non-owners get the same button, but it opens the shared-installation view
+  // (who owns it, what your role allows, and "leave") rather than the edit form.
+  const installationActionLabel = isOwner
+    ? t('nav_edit_installation')
+    : t('nav_installation_details')
 
   const InstallationIcon = active?.type === 'spa' ? Bath : Waves
 
@@ -216,8 +222,8 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                       <button
                         type="button"
                         onClick={onEditInstallation}
-                        aria-label={t('nav_edit_installation')}
-                        title={t('nav_edit_installation')}
+                        aria-label={installationActionLabel}
+                        title={installationActionLabel}
                         style={{
                           flexShrink: 0, width: 22, height: 22, borderRadius: 'var(--radius-sm)',
                           background: 'none', border: 'none',
@@ -249,7 +255,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                   >
                     {installations.map(i => (
                       <option key={i.id} value={i.id}>
-                        {i.name}
+                        {i.role === 'owner' ? i.name : `${i.name} · ${i.owner_name ?? ''}`}
                       </option>
                     ))}
                   </select>
@@ -257,8 +263,8 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                     <button
                       type="button"
                       onClick={onEditInstallation}
-                      aria-label={t('nav_edit_installation')}
-                      title={t('nav_edit_installation')}
+                      aria-label={installationActionLabel}
+                      title={installationActionLabel}
                       style={{
                         flexShrink: 0, width: 26, height: 26, borderRadius: 'var(--radius-sm)',
                         background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -269,6 +275,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                       <Pencil size={12} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
+                  {isOwner && (
                   <button
                     type="button"
                     onClick={handleDeleteInstallation}
@@ -283,6 +290,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                   >
                     <Trash2 size={12} strokeWidth={1.75} aria-hidden="true" />
                   </button>
+                  )}
                 </div>
               )}
               {onAddInstallation && (

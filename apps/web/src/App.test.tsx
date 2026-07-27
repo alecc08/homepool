@@ -19,7 +19,8 @@ const mockActions = [
 const mockProducts = [{ id: 1, name: 'Chlorine', type: 'seed', unit_default: 'g' }]
 const mockInstallation = {
   id: 1,
-  user_id: 1,
+  role: 'owner' as const,
+  owner_name: null,
   name: 'Pool',
   type: 'pool' as const,
   sanitizer: 'chlorine' as const,

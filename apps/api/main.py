@@ -27,6 +27,7 @@ from models import (
     ApiKey,
     AppSetting,
     Installation,
+    InstallationShare,
     MaintenanceTask,
     PasswordResetToken,
     Product,
@@ -547,6 +548,10 @@ class InstallationOut(BaseModel):
     name: str
     type: str
     sanitizer: str
+    # Defaults suit the create/patch routes, which only ever return an
+    # installation to its own owner; the list route fills them in per row.
+    role: str = "owner"
+    owner_name: Optional[str] = None
     volume: Optional[float] = None
     volume_unit: str = "L"
     temp_unit: str = "C"
@@ -602,6 +607,24 @@ class InstallationSummaryOut(BaseModel):
     name: str
     type: str
     sanitizer: str
+
+
+class ShareIn(BaseModel):
+    email: EmailStr
+    role: str = "viewer"
+
+
+class SharePatchIn(BaseModel):
+    role: str
+
+
+class ShareOut(BaseModel):
+    id: int
+    user_id: int
+    email: EmailStr
+    first_name: str = ""
+    role: str
+    created_at: datetime
 
 
 class MaintenanceTaskOut(BaseModel):
@@ -770,19 +793,78 @@ def get_current_user_by_api_key(
     return user
 
 
-def _resolve_installation(
-    installation_id: Optional[int],
-    user: User,
-    session: Session,
-) -> Optional[int]:
-    """Checks ownership if installation_id is provided, otherwise returns the default installation."""
-    if installation_id is not None:
-        inst = session.get(Installation, installation_id)
-        if not inst or inst.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Installation not found")
-        return installation_id
-    default = _get_default_installation(user.id, session)
-    return default.id if default else None
+# ── Installation access ────────────────────────────────────────────────────
+#
+# Three levels, from an installation's owner (Installation.user_id) plus any
+# InstallationShare rows pointing at it:
+#
+#   owner  — everything, including configuration, sharing and deletion
+#   editor — read, plus logging measurements/treatments/maintenance
+#   viewer — read only
+#
+# Routes pick their level through _get_installation_for_read /
+# _get_installation_for_write / _get_owned_installation rather than comparing
+# user ids themselves.
+
+ROLE_OWNER = "owner"
+ROLE_EDITOR = "editor"
+ROLE_VIEWER = "viewer"
+SHARE_ROLES = (ROLE_VIEWER, ROLE_EDITOR)
+WRITE_ROLES = (ROLE_OWNER, ROLE_EDITOR)
+
+
+def _installation_role(
+    installation: Installation, user: User, session: Session
+) -> Optional[str]:
+    """The caller's role on `installation`, or None when they have no access."""
+    if installation.user_id == user.id:
+        return ROLE_OWNER
+    share = session.exec(
+        select(InstallationShare).where(
+            InstallationShare.installation_id == installation.id,
+            InstallationShare.user_id == user.id,
+        )
+    ).first()
+    return share.role if share else None
+
+
+def _accessible_installations(user: User, session: Session) -> List[Installation]:
+    """Owned installations first, then shared ones — the order the installation
+    picker shows them in, and the order default-installation resolution uses."""
+    owned = session.exec(
+        select(Installation).where(Installation.user_id == user.id)
+    ).all()
+    shares = session.exec(
+        select(InstallationShare).where(InstallationShare.user_id == user.id)
+    ).all()
+    shared = [
+        installation
+        for installation in (session.get(Installation, s.installation_id) for s in shares)
+        if installation is not None
+    ]
+    return list(owned) + shared
+
+
+def _get_installation_for_read(
+    installation_id: int, user: User, session: Session
+) -> Installation:
+    """Fetches an installation the caller owns or has any share on; 404 otherwise."""
+    installation = session.get(Installation, installation_id)
+    if not installation or _installation_role(installation, user, session) is None:
+        raise HTTPException(status_code=404, detail="Installation not found")
+    return installation
+
+
+def _get_installation_for_write(
+    installation_id: int, user: User, session: Session
+) -> Installation:
+    """Fetches an installation the caller may log entries against. A viewer gets
+    403 rather than 404 — they can see the installation, they just can't write to
+    it, and saying so is more useful than pretending it doesn't exist."""
+    installation = _get_installation_for_read(installation_id, user, session)
+    if _installation_role(installation, user, session) not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Read-only access to this installation")
+    return installation
 
 
 def _get_owned_installation(
@@ -790,11 +872,35 @@ def _get_owned_installation(
     user: User,
     session: Session,
 ) -> Installation:
-    """Fetches an installation and 404s unless it belongs to `user`."""
+    """Fetches an installation and 404s unless it belongs to `user`. Used by
+    everything only an owner may do: settings, target ranges, maintenance task
+    configuration, sharing and deletion."""
     installation = session.get(Installation, installation_id)
     if not installation or installation.user_id != user.id:
         raise HTTPException(status_code=404, detail="Installation not found")
     return installation
+
+
+def _resolve_installation(
+    installation_id: Optional[int],
+    user: User,
+    session: Session,
+    require_write: bool = False,
+) -> Optional[int]:
+    """Resolves the installation a write/read should apply to: the given one if
+    the caller has the required access, otherwise their default (owned first,
+    then shared)."""
+    if installation_id is not None:
+        if require_write:
+            _get_installation_for_write(installation_id, user, session)
+        else:
+            _get_installation_for_read(installation_id, user, session)
+        return installation_id
+    default = _get_default_installation(user.id, session)
+    if default is not None:
+        return default.id
+    accessible = _accessible_installations(user, session)
+    return accessible[0].id if accessible else None
 
 
 # ── Health ─────────────────────────────────────────────────────────────────
@@ -994,7 +1100,19 @@ def _purge_user(session: Session, user: User) -> None:
     installations = session.exec(
         select(Installation).where(Installation.user_id == user.id)
     ).all()
+    # Shares in both directions: those granted on their installations, and those
+    # granted to them on someone else's.
+    for share in session.exec(
+        select(InstallationShare).where(InstallationShare.user_id == user.id)
+    ).all():
+        session.delete(share)
     for installation in installations:
+        for share in session.exec(
+            select(InstallationShare).where(
+                InstallationShare.installation_id == installation.id
+            )
+        ).all():
+            session.delete(share)
         for task in session.exec(
             select(MaintenanceTask).where(MaintenanceTask.installation_id == installation.id)
         ).all():
@@ -1120,14 +1238,31 @@ def list_products(user: User = Depends(get_current_user), session: Session = Dep
 
 # ── Installations ──────────────────────────────────────────────────────────
 
+def _owner_label(installation: Installation, session: Session) -> Optional[str]:
+    owner = session.get(User, installation.user_id)
+    if owner is None:
+        return None
+    return owner.first_name or owner.email
+
+
 @app.get("/installations", response_model=List[InstallationOut])
 def list_installations(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    return session.exec(
-        select(Installation).where(Installation.user_id == user.id)
-    ).all()
+    # Owned installations plus any shared with this account. `role` tells the UI
+    # which affordances to show; `owner_name` labels shared ones in the picker.
+    result: List[InstallationOut] = []
+    for installation in _accessible_installations(user, session):
+        role = _installation_role(installation, user, session)
+        result.append(
+            InstallationOut(
+                **installation.model_dump(exclude={"user_id", "range_overrides"}),
+                role=role,
+                owner_name=None if role == ROLE_OWNER else _owner_label(installation, session),
+            )
+        )
+    return result
 
 
 @app.post("/installations", response_model=InstallationOut)
@@ -1168,9 +1303,7 @@ def update_installation(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = session.get(Installation, installation_id)
-    if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation not found")
+    installation = _get_owned_installation(installation_id, user, session)
     if payload.name is not None:
         installation.name = payload.name
     if payload.type is not None:
@@ -1211,14 +1344,17 @@ def delete_installation(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = session.get(Installation, installation_id)
-    if not installation or installation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Installation not found")
+    installation = _get_owned_installation(installation_id, user, session)
     count = len(session.exec(
         select(Installation).where(Installation.user_id == user.id)
     ).all())
     if count <= 1:
         raise HTTPException(status_code=400, detail="You must keep at least one installation.")
+    # Cascade delete of the shares granted on it
+    for share in session.exec(
+        select(InstallationShare).where(InstallationShare.installation_id == installation_id)
+    ).all():
+        session.delete(share)
     # Cascade delete of attached actions
     for action in session.exec(select(Action).where(Action.installation_id == installation_id)).all():
         session.delete(action)
@@ -1228,6 +1364,145 @@ def delete_installation(
     ).all():
         session.delete(task)
     session.delete(installation)
+    session.commit()
+
+
+# ── Sharing ────────────────────────────────────────────────────────────────
+#
+# An owner grants another *existing* account access to one of their installations
+# by email — there is no invitation/token flow, which keeps a self-hosted
+# instance simple: the person signs up (or already has an account) and the owner
+# adds them. Recipients can remove their own share ("leave"), owners can revoke
+# any of them.
+
+@app.get("/installations/{installation_id}/shares", response_model=List[ShareOut])
+def list_installation_shares(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    shares = session.exec(
+        select(InstallationShare).where(InstallationShare.installation_id == installation_id)
+    ).all()
+    result: List[ShareOut] = []
+    for share in shares:
+        recipient = session.get(User, share.user_id)
+        if recipient is None:
+            continue
+        result.append(ShareOut(
+            id=share.id,
+            user_id=recipient.id,
+            email=recipient.email,
+            first_name=recipient.first_name,
+            role=share.role,
+            created_at=share.created_at,
+        ))
+    return result
+
+
+@app.post("/installations/{installation_id}/shares", response_model=ShareOut)
+def create_installation_share(
+    installation_id: int,
+    payload: ShareIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    if payload.role not in SHARE_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {list(SHARE_ROLES)}")
+    recipient = session.exec(select(User).where(User.email == payload.email)).first()
+    if recipient is None:
+        raise HTTPException(status_code=404, detail="No account with that email address")
+    if recipient.id == user.id:
+        raise HTTPException(status_code=400, detail="You already own this installation")
+    existing = session.exec(
+        select(InstallationShare).where(
+            InstallationShare.installation_id == installation_id,
+            InstallationShare.user_id == recipient.id,
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Already shared with that account")
+    share = InstallationShare(
+        installation_id=installation_id, user_id=recipient.id, role=payload.role
+    )
+    session.add(share)
+    session.commit()
+    session.refresh(share)
+    return ShareOut(
+        id=share.id,
+        user_id=recipient.id,
+        email=recipient.email,
+        first_name=recipient.first_name,
+        role=share.role,
+        created_at=share.created_at,
+    )
+
+
+@app.patch("/installations/{installation_id}/shares/{share_id}", response_model=ShareOut)
+def update_installation_share(
+    installation_id: int,
+    share_id: int,
+    payload: SharePatchIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    if payload.role not in SHARE_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {list(SHARE_ROLES)}")
+    share = session.get(InstallationShare, share_id)
+    if not share or share.installation_id != installation_id:
+        raise HTTPException(status_code=404, detail="Share not found")
+    share.role = payload.role
+    session.add(share)
+    session.commit()
+    session.refresh(share)
+    recipient = session.get(User, share.user_id)
+    return ShareOut(
+        id=share.id,
+        user_id=share.user_id,
+        email=recipient.email,
+        first_name=recipient.first_name,
+        role=share.role,
+        created_at=share.created_at,
+    )
+
+
+# Declared before /shares/{share_id} so "me" is matched by this route rather than
+# failing to parse as a share id. Recipients can't list shares, so they have no
+# id to pass — this is how they give up their own access.
+@app.delete("/installations/{installation_id}/shares/me", status_code=204)
+def leave_installation(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    share = session.exec(
+        select(InstallationShare).where(
+            InstallationShare.installation_id == installation_id,
+            InstallationShare.user_id == user.id,
+        )
+    ).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Share not found")
+    session.delete(share)
+    session.commit()
+
+
+@app.delete("/installations/{installation_id}/shares/{share_id}", status_code=204)
+def delete_installation_share(
+    installation_id: int,
+    share_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # The owner revoking a share. Recipients use DELETE .../shares/me instead.
+    _get_owned_installation(installation_id, user, session)
+    share = session.get(InstallationShare, share_id)
+    if not share or share.installation_id != installation_id:
+        raise HTTPException(status_code=404, detail="Share not found")
+    session.delete(share)
     session.commit()
 
 
@@ -1244,7 +1519,7 @@ def get_installation_params(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = _get_owned_installation(installation_id, user, session)
+    installation = _get_installation_for_read(installation_id, user, session)
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     return _merge_range_overrides(defaults, installation.range_overrides)
 
@@ -1255,7 +1530,7 @@ def get_installation_params_full(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = _get_owned_installation(installation_id, user, session)
+    installation = _get_installation_for_read(installation_id, user, session)
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     overrides = installation.range_overrides or {}
     effective = _merge_range_overrides(defaults, overrides)
@@ -1276,7 +1551,7 @@ def get_installation_recommendations(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    installation = _get_owned_installation(installation_id, user, session)
+    installation = _get_installation_for_read(installation_id, user, session)
     cutoff = date.today() - timedelta(days=90)
     actions = session.exec(
         select(Action)
@@ -1390,14 +1665,28 @@ def _maintenance_status(session: Session, installation_id: int) -> List[Dict]:
     return compute_task_status(tasks, actions)
 
 
-def _get_owned_task(
-    installation_id: int, task_id: int, user: User, session: Session
-) -> MaintenanceTask:
-    _get_owned_installation(installation_id, user, session)
+def _lookup_task(installation_id: int, task_id: int, session: Session) -> MaintenanceTask:
     task = session.get(MaintenanceTask, task_id)
     if not task or task.installation_id != installation_id:
         raise HTTPException(status_code=404, detail="Maintenance task not found")
     return task
+
+
+def _get_owned_task(
+    installation_id: int, task_id: int, user: User, session: Session
+) -> MaintenanceTask:
+    """For configuring a task — owner only."""
+    _get_owned_installation(installation_id, user, session)
+    return _lookup_task(installation_id, task_id, session)
+
+
+def _get_task_for_write(
+    installation_id: int, task_id: int, user: User, session: Session
+) -> MaintenanceTask:
+    """For completing a task — an editor may mark maintenance done even though
+    they cannot change how the task is configured."""
+    _get_installation_for_write(installation_id, user, session)
+    return _lookup_task(installation_id, task_id, session)
 
 
 def _complete_maintenance_task(session: Session, user: User, task: MaintenanceTask) -> Action:
@@ -1424,7 +1713,7 @@ def list_maintenance_tasks(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _get_owned_installation(installation_id, user, session)
+    _get_installation_for_read(installation_id, user, session)
     return [MaintenanceTaskOut(**t) for t in _maintenance_status(session, installation_id)]
 
 
@@ -1533,7 +1822,7 @@ def complete_maintenance_task(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    task = _get_owned_task(installation_id, task_id, user, session)
+    task = _get_task_for_write(installation_id, task_id, user, session)
     _complete_maintenance_task(session, user, task)
     status_list = _maintenance_status(session, installation_id)
     match = next(t for t in status_list if t["id"] == task.id)
@@ -1541,6 +1830,22 @@ def complete_maintenance_task(
 
 
 # ── Actions ────────────────────────────────────────────────────────────────
+
+def _get_action_for_write(action_id: int, user: User, session: Session) -> Action:
+    """An action can be edited or deleted by anyone with write access to the
+    installation it belongs to — so a pool's owner can clean up entries an editor
+    logged, and vice versa. Legacy rows with no installation fall back to
+    "only the author", which is all the old ownership check could express."""
+    action = session.get(Action, action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+    if action.installation_id is None:
+        if action.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Action not found")
+        return action
+    _get_installation_for_write(action.installation_id, user, session)
+    return action
+
 
 @app.get("/actions", response_model=List[ActionOut])
 def list_actions(
@@ -1553,9 +1858,7 @@ def list_actions(
     cutoff: date = date.fromisoformat(from_date) if from_date else date.today() - timedelta(days=90)
 
     if installation_id is not None:
-        installation = session.get(Installation, installation_id)
-        if not installation or installation.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Installation not found")
+        _get_installation_for_read(installation_id, user, session)
         return session.exec(
             select(Action)
             .where(Action.installation_id == installation_id, Action.date >= cutoff)
@@ -1578,7 +1881,9 @@ def create_action(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    resolved_installation_id = _resolve_installation(payload.installation_id, user, session)
+    resolved_installation_id = _resolve_installation(
+        payload.installation_id, user, session, require_write=True
+    )
     action = Action(
         date=payload.date,
         action_type=payload.action_type,
@@ -1603,9 +1908,7 @@ def update_action(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    action = session.get(Action, action_id)
-    if not action or action.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Action not found")
+    action = _get_action_for_write(action_id, user, session)
     action.date = payload.date
     action.action_type = payload.action_type
     action.product_id = payload.product_id
@@ -1613,7 +1916,9 @@ def update_action(
     action.unit = payload.unit
     action.notes = payload.notes
     if payload.installation_id is not None:
-        resolved = _resolve_installation(payload.installation_id, user, session)
+        resolved = _resolve_installation(
+            payload.installation_id, user, session, require_write=True
+        )
         action.installation_id = resolved
     session.add(action)
     session.commit()
@@ -1657,9 +1962,7 @@ def delete_action(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    action = session.get(Action, action_id)
-    if not action or action.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Action not found")
+    action = _get_action_for_write(action_id, user, session)
     session.delete(action)
     session.commit()
 
@@ -1677,8 +1980,9 @@ def _resolve_installation_for_api_key(
     installation_id: Optional[int],
     user: User,
     session: Session,
+    require_write: bool = False,
 ) -> int:
-    resolved = _resolve_installation(installation_id, user, session)
+    resolved = _resolve_installation(installation_id, user, session, require_write=require_write)
     if resolved is None:
         raise HTTPException(status_code=404, detail="No installation found")
     return resolved
@@ -1691,10 +1995,10 @@ def api_installations(
     user: User = Depends(get_current_user_by_api_key),
     session: Session = Depends(get_session),
 ):
-    installations = session.exec(
-        select(Installation).where(Installation.user_id == user.id)
-    ).all()
-    return installations
+    # Shared installations are listed too, so the Home Assistant integration of
+    # someone a pool was shared with picks them up as devices. Writes through the
+    # /v1 routes still respect the role — a viewer gets 403.
+    return _accessible_installations(user, session)
 
 
 @app.get("/v1/current", response_model=CurrentConditionsOut)
@@ -1774,7 +2078,9 @@ def api_create_measurement(
     user: User = Depends(get_current_user_by_api_key),
     session: Session = Depends(get_session),
 ):
-    resolved_id = _resolve_installation_for_api_key(payload.installation_id, user, session)
+    resolved_id = _resolve_installation_for_api_key(
+        payload.installation_id, user, session, require_write=True
+    )
     fields = {
         "chlorine": payload.chlorine,
         "bromine": payload.bromine,
@@ -1819,7 +2125,9 @@ def api_complete_maintenance_task(
     # primary action_type), so custom tasks with their own action types work
     # without the caller needing to know the string. Shares the completion path
     # with the web route.
-    resolved_id = _resolve_installation_for_api_key(payload.installation_id, user, session)
+    resolved_id = _resolve_installation_for_api_key(
+        payload.installation_id, user, session, require_write=True
+    )
     task = session.get(MaintenanceTask, payload.task_id)
     if not task or task.installation_id != resolved_id:
         raise HTTPException(status_code=404, detail="Maintenance task not found")
@@ -1842,7 +2150,9 @@ def api_create_maintenance(
             status_code=422,
             detail=f"action_type must be one of {sorted(MAINTENANCE_ACTION_TYPES)}",
         )
-    resolved_id = _resolve_installation_for_api_key(payload.installation_id, user, session)
+    resolved_id = _resolve_installation_for_api_key(
+        payload.installation_id, user, session, require_write=True
+    )
     action = Action(
         date=payload.date or date.today(),
         action_type=payload.action_type,

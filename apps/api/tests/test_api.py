@@ -1296,3 +1296,310 @@ def test_backfill_leaves_an_existing_admin_alone(empty_client: TestClient):
 
         admins = session.exec(select(User).where(User.is_admin)).all()
         assert [u.email for u in admins] == ["chosen@example.com"]
+
+
+# ── Sharing installations between accounts ─────────────────────────────────
+
+
+def login_as(client: TestClient, email: str, password: str = "Password1"):
+    r = client.post("/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200
+    return r.json()["user"]
+
+
+def share_setup(client: TestClient, role: str = "viewer"):
+    """Admin owns an installation and shares it with other@example.com in `role`.
+    Leaves the client logged in as the recipient. Returns (installation_id,
+    share_id) so tests don't have to log back in as the owner just to look the
+    share up — /auth/login is rate-limited to 5/minute."""
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Shared pool", "type": "pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    register(client, "other@example.com", name="Robin")
+    login(client)
+    r = client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "other@example.com", "role": role},
+    )
+    assert r.status_code == 200, r.text
+    share_id = r.json()["id"]
+    login_as(client, "other@example.com")
+    return installation_id, share_id
+
+
+def test_share_appears_in_recipients_installation_list(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    listing = client.get("/installations").json()
+    shared = next(i for i in listing if i["id"] == installation_id)
+    assert shared["role"] == "viewer"
+    assert shared["owner_name"] == "admin@example.com"
+    # Their own default installation is still listed, and owned.
+    own = [i for i in listing if i["id"] != installation_id]
+    assert own and all(i["role"] == "owner" and i["owner_name"] is None for i in own)
+
+
+def test_owner_sees_their_own_installation_as_owner(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Mine"}).json()["id"]
+    row = next(i for i in client.get("/installations").json() if i["id"] == installation_id)
+    assert row["role"] == "owner"
+    assert row["owner_name"] is None
+
+
+def test_viewer_can_read_but_not_write(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    assert client.get(f"/installations/{installation_id}/params").status_code == 200
+    assert client.get(f"/installations/{installation_id}/params/full").status_code == 200
+    assert client.get(f"/installations/{installation_id}/recommendations").status_code == 200
+    assert client.get(f"/installations/{installation_id}/maintenance").status_code == 200
+    assert client.get(f"/actions?installation_id={installation_id}").status_code == 200
+
+    r = client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
+    )
+    assert r.status_code == 403
+
+
+def test_viewer_cannot_complete_maintenance(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    task_id = client.get(f"/installations/{installation_id}/maintenance").json()[0]["id"]
+    r = client.post(f"/installations/{installation_id}/maintenance/{task_id}/complete")
+    assert r.status_code == 403
+
+
+def test_editor_can_log_entries(client: TestClient):
+    installation_id, share_id = share_setup(client, "editor")
+    r = client.post(
+        "/actions",
+        json={
+            "date": TODAY,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "notes": "pH 7.4",
+        },
+    )
+    assert r.status_code == 200
+    task_id = client.get(f"/installations/{installation_id}/maintenance").json()[0]["id"]
+    assert client.post(
+        f"/installations/{installation_id}/maintenance/{task_id}/complete"
+    ).status_code == 200
+
+
+def test_editor_cannot_configure_the_installation(client: TestClient):
+    installation_id, share_id = share_setup(client, "editor")
+    assert client.patch(
+        f"/installations/{installation_id}", json={"name": "Renamed"}
+    ).status_code == 404
+    assert client.put(
+        f"/installations/{installation_id}/params", json={"ph": {"ideal": [7.0, 7.4]}}
+    ).status_code == 404
+    assert client.post(
+        f"/installations/{installation_id}/maintenance", json={"label": "Custom"}
+    ).status_code == 404
+    assert client.delete(f"/installations/{installation_id}").status_code == 404
+
+
+def test_editor_cannot_manage_shares(client: TestClient):
+    installation_id, share_id = share_setup(client, "editor")
+    assert client.get(f"/installations/{installation_id}/shares").status_code == 404
+    assert client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "admin@example.com", "role": "viewer"},
+    ).status_code == 404
+
+
+def test_owner_can_delete_an_action_logged_by_an_editor(client: TestClient):
+    installation_id, share_id = share_setup(client, "editor")
+    action_id = client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
+    ).json()["id"]
+    login(client)
+    assert client.delete(f"/actions/{action_id}").status_code == 204
+
+
+def test_editor_can_edit_an_action_logged_by_the_owner(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Shared pool"}).json()["id"]
+    action_id = client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
+    ).json()["id"]
+    register(client, "other@example.com")
+    login(client)
+    client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "other@example.com", "role": "editor"},
+    )
+    login_as(client, "other@example.com")
+    r = client.patch(
+        f"/actions/{action_id}",
+        json={"date": TODAY, "action_type": "Measurement", "notes": "edited"},
+    )
+    assert r.status_code == 200
+    assert r.json()["notes"] == "edited"
+
+
+def test_stranger_cannot_touch_an_unshared_installation(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Private"}).json()["id"]
+    register(client, "stranger@example.com")
+    assert client.get(f"/installations/{installation_id}/params").status_code == 404
+    assert client.get(f"/actions?installation_id={installation_id}").status_code == 404
+    assert client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
+    ).status_code == 404
+
+
+def test_share_with_unknown_email_404s(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Pool"}).json()["id"]
+    r = client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "nobody@example.com", "role": "viewer"},
+    )
+    assert r.status_code == 404
+
+
+def test_share_with_self_is_rejected(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Pool"}).json()["id"]
+    r = client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "admin@example.com", "role": "viewer"},
+    )
+    assert r.status_code == 400
+
+
+def test_duplicate_share_is_rejected(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    login(client)
+    r = client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "other@example.com", "role": "editor"},
+    )
+    assert r.status_code == 409
+
+
+def test_share_rejects_unknown_role(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Pool"}).json()["id"]
+    register(client, "other@example.com")
+    login(client)
+    r = client.post(
+        f"/installations/{installation_id}/shares",
+        json={"email": "other@example.com", "role": "owner"},
+    )
+    assert r.status_code == 422
+
+
+def test_owner_can_change_a_share_role(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    login(client)
+    r = client.patch(
+        f"/installations/{installation_id}/shares/{share_id}", json={"role": "editor"}
+    )
+    assert r.status_code == 200
+    assert r.json()["role"] == "editor"
+    login_as(client, "other@example.com")
+    assert client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id},
+    ).status_code == 200
+
+
+def test_owner_lists_shares_with_recipient_details(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    login(client)
+    shares = client.get(f"/installations/{installation_id}/shares").json()
+    assert len(shares) == 1
+    assert shares[0]["email"] == "other@example.com"
+    assert shares[0]["first_name"] == "Robin"
+    assert shares[0]["role"] == "viewer"
+
+
+def test_owner_revoking_a_share_removes_access(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    login(client)
+    assert client.delete(
+        f"/installations/{installation_id}/shares/{share_id}"
+    ).status_code == 204
+    login_as(client, "other@example.com")
+    assert client.get(f"/installations/{installation_id}/params").status_code == 404
+    assert all(i["id"] != installation_id for i in client.get("/installations").json())
+
+
+def test_recipient_can_leave_a_shared_installation(client: TestClient):
+    installation_id, _ = share_setup(client, "editor")
+    assert client.delete(f"/installations/{installation_id}/shares/me").status_code == 204
+    assert client.get(f"/installations/{installation_id}/params").status_code == 404
+    # The owner keeps the installation.
+    login(client)
+    assert client.get(f"/installations/{installation_id}/params").status_code == 200
+
+
+def test_leaving_an_installation_you_have_no_share_on_404s(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "Mine"}).json()["id"]
+    assert client.delete(f"/installations/{installation_id}/shares/me").status_code == 404
+
+
+def test_recipient_cannot_revoke_a_share_by_id(client: TestClient):
+    # Only the owner may use the by-id route; a recipient has to leave instead.
+    installation_id, share_id = share_setup(client, "editor")
+    assert client.delete(
+        f"/installations/{installation_id}/shares/{share_id}"
+    ).status_code == 404
+    assert client.get(f"/installations/{installation_id}/params").status_code == 200
+
+
+def test_deleting_an_installation_removes_its_shares(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    login(client)
+    # An owner must keep at least one installation, so give them a second one.
+    client.post("/installations", json={"name": "Spare"})
+    assert client.delete(f"/installations/{installation_id}").status_code == 204
+    login_as(client, "other@example.com")
+    assert all(i["id"] != installation_id for i in client.get("/installations").json())
+
+
+def test_v1_installations_includes_shared_installations(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    key = client.post("/me/api-key").json()["key"]
+    r = client.get("/v1/installations", headers={"Authorization": f"Bearer {key}"})
+    assert r.status_code == 200
+    assert installation_id in [i["id"] for i in r.json()]
+
+
+def test_v1_write_routes_reject_a_viewer(client: TestClient):
+    installation_id, share_id = share_setup(client, "viewer")
+    key = client.post("/me/api-key").json()["key"]
+    headers = {"Authorization": f"Bearer {key}"}
+    assert client.post(
+        "/v1/measurements",
+        json={"installation_id": installation_id, "ph": 7.4},
+        headers=headers,
+    ).status_code == 403
+    assert client.post(
+        "/v1/maintenance",
+        json={"installation_id": installation_id, "action_type": "Backwash"},
+        headers=headers,
+    ).status_code == 403
+
+
+def test_v1_write_routes_accept_an_editor(client: TestClient):
+    installation_id, share_id = share_setup(client, "editor")
+    key = client.post("/me/api-key").json()["key"]
+    headers = {"Authorization": f"Bearer {key}"}
+    assert client.post(
+        "/v1/measurements",
+        json={"installation_id": installation_id, "ph": 7.4},
+        headers=headers,
+    ).status_code == 200
+    r = client.get(
+        f"/v1/current?installation_id={installation_id}", headers=headers
+    )
+    assert r.json()["ph"]["value"] == 7.4

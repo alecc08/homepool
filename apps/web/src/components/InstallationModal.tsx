@@ -9,6 +9,7 @@ import { useT } from '../context/LocaleContext'
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
 import type { Installation } from '../types'
 import WaterChemistryTargets from './WaterChemistryTargets'
+import SharingTab from './SharingTab'
 
 type Props = {
   open: boolean
@@ -16,12 +17,63 @@ type Props = {
   installation?: Installation
 }
 
-type Tab = 'general' | 'water'
+type Tab = 'general' | 'water' | 'sharing'
+
+/** What someone a pool was shared with sees instead of the edit form: who owns
+ * it, what their role lets them do, and a way to give the access back. */
+function SharedInstallationView({
+  installation, onLeave, leaving, error,
+}: {
+  installation: Installation
+  onLeave: () => void
+  leaving: boolean
+  error: string | null
+}) {
+  const { t } = useT()
+  const roleLabel = installation.role === 'editor' ? t('share_role_editor') : t('share_role_viewer')
+  const roleHint = installation.role === 'editor'
+    ? t('share_role_editor_hint')
+    : t('share_role_viewer_hint')
+
+  const row: React.CSSProperties = {
+    display: 'flex', justifyContent: 'space-between', gap: 12,
+    fontFamily: '"Sora", sans-serif', fontSize: 13,
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={row}>
+        <span style={{ color: 'var(--text-secondary)' }}>{t('share_shared_by')}</span>
+        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+          {installation.owner_name ?? '—'}
+        </span>
+      </div>
+      <div style={row}>
+        <span style={{ color: 'var(--text-secondary)' }}>{t('share_your_access')}</span>
+        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{roleLabel}</span>
+      </div>
+      <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+        {roleHint} {t('share_owner_configures')}
+      </p>
+      {error && (
+        <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+          {error}
+        </p>
+      )}
+      <Button type="button" variant="outline" disabled={leaving} onClick={onLeave}>
+        {leaving ? t('share_leaving') : t('share_leave')}
+      </Button>
+    </div>
+  )
+}
 
 export default function InstallationModal({ open, onClose, installation }: Props) {
   const { t } = useT()
-  const { addInstallation, refresh } = useInstallation()
+  const { addInstallation, refresh, leaveInstallation } = useInstallation()
   const isEdit = !!installation
+  // Everything in this modal except reading the general fields is owner-only;
+  // an editor or viewer gets a read-only view with a "leave" action instead.
+  const isOwner = !isEdit || installation?.role === 'owner'
   const [tab, setTab] = useState<Tab>('general')
   const [name, setName] = useState(installation?.name ?? '')
   const [type, setType] = useState<'pool' | 'spa'>(installation?.type ?? 'pool')
@@ -61,6 +113,21 @@ export default function InstallationModal({ open, onClose, installation }: Props
   const handleClose = () => {
     if (!isEdit) resetForm()
     onClose()
+  }
+
+  const handleLeave = async () => {
+    if (!installation) return
+    if (!window.confirm(t('share_leave_confirm').replace('{name}', installation.name))) return
+    setLoading(true)
+    setError(null)
+    try {
+      await leaveInstallation(installation.id)
+      onClose()
+    } catch {
+      setError(t('share_leave_error'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -144,9 +211,9 @@ export default function InstallationModal({ open, onClose, installation }: Props
           </DialogTitle>
         </DialogHeader>
 
-        {isEdit && (
+        {isEdit && isOwner && (
           <div className="flex-shrink-0" style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
-            {(['general', 'water'] as Tab[]).map(tb => (
+            {(['general', 'water', 'sharing'] as Tab[]).map(tb => (
               <button
                 key={tb}
                 type="button"
@@ -159,14 +226,22 @@ export default function InstallationModal({ open, onClose, installation }: Props
                   marginBottom: -1,
                 }}
               >
-                {tb === 'general' ? t('modal_tab_general') : t('modal_tab_water_chemistry')}
+                {tb === 'general'
+                  ? t('modal_tab_general')
+                  : tb === 'water'
+                  ? t('modal_tab_water_chemistry')
+                  : t('modal_tab_sharing')}
               </button>
             ))}
           </div>
         )}
 
-        {isEdit && tab === 'water' && installation ? (
+        {isEdit && !isOwner && installation ? (
+          <SharedInstallationView installation={installation} onLeave={handleLeave} leaving={loading} error={error} />
+        ) : isEdit && tab === 'water' && installation ? (
           <WaterChemistryTargets installation={installation} onSaved={handleClose} />
+        ) : isEdit && tab === 'sharing' && installation ? (
+          <SharingTab installation={installation} />
         ) : (
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4" style={{ paddingTop: 4 }}>

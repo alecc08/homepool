@@ -53,7 +53,7 @@ type Props = {
 }
 
 export default function MaintenancePage({ onActionLogged }: Props) {
-  const { active } = useInstallation()
+  const { active, isOwner, canEdit } = useInstallation()
   const { t } = useT()
   const [tasks, setTasks] = useState<MaintenanceTask[]>([])
   const [loading, setLoading] = useState(false)
@@ -105,14 +105,16 @@ export default function MaintenancePage({ onActionLogged }: Props) {
           <h1 className="page-header-title" style={{ margin: 0 }}>{t('maintenance_page_title')}</h1>
           <div className="page-header-sub">{t('maintenance_page_sub')}</div>
         </div>
-        <div className="page-header-actions">
-          <Button type="button" variant="outline" onClick={() => setShowConfig(true)}>
-            {t('maint_configure')}
-          </Button>
-        </div>
+        {isOwner && (
+          <div className="page-header-actions">
+            <Button type="button" variant="outline" onClick={() => setShowConfig(true)}>
+              {t('maint_configure')}
+            </Button>
+          </div>
+        )}
       </div>
 
-      {active && (
+      {active && isOwner && (
         <MaintenanceConfig
           installationId={active.id}
           open={showConfig}
@@ -177,6 +179,7 @@ export default function MaintenancePage({ onActionLogged }: Props) {
                 {status.label}
               </span>
 
+              {canEdit && (
               <Button
                 type="button"
                 variant={flashing ? 'default' : 'outline'}
@@ -197,6 +200,7 @@ export default function MaintenancePage({ onActionLogged }: Props) {
                   </>
                 )}
               </Button>
+              )}
             </div>
           </div>
         )

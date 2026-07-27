@@ -28,7 +28,7 @@ vi.mock('../context/InstallationContext', () => ({
 function makeInstallation(overrides: Partial<Installation> = {}): Installation {
   return {
     id: 1,
-    user_id: 1,
+    role: 'owner',
     name: 'My pool',
     type: 'pool',
     sanitizer: 'chlorine',

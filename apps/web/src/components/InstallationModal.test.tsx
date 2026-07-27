@@ -17,9 +17,12 @@ vi.mock('../context/InstallationContext', () => ({
     installations: [],
     active: null,
     ranges: null,
+    isOwner: true,
+    canEdit: true,
     setActive: vi.fn(),
     refresh: vi.fn(),
     addInstallation: mockAddInstallation,
+    leaveInstallation: vi.fn(),
   }),
 }))
 
