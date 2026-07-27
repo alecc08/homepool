@@ -11,7 +11,18 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True)
     first_name: str = Field(default="")
     password_hash: str
+    # The first account created through the UI becomes the instance administrator;
+    # existing databases get their oldest user promoted on boot (see
+    # _backfill_first_admin). Admins manage accounts and the self-registration switch.
+    is_admin: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AppSetting(SQLModel, table=True):
+    """Instance-wide settings an admin can flip from the UI. Stored as strings so a
+    new setting never needs a schema change; see _get_setting/_set_setting."""
+    key: str = Field(primary_key=True)
+    value: str
 
 
 class PasswordResetToken(SQLModel, table=True):

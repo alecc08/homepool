@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import App from './App'
 
-const mockUser = { id: 1, email: 'admin@example.com', created_at: '2026-02-25T00:00:00' }
+const mockUser = { id: 1, email: 'admin@example.com', is_admin: true, created_at: '2026-02-25T00:00:00' }
 const mockActions = [
   {
     id: 1,
@@ -45,6 +45,9 @@ describe('App', () => {
       }
       if (u === '/api/products') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProducts) } as Response)
+      }
+      if (u === '/api/auth/registration-status') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ open: true, first_run: false }) } as Response)
       }
       return Promise.reject(new Error(`fetch inattendu : ${u}`))
     })

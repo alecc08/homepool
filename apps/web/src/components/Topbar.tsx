@@ -1,4 +1,4 @@
-import { Sun, Moon, Bath, Waves, Pencil, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, User as UserIcon } from 'lucide-react'
+import { Sun, Moon, Bath, Waves, Pencil, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react'
 import homepoolLogo from '@/assets/homepool-logo.svg'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import type { User } from '../types'
@@ -103,6 +103,8 @@ type Props = {
   onAdd?: () => void
   onLogout?: () => void
   onProfile?: () => void
+  /** Only passed for administrators — undefined hides the entry entirely. */
+  onAdmin?: () => void
   onAddInstallation?: () => void
   onEditInstallation?: () => void
   page?: Page
@@ -120,7 +122,7 @@ const NAV_ITEMS: { page: Page; labelKey: 'nav_log' | 'nav_measurements' | 'nav_h
   { page: 'recommendations', labelKey: 'nav_recommendations', Icon: ClipboardList },
 ]
 
-export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, onEditInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
+export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInstallation, onEditInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
   const { installations, active, setActive, deleteInstallation } = useInstallation()
   const { t, locale, setLocale } = useT()
 
@@ -305,6 +307,12 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAddInstallation, 
             <button className="btn-sidebar-logout" onClick={onProfile} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <UserIcon size={13} strokeWidth={1.75} aria-hidden="true" />
               {t('nav_my_profile')}
+            </button>
+          )}
+          {onAdmin && (
+            <button className="btn-sidebar-logout" onClick={onAdmin} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ShieldCheck size={13} strokeWidth={1.75} aria-hidden="true" />
+              {t('nav_administration')}
             </button>
           )}
           {onLogout && (

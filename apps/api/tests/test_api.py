@@ -3,10 +3,11 @@ from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
 import database
-from main import WATER_PARAMS, _merge_range_overrides, app
-from models import Product
+from main import WATER_PARAMS, _backfill_first_admin, _merge_range_overrides, app
+from models import Action, AppSetting, Product, User
 
 TODAY = date.today().isoformat()
 
@@ -1137,3 +1138,161 @@ def test_get_installation_recommendations_without_volume(client: TestClient):
     assert data["volume_known"] is False
     tac_rec = next(r for r in data["recommendations"] if r["param"] == "tac")
     assert tac_rec["options"][0]["amount_grams"] is None
+
+
+# ── Administration & registration ──────────────────────────────────────────
+
+
+def register(client: TestClient, email: str, password: str = "Password1", name: str = "Alex"):
+    return client.post(
+        "/auth/register",
+        json={"first_name": name, "email": email, "password": password},
+    )
+
+
+def test_first_registered_account_becomes_admin(empty_client: TestClient):
+    r = register(empty_client, "first@example.com")
+    assert r.status_code == 200
+    assert r.json()["user"]["is_admin"] is True
+
+
+def test_second_registered_account_is_not_admin(empty_client: TestClient):
+    register(empty_client, "first@example.com")
+    empty_client.post("/auth/logout")
+    r = register(empty_client, "second@example.com")
+    assert r.status_code == 200
+    assert r.json()["user"]["is_admin"] is False
+
+
+def test_registration_status_reports_first_run(empty_client: TestClient):
+    r = empty_client.get("/auth/registration-status")
+    assert r.json() == {"open": True, "first_run": True}
+    register(empty_client, "first@example.com")
+    r = empty_client.get("/auth/registration-status")
+    assert r.json() == {"open": True, "first_run": False}
+
+
+def test_registration_closed_rejects_new_accounts(client: TestClient):
+    login(client)
+    assert client.patch("/admin/settings", json={"allow_registration": False}).status_code == 200
+    assert client.get("/auth/registration-status").json()["open"] is False
+    r = register(client, "nope@example.com")
+    assert r.status_code == 403
+
+
+def test_registration_closed_still_allows_the_very_first_account(empty_client: TestClient):
+    # A leftover "closed" setting (restored backup, deleted accounts) must never
+    # lock everybody out of an instance that has no account at all.
+    with Session(empty_client.test_engine) as session:
+        session.add(AppSetting(key="allow_registration", value="false"))
+        session.commit()
+    assert empty_client.get("/auth/registration-status").json()["open"] is True
+    r = register(empty_client, "first@example.com")
+    assert r.status_code == 200
+    assert r.json()["user"]["is_admin"] is True
+
+
+def test_reopening_registration_allows_new_accounts(client: TestClient):
+    login(client)
+    client.patch("/admin/settings", json={"allow_registration": False})
+    client.patch("/admin/settings", json={"allow_registration": True})
+    assert client.get("/auth/registration-status").json()["open"] is True
+    assert register(client, "yes@example.com").status_code == 200
+
+
+def test_admin_routes_require_admin(client: TestClient):
+    login(client)
+    register(client, "plain@example.com")  # logs in as the new non-admin user
+    assert client.get("/admin/users").status_code == 403
+    assert client.get("/admin/settings").status_code == 403
+    assert client.patch("/admin/settings", json={"allow_registration": False}).status_code == 403
+
+
+def test_admin_routes_require_authentication(client: TestClient):
+    assert client.get("/admin/users").status_code == 401
+
+
+def test_admin_list_users_reports_installation_counts(client: TestClient):
+    login(client)
+    client.post("/installations", json={"name": "Pool", "type": "pool", "sanitizer": "chlorine"})
+    r = client.get("/admin/users")
+    assert r.status_code == 200
+    admin_row = next(u for u in r.json() if u["email"] == "admin@example.com")
+    assert admin_row["is_admin"] is True
+    assert admin_row["installation_count"] == 1
+
+
+def test_admin_can_promote_and_demote_another_user(client: TestClient):
+    login(client)
+    other_id = register(client, "other@example.com").json()["user"]["id"]
+    login(client)
+    r = client.patch(f"/admin/users/{other_id}", json={"is_admin": True})
+    assert r.status_code == 200
+    assert r.json()["is_admin"] is True
+    r = client.patch(f"/admin/users/{other_id}", json={"is_admin": False})
+    assert r.json()["is_admin"] is False
+
+
+def test_last_admin_cannot_be_demoted(client: TestClient):
+    login(client)
+    me_id = client.get("/me").json()["user"]["id"]
+    r = client.patch(f"/admin/users/{me_id}", json={"is_admin": False})
+    assert r.status_code == 400
+
+
+def test_last_admin_cannot_be_deleted(client: TestClient):
+    login(client)
+    me_id = client.get("/me").json()["user"]["id"]
+    assert client.delete(f"/admin/users/{me_id}").status_code == 400
+
+
+def test_admin_delete_user_removes_their_data(client: TestClient):
+    login(client)
+    other_id = register(client, "other@example.com").json()["user"]["id"]
+    inst_id = client.post(
+        "/installations", json={"name": "Their pool", "type": "pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": inst_id, "notes": "pH 7.4"},
+    )
+    login(client)
+    assert client.delete(f"/admin/users/{other_id}").status_code == 204
+    assert all(u["id"] != other_id for u in client.get("/admin/users").json())
+    # Their installation went with them, so the admin can no longer reach it.
+    assert client.get(f"/installations/{inst_id}/params").status_code == 404
+
+
+def test_admin_delete_unknown_user_404s(client: TestClient):
+    login(client)
+    assert client.delete("/admin/users/9999").status_code == 404
+
+
+def test_backfill_promotes_oldest_user_and_adopts_orphan_actions(empty_client: TestClient):
+    # The upgrade path for instances created before is_admin existed: nobody is
+    # flagged, so the oldest account is promoted — and only that one.
+    with Session(empty_client.test_engine) as session:
+        for email in ("oldest@example.com", "newer@example.com"):
+            session.add(User(email=email, password_hash="x"))
+        session.commit()
+        session.add(Action(date=date.today(), action_type="Measurement", user_id=None))
+        session.commit()
+
+        _backfill_first_admin(session)
+
+        users = session.exec(select(User).order_by(User.id)).all()
+        assert [u.is_admin for u in users] == [True, False]
+        orphan = session.exec(select(Action)).first()
+        assert orphan.user_id == users[0].id
+
+
+def test_backfill_leaves_an_existing_admin_alone(empty_client: TestClient):
+    with Session(empty_client.test_engine) as session:
+        session.add(User(email="oldest@example.com", password_hash="x"))
+        session.add(User(email="chosen@example.com", password_hash="x", is_admin=True))
+        session.commit()
+
+        _backfill_first_admin(session)
+
+        admins = session.exec(select(User).where(User.is_admin)).all()
+        assert [u.email for u in admins] == ["chosen@example.com"]

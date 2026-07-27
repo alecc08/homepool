@@ -7,15 +7,12 @@ from sqlmodel.pool import StaticPool
 import database
 
 os.environ.setdefault("SESSION_SECRET", "test-secret")
-os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "admin123")
 
 from main import app, limiter, _hash_password  # noqa: E402
 from models import User  # noqa: E402
 
 
-@pytest.fixture(name="client")
-def client_fixture():
+def _make_client(seed_admin: bool) -> TestClient:
     limiter.reset()
     test_engine = create_engine(
         "sqlite://",
@@ -29,12 +26,36 @@ def client_fixture():
             yield session
 
     app.dependency_overrides[database.get_session] = get_session_override
-    with Session(test_engine) as session:
-        existing = session.exec(select(User).where(User.email == "admin@example.com")).first()
-        if not existing:
-            user = User(email="admin@example.com", password_hash=_hash_password("admin123"))
-            session.add(user)
-            session.commit()
+    if seed_admin:
+        with Session(test_engine) as session:
+            existing = session.exec(
+                select(User).where(User.email == "admin@example.com")
+            ).first()
+            if not existing:
+                user = User(
+                    email="admin@example.com",
+                    password_hash=_hash_password("admin123"),
+                    is_admin=True,
+                )
+                session.add(user)
+                session.commit()
     client = TestClient(app)
+    # Handy for the few tests that need to seed rows the API alone can't produce.
+    client.test_engine = test_engine
+    return client
+
+
+@pytest.fixture(name="client")
+def client_fixture():
+    client = _make_client(seed_admin=True)
+    yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture(name="empty_client")
+def empty_client_fixture():
+    """A client whose database has no accounts at all — for the first-run
+    behaviour (first registration claims the administrator role)."""
+    client = _make_client(seed_admin=False)
     yield client
     app.dependency_overrides.clear()

@@ -25,6 +25,7 @@ from dosage import compute_recommendations
 from models import (
     Action,
     ApiKey,
+    AppSetting,
     Installation,
     MaintenanceTask,
     PasswordResetToken,
@@ -175,6 +176,28 @@ def _get_default_installation(user_id: int, session: Session) -> Optional[Instal
     ).first()
 
 
+# ── Instance settings ──────────────────────────────────────────────────────
+
+SETTING_ALLOW_REGISTRATION = "allow_registration"
+
+
+def _get_bool_setting(session: Session, key: str, default: bool) -> bool:
+    setting = session.get(AppSetting, key)
+    if setting is None:
+        return default
+    return setting.value == "true"
+
+
+def _set_bool_setting(session: Session, key: str, value: bool) -> None:
+    setting = session.get(AppSetting, key)
+    if setting is None:
+        setting = AppSetting(key=key, value="true" if value else "false")
+    else:
+        setting.value = "true" if value else "false"
+    session.add(setting)
+    session.commit()
+
+
 # ── Migrations ─────────────────────────────────────────────────────────────
 
 def _ensure_user_id_column(session: Session) -> None:
@@ -188,6 +211,15 @@ def _ensure_first_name_column(session: Session) -> None:
     if engine.dialect.name != "postgresql":
         return
     session.exec(text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS first_name VARCHAR NOT NULL DEFAULT ''"))
+    session.commit()
+
+
+def _ensure_is_admin_column(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text(
+        "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
     session.commit()
 
 
@@ -283,22 +315,31 @@ def _migrate_installations(session: Session) -> None:
     session.commit()
 
 
-def _ensure_admin_user(session: Session) -> None:
-    email = os.getenv("ADMIN_EMAIL")
-    password = os.getenv("ADMIN_PASSWORD")
-    if not email or not password:
-        return
-    existing = session.exec(select(User).where(User.email == email)).first()
-    if existing:
-        user = existing
-    else:
-        user = User(email=email, password_hash=_hash_password(password))
-        session.add(user)
+def _backfill_first_admin(session: Session) -> None:
+    """Makes sure an instance that already has accounts ends up with exactly one
+    administrator, without anyone having to touch the environment: if nobody is
+    flagged yet, the oldest account (lowest id) is promoted.
+
+    This replaces the old ADMIN_EMAIL/ADMIN_PASSWORD bootstrap, which created an
+    account on first boot and then silently ignored every later change to those
+    variables — a password edited in .env after the first startup never took
+    effect, and an edited email quietly produced a second, empty account. New
+    instances now get their admin from the first account registered in the UI
+    (see the register route).
+
+    Also carries over that bootstrap's one useful side effect: attaching
+    pre-multi-user actions (user_id IS NULL) to the admin."""
+    admin = session.exec(select(User).where(User.is_admin == True)).first()  # noqa: E712
+    if admin is None:
+        admin = session.exec(select(User).order_by(User.id)).first()
+        if admin is None:
+            return  # fresh install — the first registration claims the role
+        admin.is_admin = True
+        session.add(admin)
         session.commit()
-        session.refresh(user)
     session.exec(
         text("UPDATE action SET user_id = :user_id WHERE user_id IS NULL").bindparams(
-            user_id=user.id
+            user_id=admin.id
         )
     )
     session.commit()
@@ -354,12 +395,13 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         _ensure_user_id_column(session)
         _ensure_first_name_column(session)
+        _ensure_is_admin_column(session)
         _ensure_volume_columns(session)
         _ensure_measurement_unit_columns(session)
         _ensure_range_overrides_column(session)
         _ensure_contact_columns(session)
         insert_seeds(session)
-        _ensure_admin_user(session)
+        _backfill_first_admin(session)
         _migrate_installations(session)
         _seed_maintenance_tasks(session)
     yield
@@ -412,7 +454,37 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     first_name: str = ""
+    is_admin: bool = False
     created_at: datetime
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    email: EmailStr
+    first_name: str = ""
+    is_admin: bool = False
+    installation_count: int = 0
+    created_at: datetime
+
+
+class AdminUserPatchIn(BaseModel):
+    is_admin: bool
+
+
+class AdminSettingsOut(BaseModel):
+    allow_registration: bool
+
+
+class AdminSettingsPatchIn(BaseModel):
+    allow_registration: Optional[bool] = None
+
+
+class RegistrationStatusOut(BaseModel):
+    # `first_run` lets the login page tell a brand-new instance apart from a
+    # closed one: on an empty database registration is always allowed and the
+    # account created claims the administrator role.
+    open: bool
+    first_run: bool
 
 
 class RegisterIn(BaseModel):
@@ -646,6 +718,16 @@ class ActionOut(BaseModel):
 
 # ── Auth dependency ─────────────────────────────────────────────────────────
 
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        first_name=user.first_name,
+        is_admin=user.is_admin,
+        created_at=user.created_at,
+    )
+
+
 def get_current_user(
     request: Request,
     session: Session = Depends(get_session),
@@ -731,7 +813,7 @@ def login(payload: LoginIn, request: Request, session: Session = Depends(get_ses
     if not user or not _verify_password(payload.password, user.password_hash):
         raise AuthError("Invalid email or password")
     request.session["user_id"] = user.id
-    return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
+    return {"user": _user_out(user)}
 
 
 @app.post("/auth/logout")
@@ -745,16 +827,31 @@ def _validate_password_strength(password: str) -> None:
         raise HTTPException(status_code=422, detail="Password must contain at least 8 characters, one uppercase letter, and one digit")
 
 
+@app.get("/auth/registration-status", response_model=RegistrationStatusOut)
+def registration_status(session: Session = Depends(get_session)):
+    first_run = session.exec(select(User.id)).first() is None
+    return RegistrationStatusOut(
+        open=first_run or _get_bool_setting(session, SETTING_ALLOW_REGISTRATION, True),
+        first_run=first_run,
+    )
+
+
 @app.post("/auth/register")
 @limiter.limit("3/minute")
 def register(payload: RegisterIn, request: Request, session: Session = Depends(get_session)):
     _validate_password_strength(payload.password)
+    # The very first account always gets through, whatever the setting says — an
+    # empty instance must never be un-registerable — and it becomes the admin.
+    is_first = session.exec(select(User.id)).first() is None
+    if not is_first and not _get_bool_setting(session, SETTING_ALLOW_REGISTRATION, True):
+        raise HTTPException(status_code=403, detail="Registration is closed on this instance")
     if session.exec(select(User).where(User.email == payload.email)).first():
         raise HTTPException(status_code=409, detail="Email already in use")
     user = User(
         email=payload.email,
         first_name=payload.first_name.strip(),
         password_hash=_hash_password(payload.password),
+        is_admin=is_first,
     )
     session.add(user)
     session.commit()
@@ -764,7 +861,7 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.add(installation)
     session.commit()
     request.session["user_id"] = user.id
-    return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
+    return {"user": _user_out(user)}
 
 
 @app.post("/auth/forgot-password")
@@ -813,7 +910,7 @@ def reset_password(payload: ResetPasswordIn, session: Session = Depends(get_sess
 
 @app.get("/me")
 def me(user: User = Depends(get_current_user)):
-    return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
+    return {"user": _user_out(user)}
 
 
 @app.patch("/me")
@@ -834,7 +931,7 @@ def update_me(
     session.add(user)
     session.commit()
     session.refresh(user)
-    return {"user": UserOut(id=user.id, email=user.email, first_name=user.first_name, created_at=user.created_at)}
+    return {"user": _user_out(user)}
 
 
 @app.get("/me/api-key")
@@ -871,6 +968,147 @@ def revoke_api_key(
     for k in existing:
         session.delete(k)
     session.commit()
+
+
+# ── Administration ─────────────────────────────────────────────────────────
+#
+# The first account registered through the UI becomes the administrator (see the
+# register route); on a pre-existing database the oldest account is promoted at
+# boot by _backfill_first_admin. Admins manage accounts and decide whether the
+# instance accepts new self-registrations.
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user
+
+
+def _count_admins(session: Session) -> int:
+    return len(session.exec(select(User).where(User.is_admin == True)).all())  # noqa: E712
+
+
+def _purge_user(session: Session, user: User) -> None:
+    """Removes an account and everything hanging off it. There is no ON DELETE
+    CASCADE in the schema, so every child row is deleted explicitly, deepest
+    first, or the foreign keys would be left dangling."""
+    installations = session.exec(
+        select(Installation).where(Installation.user_id == user.id)
+    ).all()
+    for installation in installations:
+        for task in session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation.id)
+        ).all():
+            session.delete(task)
+        for action in session.exec(
+            select(Action).where(Action.installation_id == installation.id)
+        ).all():
+            session.delete(action)
+    session.flush()
+    for installation in installations:
+        session.delete(installation)
+    # Actions this user logged elsewhere (or legacy rows with no installation).
+    for action in session.exec(select(Action).where(Action.user_id == user.id)).all():
+        session.delete(action)
+    for key in session.exec(select(ApiKey).where(ApiKey.user_id == user.id)).all():
+        session.delete(key)
+    for token in session.exec(
+        select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+    ).all():
+        session.delete(token)
+    session.delete(user)
+    session.commit()
+
+
+@app.get("/admin/users", response_model=List[AdminUserOut])
+def admin_list_users(
+    admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    users = session.exec(select(User).order_by(User.id)).all()
+    return [
+        AdminUserOut(
+            id=u.id,
+            email=u.email,
+            first_name=u.first_name,
+            is_admin=u.is_admin,
+            installation_count=len(
+                session.exec(select(Installation).where(Installation.user_id == u.id)).all()
+            ),
+            created_at=u.created_at,
+        )
+        for u in users
+    ]
+
+
+@app.patch("/admin/users/{user_id}", response_model=AdminUserOut)
+def admin_update_user(
+    user_id: int,
+    payload: AdminUserPatchIn,
+    admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    target = session.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.is_admin and not payload.is_admin and _count_admins(session) <= 1:
+        raise HTTPException(
+            status_code=400, detail="The instance must keep at least one administrator."
+        )
+    target.is_admin = payload.is_admin
+    session.add(target)
+    session.commit()
+    session.refresh(target)
+    return AdminUserOut(
+        id=target.id,
+        email=target.email,
+        first_name=target.first_name,
+        is_admin=target.is_admin,
+        installation_count=len(
+            session.exec(select(Installation).where(Installation.user_id == target.id)).all()
+        ),
+        created_at=target.created_at,
+    )
+
+
+@app.delete("/admin/users/{user_id}", status_code=204)
+def admin_delete_user(
+    user_id: int,
+    admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    target = session.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    if target.is_admin and _count_admins(session) <= 1:
+        raise HTTPException(
+            status_code=400, detail="The instance must keep at least one administrator."
+        )
+    _purge_user(session, target)
+
+
+@app.get("/admin/settings", response_model=AdminSettingsOut)
+def admin_get_settings(
+    admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return AdminSettingsOut(
+        allow_registration=_get_bool_setting(session, SETTING_ALLOW_REGISTRATION, True)
+    )
+
+
+@app.patch("/admin/settings", response_model=AdminSettingsOut)
+def admin_update_settings(
+    payload: AdminSettingsPatchIn,
+    admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    if payload.allow_registration is not None:
+        _set_bool_setting(session, SETTING_ALLOW_REGISTRATION, payload.allow_registration)
+    return AdminSettingsOut(
+        allow_registration=_get_bool_setting(session, SETTING_ALLOW_REGISTRATION, True)
+    )
 
 
 # ── Products ───────────────────────────────────────────────────────────────
