@@ -42,6 +42,7 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 - **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
+- **Pool sharing** — give another account read-only or read-and-log access to one of your pools, for a partner, a housemate or the person who looks after it while you're away
 - **Bromine, chlorine or salt** — differentiated ideal ranges per sanitizer, including a full salt water generator (SWG) profile: higher CYA, a matching free-chlorine target, and a lower total alkalinity target to slow the pH rise SWG cells cause
 - **Configurable ideal ranges** — override any water-parameter range per installation, right from the UI
 - **Dosage recommendations** — out-of-range params get a targeted dosing suggestion (liquid CYA now gets a real active-ingredient estimate instead of just "check the bottle"), plus a what-if simulator with slider inputs bounded by your installation's own acceptable ranges and prefilled from your latest reading
@@ -102,6 +103,35 @@ The app is available at `http://localhost:8090`. Create your account on first lo
 > credentials to set in `.env` — an administrator manages accounts and can close public
 > sign-ups from the **Administration** panel in the sidebar. Upgrading an existing
 > instance? Your oldest account is promoted to administrator automatically on first boot.
+
+---
+
+### 👥 Sharing a pool
+
+Pools belong to the account that created them, but you can give other accounts access to
+one — a partner who logs the measurements, a housemate, or whoever looks after the pool
+while you're away.
+
+Open the pool's edit dialog (the ✏️ next to the installation picker) → **Sharing**, enter
+the other person's homepool email address and pick their level of access:
+
+| Access | Can |
+|---|---|
+| **Read-only** | See the dashboard, water parameters, history and dosing recommendations |
+| **Read and log** | The above, plus log measurements, treatments and mark maintenance done |
+
+The pool's **owner** keeps everything else: renaming it, capacity and units, target ranges,
+maintenance task configuration, managing shares, and deleting it. Sharing is by account, so
+the other person needs to have signed up on your instance first — there are no invitation
+emails to configure.
+
+Shared pools show up in the recipient's installation picker labelled with the owner's name,
+and in their **Home Assistant integration** too: their API key lists shared pools alongside
+their own, so they get the same sensors and cards. Write actions still respect the role — a
+read-only user's maintenance buttons are refused by the API.
+
+Either side can end a share: the owner revokes it from the Sharing tab, the recipient uses
+**Leave this installation** from the pool's dialog.
 
 ---
 

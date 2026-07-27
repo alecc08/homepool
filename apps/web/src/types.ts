@@ -40,9 +40,26 @@ export type Action = {
   created_at: string
 }
 
-export type Installation = {
+/** What the current account may do with an installation. Owners configure and
+ * share it, editors log entries, viewers only read. */
+export type InstallationRole = 'owner' | 'editor' | 'viewer'
+
+/** One row of GET /installations/{id}/shares — an account the owner granted
+ * access to. Only owners can list or change these. */
+export type InstallationShare = {
   id: number
   user_id: number
+  email: string
+  first_name: string
+  role: Exclude<InstallationRole, 'owner'>
+  created_at: string
+}
+
+export type Installation = {
+  id: number
+  role: InstallationRole
+  /** Who owns a shared installation; null for your own. */
+  owner_name?: string | null
   name: string
   type: 'pool' | 'spa'
   sanitizer: 'bromine' | 'chlorine' | 'salt'

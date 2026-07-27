@@ -45,7 +45,7 @@ type AppMainProps = {
 }
 
 function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps) {
-  const { active } = useInstallation()
+  const { active, canEdit } = useInstallation()
   const [editingInstallation, setEditingInstallation] = useState(false)
   const { t } = useT()
   const [actions, setActions] = useState<Action[]>([])
@@ -191,7 +191,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   return (
     <div className="app-layout">
       <Topbar
-        onAdd={() => setShowForm(true)}
+        onAdd={canEdit ? () => setShowForm(true) : undefined}
         onLogout={onLogout}
         onProfile={() => setShowProfile(true)}
         onAdmin={user.is_admin ? () => setShowAdmin(true) : undefined}
@@ -208,12 +208,21 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         {page === 'measurements'
           ? <MeasurementsPage actions={actions} />
           : page === 'history'
-          ? <HistoryPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} />
+          ? <HistoryPage actions={actions} products={products} onEdit={canEdit ? setEditingAction : undefined} onDelete={canEdit ? setDeletingAction : undefined} />
           : page === 'recommendations'
           ? <RecommendationsPage actions={actions} />
           : page === 'maintenance'
           ? <MaintenancePage onActionLogged={loadData} />
-          : <DashboardPage actions={actions} products={products} onEdit={setEditingAction} onDelete={setDeletingAction} onExport={handleExport} onImport={handleImport} onNavigate={navigate} onAdd={() => setShowForm(true)} />
+          : <DashboardPage
+              actions={actions}
+              products={products}
+              onEdit={canEdit ? setEditingAction : undefined}
+              onDelete={canEdit ? setDeletingAction : undefined}
+              onExport={handleExport}
+              onImport={canEdit ? handleImport : undefined}
+              onNavigate={navigate}
+              onAdd={canEdit ? () => setShowForm(true) : undefined}
+            />
         }
       </main>
 

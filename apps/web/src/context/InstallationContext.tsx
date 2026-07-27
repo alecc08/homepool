@@ -7,6 +7,10 @@ type InstallationCtx = {
   installations: Installation[]
   active: Installation | null
   ranges: DynamicRanges | null
+  /** The active installation is your own — you may configure, share or delete it. */
+  isOwner: boolean
+  /** You may log entries against the active installation (owner or editor). */
+  canEdit: boolean
   setActive: (id: number) => void
   refresh: () => Promise<void>
   addInstallation: (data: {
@@ -26,6 +30,8 @@ type InstallationCtx = {
     notes?: string
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
+  /** Removes your own share on someone else's installation. */
+  leaveInstallation: (id: number) => Promise<void>
   updateRanges: (ranges: DynamicRanges) => void
 }
 
@@ -46,6 +52,8 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
   const [ranges, setRanges] = useState<DynamicRanges | null>(null)
 
   const active = installations.find(i => i.id === activeId) ?? installations[0] ?? null
+  const isOwner = active?.role === 'owner'
+  const canEdit = active?.role === 'owner' || active?.role === 'editor'
 
   const fetchParams = useCallback(async (id: number, installation: Installation) => {
     try {
@@ -136,12 +144,28 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     }
   }, [activeId])
 
+  const leaveInstallation = useCallback(async (id: number) => {
+    const res = await fetch(`/api/installations/${id}/shares/me`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null)
+      throw new Error(data?.detail ?? 'Error leaving installation')
+    }
+    setInstallations(prev => prev.filter(i => i.id !== id))
+    if (activeId === id) {
+      localStorage.removeItem('homepool_active_installation')
+      setActiveId(null)
+    }
+  }, [activeId])
+
   const updateRanges = useCallback((next: DynamicRanges) => {
     setRanges(next)
   }, [])
 
   return (
-    <InstallationContext.Provider value={{ installations, active, ranges, setActive, refresh, addInstallation, deleteInstallation, updateRanges }}>
+    <InstallationContext.Provider value={{ installations, active, ranges, isOwner, canEdit, setActive, refresh, addInstallation, deleteInstallation, leaveInstallation, updateRanges }}>
       {children}
     </InstallationContext.Provider>
   )

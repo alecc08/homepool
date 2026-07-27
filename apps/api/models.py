@@ -2,7 +2,7 @@
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -65,6 +65,25 @@ class Installation(SQLModel, table=True):
     # stored in canonical/metric units, independent of temp_unit/salt_unit/hardness_unit.
     range_overrides: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+class InstallationShare(SQLModel, table=True):
+    """Grants a second account access to someone else's installation. The owner
+    (Installation.user_id) is never a row here — ownership is implicit and always
+    outranks a share. Roles:
+
+    - "viewer": read everything (dashboard, history, recommendations).
+    - "editor": read, plus log measurements, treatments and maintenance.
+
+    Configuration — renaming, target ranges, maintenance tasks, sharing itself
+    and deletion — stays with the owner in every case."""
+    __table_args__ = (UniqueConstraint("installation_id", "user_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    installation_id: int = Field(foreign_key="installation.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    role: str = Field(default="viewer")  # "viewer" | "editor"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MaintenanceTask(SQLModel, table=True):

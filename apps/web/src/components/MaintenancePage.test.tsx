@@ -13,7 +13,11 @@ vi.mock('../context/LocaleContext', () => ({
 }))
 
 vi.mock('../context/InstallationContext', () => ({
-  useInstallation: () => ({ active: { id: 1, name: 'My pool', type: 'pool' } }),
+  useInstallation: () => ({
+    active: { id: 1, name: 'My pool', type: 'pool', role: 'owner' },
+    isOwner: true,
+    canEdit: true,
+  }),
 }))
 
 const task = (overrides: Partial<MaintenanceTask> = {}): MaintenanceTask => ({
