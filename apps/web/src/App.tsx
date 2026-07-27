@@ -7,6 +7,7 @@ import { InstallationProvider, useInstallation } from './context/InstallationCon
 import Topbar from './components/Topbar'
 import ActionForm from './components/ActionForm'
 import ProfileDialog from './components/ProfileDialog'
+import AdminDialog from './components/AdminDialog'
 import DashboardPage from './components/DashboardPage'
 import MeasurementsPage from './components/MeasurementsPage'
 import HistoryPage from './components/HistoryPage'
@@ -55,6 +56,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   const [editingAction, setEditingAction] = useState<Action | null>(null)
   const [deletingAction, setDeletingAction] = useState<Action | null>(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
   const [showInstallationModal, setShowInstallationModal] = useState(false)
   const [page, setPage] = useState<Page>(getPageFromHash)
 
@@ -192,6 +194,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         onAdd={() => setShowForm(true)}
         onLogout={onLogout}
         onProfile={() => setShowProfile(true)}
+        onAdmin={user.is_admin ? () => setShowAdmin(true) : undefined}
         onAddInstallation={() => setShowInstallationModal(true)}
         onEditInstallation={() => setEditingInstallation(true)}
         page={page}
@@ -288,6 +291,15 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           />
         </DialogContent>
       </Dialog>
+
+      {/* Dialog — administration (admins only) */}
+      {user.is_admin && (
+        <AdminDialog
+          open={showAdmin}
+          onClose={() => setShowAdmin(false)}
+          currentUser={user}
+        />
+      )}
 
       {/* Modal — new installation */}
       <InstallationModal

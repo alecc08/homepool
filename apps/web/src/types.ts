@@ -11,6 +11,19 @@ export type User = {
   id: number
   email: string
   first_name: string
+  /** The first account created on an instance is its administrator; admins can
+   * manage accounts and open/close self-registration (see AdminDialog). */
+  is_admin: boolean
+  created_at: string
+}
+
+/** One row of GET /admin/users — the account list an administrator sees. */
+export type AdminUser = {
+  id: number
+  email: string
+  first_name: string
+  is_admin: boolean
+  installation_count: number
   created_at: string
 }
 

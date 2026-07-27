@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import type { User } from '../types'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
@@ -188,6 +188,23 @@ export default function LoginPage({ onLogin }: Props) {
   }
   const [view, setView] = useState<AuthView>(initView)
 
+  // Self-registration can be closed by the administrator; on an instance with no
+  // account at all it is always open, and the account created claims the
+  // administrator role. Defaults to open so a failed probe never hides the link.
+  const [registrationOpen, setRegistrationOpen] = useState(true)
+  const [firstRun, setFirstRun] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/auth/registration-status', { credentials: 'same-origin' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data) return
+        setRegistrationOpen(data.open)
+        setFirstRun(data.first_run)
+      })
+      .catch(() => {})
+  }, [])
+
   const resetToken = useMemo(() => {
     const h = window.location.hash.replace(/^#/, '')
     const q = h.indexOf('?')
@@ -362,10 +379,12 @@ export default function LoginPage({ onLogin }: Props) {
               </div>
               {lError && <AlertBand>{lError}</AlertBand>}
               <PrimaryBtn loading={lLoading}>{lLoading ? t('auth_login_loading') : t('auth_login')}</PrimaryBtn>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button type="button" onClick={() => setView('register')} style={linkStyle}>
-                  {t('auth_no_account')}
-                </button>
+              <div style={{ display: 'flex', justifyContent: registrationOpen ? 'space-between' : 'flex-end', alignItems: 'center' }}>
+                {registrationOpen && (
+                  <button type="button" onClick={() => setView('register')} style={linkStyle}>
+                    {firstRun ? t('auth_create_first_account') : t('auth_no_account')}
+                  </button>
+                )}
                 <button type="button" onClick={() => setView('forgot')} style={linkStyle}>
                   {t('auth_forgot')}
                 </button>
@@ -376,6 +395,7 @@ export default function LoginPage({ onLogin }: Props) {
           {/* ── ACCOUNT CREATION ── */}
           {view === 'register' && (
             <form onSubmit={handleRegister} style={{ display: 'grid', gap: 14 }}>
+              {firstRun && <AlertBand variant="success">{t('auth_first_account_is_admin')}</AlertBand>}
               <div>
                 <FieldLabel>{t('auth_first_name')}</FieldLabel>
                 <FieldInput

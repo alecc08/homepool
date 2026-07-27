@@ -32,8 +32,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-homepool}:${POSTGRES_PASSWORD:?required}@db:5432/${POSTGRES_DB:-homepool}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET variable is required}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8090}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8090}
       DEBUG: ${DEBUG:-false}
