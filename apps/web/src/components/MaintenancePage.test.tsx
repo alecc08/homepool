@@ -104,6 +104,36 @@ describe('MaintenancePage', () => {
     expect(screen.queryByText(translations.fr.maint_never_done)).not.toBeInTheDocument()
   })
 
+  it('draws a task icon from the stored mdi name, whatever the task', async () => {
+    // Icons used to be looked up by builtin_key, so anything the user added was
+    // stuck with the wrench fallback. They come from `icon` now, like in HA.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [task({
+        id: 40, key: 'custom_40', builtin_key: null, label: 'Brosser la ligne d’eau',
+        icon: 'mdi:broom', action_types: ['Brosser la ligne d’eau'],
+      })],
+    } as Response)
+
+    const { container } = render(<MaintenancePage />)
+
+    await waitFor(() => expect(screen.getByText('Brosser la ligne d’eau')).toBeInTheDocument())
+    expect(container.querySelector('svg.lucide-brush')).toBeInTheDocument()
+    expect(container.querySelector('svg.lucide-wrench')).not.toBeInTheDocument()
+  })
+
+  it('falls back to a wrench for an icon it does not know', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [task({ icon: 'mdi:something-only-home-assistant-has' })],
+    } as Response)
+
+    const { container } = render(<MaintenancePage />)
+
+    await waitFor(() => expect(screen.getByText('Entretien du filtre')).toBeInTheDocument())
+    expect(container.querySelector('svg.lucide-wrench')).toBeInTheDocument()
+  })
+
   it('hands a measurement task off to the entry form instead of logging an empty row', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     fetchMock.mockResolvedValue({

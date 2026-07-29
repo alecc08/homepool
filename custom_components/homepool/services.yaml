@@ -11,6 +11,12 @@ log_measurement:
         number:
           min: 1
           mode: box
+    date:
+      name: Date
+      description: Day the measurement was taken. Leave empty for today — set it to log a reading you took earlier and forgot to record.
+      example: "2026-07-24"
+      selector:
+        date:
     ph:
       name: pH
       description: pH value.
@@ -88,5 +94,38 @@ log_measurement:
       name: Notes
       description: Optional free-text notes.
       example: Test strip reading
+      selector:
+        text:
+
+log_maintenance:
+  name: Log maintenance
+  description: Records a maintenance task as done for a homepool installation.
+  fields:
+    installation_id:
+      name: Installation ID
+      description: The homepool installation to log the maintenance for.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          mode: box
+    task:
+      name: Task
+      description: The task to mark done, given as its task key — the `task_key` attribute published by that task's "days until due" sensor and "log" button.
+      required: true
+      example: filter_maintenance
+      selector:
+        text:
+    date:
+      name: Date
+      description: Day the task was done. Leave empty for today — set it to log maintenance you did earlier and forgot to record.
+      example: "2026-07-24"
+      selector:
+        date:
+    notes:
+      name: Notes
+      description: Optional free-text notes.
+      example: Backwashed until the sight glass ran clear
       selector:
         text:

@@ -350,24 +350,23 @@ def _backfill_first_admin(session: Session) -> None:
 def _seed_maintenance_tasks_for_installation(
     session: Session, installation: Installation
 ) -> bool:
-    """Gives an installation one task per built-in key for its type, skipping the
-    keys it already has. Returns whether anything was added; the caller commits.
+    """Gives a *task-less* installation the default set for its type. Returns
+    whether anything was added; the caller commits.
 
-    Idempotent, and safe to re-run as new built-in keys appear: built-in tasks
-    can only be disabled, never deleted (see delete_maintenance_task), so a
-    missing builtin_key always means "never seeded" rather than "the user
-    removed it". Custom tasks and edits to existing built-ins are untouched."""
+    Only ever seeds when the installation has no tasks at all. There is no
+    built-in/custom split any more — the seeded tasks are ordinary rows the owner
+    can rename, retime, re-icon or delete — so "this key is missing" cannot be
+    told apart from "the user deleted it", and topping up would resurrect
+    deletions. The trade-off is deliberate: a default added in a future release
+    reaches new installations only."""
     existing = session.exec(
         select(MaintenanceTask).where(
             MaintenanceTask.installation_id == installation.id
         )
     ).all()
-    existing_keys = {t.builtin_key for t in existing if t.builtin_key}
-    next_order = max((t.sort_order for t in existing), default=-1) + 1
-    added = False
-    for spec in default_maintenance_tasks(installation.type):
-        if spec["builtin_key"] in existing_keys:
-            continue
+    if existing:
+        return False
+    for sort_order, spec in enumerate(default_maintenance_tasks(installation.type)):
         session.add(
             MaintenanceTask(
                 installation_id=installation.id,
@@ -377,21 +376,19 @@ def _seed_maintenance_tasks_for_installation(
                 interval_days=spec["interval_days"],
                 icon=spec["icon"],
                 enabled=True,
-                sort_order=next_order,
+                sort_order=sort_order,
             )
         )
-        next_order += 1
-        added = True
-    return added
+    return True
 
 
 def _seed_maintenance_tasks(session: Session) -> None:
-    """Boot backfill: tops up every installation's built-in maintenance tasks.
+    """Boot backfill: gives any installation that has no maintenance tasks the
+    defaults for its type.
 
     Since issue #51 the maintenance tasks are the only taxonomy of loggable
-    actions, so this is also what gives databases created before that change the
-    tasks covering the action types the old hardcoded picker offered (pH
-    calibration, purge, product additions)."""
+    actions, so this is what gives databases created before that change a usable
+    entry picker. It never touches an installation that already has tasks."""
     seeded = False
     for installation in session.exec(select(Installation)).all():
         seeded |= _seed_maintenance_tasks_for_installation(session, installation)
@@ -577,6 +574,13 @@ class InstallationOut(BaseModel):
     created_at: datetime
 
 
+# A field named `date` that also has a default cannot annotate itself as `date`:
+# Python binds the class attribute (`date = None`) *before* evaluating the
+# annotation, so `Optional[date]` silently resolves to Optional[None] and the
+# field then rejects every value it is given. Annotate those with this alias.
+DateT = date
+
+
 class ActionIn(BaseModel):
     date: date
     action_type: str
@@ -639,12 +643,13 @@ class ShareOut(BaseModel):
 
 
 class MaintenanceTaskOut(BaseModel):
-    # A configurable maintenance task with its derived due status. `key` is
-    # stable across renames (builtin_key or custom_<id>); clients localize
-    # built-in tasks via builtin_key and fall back to `label`. days_until_due /
-    # last_date are None when the task has never been logged, and days_until_due
-    # is always None when interval_days is 0 (an on-demand task: loggable, but
-    # never scheduled and never overdue).
+    # A maintenance task with its derived due status. `key` is stable across
+    # renames (builtin_key or custom_<id>). builtin_key is a hint for localizing
+    # an untouched seeded label — it is cleared on rename and confers no other
+    # special status; clients translate on it when present and fall back to
+    # `label`. days_until_due / last_date are None when the task has never been
+    # logged, and days_until_due is always None when interval_days is 0 (an
+    # on-demand task: loggable, but never scheduled and never overdue).
     id: int
     key: str
     builtin_key: Optional[str] = None
@@ -659,7 +664,7 @@ class MaintenanceTaskOut(BaseModel):
 
 
 class MaintenanceTaskIn(BaseModel):
-    # Create a custom task. action_types defaults to [label] when omitted.
+    # Create a task. action_types defaults to [label] when omitted.
     # interval_days=0 creates an on-demand task (loggable, never due).
     label: str
     action_types: Optional[List[str]] = None
@@ -677,8 +682,12 @@ class MaintenanceTaskUpdateIn(BaseModel):
 
 
 class MaintenanceCompleteIn(BaseModel):
+    # `date` backdates the completion — for logging something you did days ago
+    # and forgot to record. Omitted means today.
     installation_id: Optional[int] = None
     task_id: int
+    date: Optional[DateT] = None
+    notes: str = ""
 
 
 class HistoryEntryOut(BaseModel):
@@ -704,7 +713,7 @@ class HistoryEntryOut(BaseModel):
 
 
 class MeasurementIn(BaseModel):
-    date: Optional[date] = None
+    date: Optional[DateT] = None
     ph: Optional[float] = None
     chlorine: Optional[float] = None
     bromine: Optional[float] = None
@@ -719,7 +728,7 @@ class MeasurementIn(BaseModel):
 
 
 class MaintenanceIn(BaseModel):
-    date: Optional[date] = None
+    date: Optional[DateT] = None
     action_type: str
     notes: str = ""
     installation_id: Optional[int] = None
@@ -976,9 +985,14 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.add(user)
     session.commit()
     session.refresh(user)
-    # Create a default installation for the new user
+    # Create a default installation for the new user, seeded like any other —
+    # otherwise a fresh account has an empty maintenance page (and nothing to
+    # log as a maintenance entry) until the next API restart backfills it.
     installation = Installation(user_id=user.id)
     session.add(installation)
+    session.commit()
+    session.refresh(installation)
+    _seed_maintenance_tasks_for_installation(session, installation)
     session.commit()
     request.session["user_id"] = user.id
     return {"user": _user_out(user)}
@@ -1657,8 +1671,9 @@ def update_installation_params(
 # ── Maintenance tasks ──────────────────────────────────────────────────────
 #
 # Per-installation configurable maintenance. Each installation is seeded with
-# its type's defaults (see _seed_maintenance_tasks_for_installation); tasks can
-# be enabled/disabled, retimed, relabelled, or added (custom). "Due" is derived
+# its type's defaults (see _seed_maintenance_tasks_for_installation), but there
+# is only one kind of task: every one of them — seeded or added later — can be
+# enabled/disabled, retimed, relabelled, re-iconed or deleted. "Due" is derived
 # from the action log, never stored (see compute_task_status).
 #
 # Since issue #51 the enabled tasks are also the list of things a client can log
@@ -1726,16 +1741,25 @@ def _get_task_for_write(
     return _lookup_task(installation_id, task_id, session)
 
 
-def _complete_maintenance_task(session: Session, user: User, task: MaintenanceTask) -> Action:
+def _complete_maintenance_task(
+    session: Session,
+    user: User,
+    task: MaintenanceTask,
+    on: Optional[date] = None,
+    notes: str = "",
+) -> Action:
     """Logs a completion for a task: an Action with the task's primary
-    action_type on today's date. Shared by the web and /v1 complete routes."""
+    action_type. Shared by the web and /v1 complete routes.
+
+    `on` backdates the completion; the one-click "mark done" surfaces leave it
+    None and get today."""
     action_type = (task.action_types or [task.label])[0]
     action = Action(
-        date=date.today(),
+        date=on or date.today(),
         action_type=action_type,
         user_id=user.id,
         installation_id=task.installation_id,
-        notes="",
+        notes=notes,
         created_at=datetime.now(timezone.utc),
     )
     session.add(action)
@@ -1807,6 +1831,10 @@ def update_maintenance_task(
         label = payload.label.strip()
         if not label:
             raise HTTPException(status_code=422, detail="label cannot be empty")
+        if label != task.label:
+            # builtin_key only says "this label is one of ours, translate it".
+            # Once renamed, the stored label is what the user wants to see.
+            task.builtin_key = None
         task.label = label
     if payload.action_types is not None:
         if not payload.action_types:
@@ -1837,14 +1865,9 @@ def delete_maintenance_task(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
+    # Every task is deletable, seeded defaults included — the boot backfill only
+    # fills installations with no tasks at all, so a deletion sticks.
     task = _get_owned_task(installation_id, task_id, user, session)
-    # Built-in tasks are disabled (enabled=false), not deleted, so the boot
-    # backfill never re-adds them and users keep a consistent default set.
-    if task.builtin_key is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="Built-in tasks cannot be deleted; disable them instead.",
-        )
     session.delete(task)
     session.commit()
 
@@ -2159,16 +2182,17 @@ def api_complete_maintenance_task(
     session: Session = Depends(get_session),
 ):
     # "Mark done" for the HA per-task buttons: completes a task by id (logs its
-    # primary action_type), so custom tasks with their own action types work
-    # without the caller needing to know the string. Shares the completion path
-    # with the web route.
+    # primary action_type), so tasks with their own action types work without
+    # the caller needing to know the string. Shares the completion path with the
+    # web route. The HA `log_maintenance` service uses the same route with an
+    # explicit date/notes to record something done days ago.
     resolved_id = _resolve_installation_for_api_key(
         payload.installation_id, user, session, require_write=True
     )
     task = session.get(MaintenanceTask, payload.task_id)
     if not task or task.installation_id != resolved_id:
         raise HTTPException(status_code=404, detail="Maintenance task not found")
-    _complete_maintenance_task(session, user, task)
+    _complete_maintenance_task(session, user, task, on=payload.date, notes=payload.notes)
     status_list = _maintenance_status(session, resolved_id)
     match = next(t for t in status_list if t["id"] == task.id)
     return MaintenanceTaskOut(**match)

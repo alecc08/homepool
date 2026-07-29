@@ -81,6 +81,45 @@ def test_401_response_raises_homepool_auth_error() -> None:
         asyncio.run(client._get("/v1/installations"))
 
 
+def _capture_post() -> tuple[HomepoolClient, MagicMock]:
+    """A client whose _post is captured instead of hitting the network."""
+    client = HomepoolClient(MagicMock(), "https://example.test", "key")
+    post = AsyncMock(return_value={})
+    client._post = post
+    return client, post
+
+
+def test_complete_task_omits_date_and_notes_when_not_given() -> None:
+    """The per-task "log" buttons carry no input, so the payload must stay bare
+    and let the server date the completion today."""
+    client, post = _capture_post()
+    asyncio.run(client.complete_task(3, 7))
+    assert post.await_args.args == (
+        "/v1/maintenance/complete",
+        {"installation_id": 3, "task_id": 7},
+    )
+
+
+def test_complete_task_forwards_date_and_notes() -> None:
+    client, post = _capture_post()
+    asyncio.run(client.complete_task(3, 7, date="2026-07-24", notes="Ran it twice"))
+    assert post.await_args.args[1] == {
+        "installation_id": 3,
+        "task_id": 7,
+        "date": "2026-07-24",
+        "notes": "Ran it twice",
+    }
+
+
+def test_create_measurement_forwards_date_and_drops_empty_fields() -> None:
+    client, post = _capture_post()
+    asyncio.run(client.create_measurement(3, ph=7.4, chlorine=None, date="2026-07-24"))
+    assert post.await_args.args == (
+        "/v1/measurements",
+        {"installation_id": 3, "ph": 7.4, "date": "2026-07-24"},
+    )
+
+
 def test_candidate_urls_bare_host_port_fans_out_scheme_and_path() -> None:
     assert build_candidate_base_urls("192.168.1.5:8090") == [
         "https://192.168.1.5:8090",

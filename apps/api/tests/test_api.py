@@ -778,6 +778,28 @@ def test_v1_create_measurement_is_readable_back(client: TestClient):
     assert data["salt"]["value"] == 3200
 
 
+def test_v1_create_measurement_accepts_a_custom_date(client: TestClient):
+    """A reading you took on Sunday and only got round to logging on Tuesday.
+    Regression test: see test_v1_create_maintenance_accepts_a_custom_date."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    then = (date.today() - timedelta(days=2)).isoformat()
+    r = client.post(
+        "/v1/measurements",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "ph": 7.4, "chlorine": 1.6, "date": then},
+    )
+    assert r.status_code == 200
+    assert r.json()["date"] == then
+
+    history = client.get(
+        f"/v1/history?installation_id={installation_id}&type=measurement",
+        headers=auth_headers(key),
+    ).json()
+    assert [(h["date"], h["ph"]) for h in history] == [(then, 7.4)]
+
+
 def test_v1_create_measurement_requires_at_least_one_value(client: TestClient):
     login(client)
     key = get_api_key(client)
@@ -811,6 +833,26 @@ def test_v1_create_maintenance_is_readable_back(client: TestClient):
 
     todo = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
     assert _task_by_key(todo.json(), "filter_maintenance")["days_until_due"] == 14
+
+
+def test_v1_create_maintenance_accepts_a_custom_date(client: TestClient):
+    """Backdating an entry you forgot to log. Regression test: `date` used to be
+    annotated Optional[None] (a class attribute shadowing the `date` type), so
+    every value was rejected with a 422."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    then = (date.today() - timedelta(days=3)).isoformat()
+    r = client.post(
+        "/v1/maintenance",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "action_type": "Backwash", "date": then},
+    )
+    assert r.status_code == 200
+    assert r.json()["date"] == then
+
+    todo = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert _task_by_key(todo.json(), "filter_maintenance")["last_date"] == then
 
 
 def test_v1_create_maintenance_rejects_unknown_action_type(client: TestClient):
@@ -899,6 +941,35 @@ def test_v1_maintenance_complete_resets_due(client: TestClient):
     assert body["last_date"] == date.today().isoformat()
 
 
+def test_v1_maintenance_complete_backdates(client: TestClient):
+    """The HA `log_maintenance` service records maintenance you did days ago and
+    forgot to log, so the completion carries an explicit date and notes."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    filt = _task_by_key(tasks, "filter_maintenance")
+    then = date.today() - timedelta(days=5)
+    r = client.post(
+        "/v1/maintenance/complete",
+        headers=auth_headers(key),
+        json={
+            "installation_id": installation_id,
+            "task_id": filt["id"],
+            "date": then.isoformat(),
+            "notes": "Backwashed until clear",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["last_date"] == then.isoformat()
+    assert body["days_until_due"] == filt["interval_days"] - 5
+
+    actions = client.get(f"/actions?installation_id={installation_id}").json()
+    logged = next(a for a in actions if a["date"] == then.isoformat())
+    assert logged["notes"] == "Backwashed until clear"
+
+
 def test_v1_maintenance_complete_rejects_foreign_task(client: TestClient):
     login(client)
     key = get_api_key(client)
@@ -980,15 +1051,14 @@ def test_maintenance_rejects_negative_interval(client: TestClient):
     assert r.status_code == 422
 
 
-def test_maintenance_backfill_adds_missing_builtin_tasks(client: TestClient):
-    """The boot backfill tops up built-in tasks an older database never got,
-    without touching custom tasks or re-adding disabled ones. Idempotent."""
+def test_maintenance_backfill_leaves_configured_installations_alone(client: TestClient):
+    """The boot backfill only seeds installations with no tasks at all. It must
+    never top up a configured one — every task is deletable now, so a missing
+    default means the user removed it, and re-adding it would undo that."""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
 
     with Session(client.test_engine) as session:
-        # Simulate a database seeded before product_addition/ph_calibration
-        # existed, with one built-in disabled and one custom task added.
         for task in session.exec(
             select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
         ).all():
@@ -1019,14 +1089,60 @@ def test_maintenance_backfill_adds_missing_builtin_tasks(client: TestClient):
     builtin_keys = [t.builtin_key for t in tasks if t.builtin_key]
     assert sorted(builtin_keys) == [
         "filter_maintenance",
-        "ph_calibration",
         "ph_measurement",
-        "product_addition",
         "water_change",
     ]
     # Untouched: the user's own edits survive the backfill.
     assert next(t for t in tasks if t.builtin_key == "water_change").enabled is False
     assert len([t for t in tasks if t.builtin_key is None]) == 1
+
+
+def test_maintenance_backfill_seeds_a_taskless_installation(client: TestClient):
+    """Databases predating configurable maintenance have installations with no
+    tasks at all; the boot backfill is what gives them a usable entry picker."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    with Session(client.test_engine) as session:
+        for task in session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+        ).all():
+            session.delete(task)
+        session.commit()
+
+        _seed_maintenance_tasks(session)
+
+        tasks = session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+        ).all()
+
+    assert sorted(t.builtin_key for t in tasks) == [
+        "filter_maintenance",
+        "ph_calibration",
+        "ph_measurement",
+        "product_addition",
+        "water_change",
+    ]
+
+
+def test_maintenance_seeded_on_the_default_installation_from_register(empty_client: TestClient):
+    """Registering creates a pool for you. It has to arrive with tasks like any
+    other, or the new account's maintenance page is empty — and so is the
+    maintenance half of the entry form — until the API is next restarted."""
+    r = empty_client.post(
+        "/auth/register",
+        json={"first_name": "New", "email": "new@example.com", "password": "Password1"},
+    )
+    assert r.status_code == 200
+    installation_id = empty_client.get("/installations").json()[0]["id"]
+    tasks = empty_client.get(f"/installations/{installation_id}/maintenance").json()
+    assert {t["builtin_key"] for t in tasks} == {
+        "ph_measurement",
+        "filter_maintenance",
+        "water_change",
+        "ph_calibration",
+        "product_addition",
+    }
 
 
 def test_maintenance_create_custom_task(client: TestClient):
@@ -1076,13 +1192,56 @@ def test_maintenance_update_task(client: TestClient):
     assert body["enabled"] is False
 
 
-def test_maintenance_builtin_cannot_be_deleted(client: TestClient):
+def test_maintenance_rename_clears_builtin_key(client: TestClient):
+    """A seeded task's builtin_key is only a "this label is translatable" hint.
+    Renaming makes the stored label authoritative, so the key is dropped and
+    clients stop translating over the user's own wording."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    filt = _task_by_key(tasks, "filter_maintenance")
+    r = client.patch(
+        f"/installations/{installation_id}/maintenance/{filt['id']}",
+        json={"label": "Backwash the sand filter"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["builtin_key"] is None
+    assert body["label"] == "Backwash the sand filter"
+    assert body["key"] == f"custom_{filt['id']}"
+
+
+def test_maintenance_edit_without_rename_keeps_builtin_key(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    filt = _task_by_key(tasks, "filter_maintenance")
+    r = client.patch(
+        f"/installations/{installation_id}/maintenance/{filt['id']}",
+        json={"label": filt["label"], "interval_days": 21, "icon": "mdi:broom"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["builtin_key"] == "filter_maintenance"
+    assert body["interval_days"] == 21
+    assert body["icon"] == "mdi:broom"
+
+
+def test_maintenance_seeded_task_can_be_deleted(client: TestClient):
+    """No task is special: a seeded default deletes like any other, and the boot
+    backfill must not bring it back."""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
     tasks = client.get(f"/installations/{installation_id}/maintenance").json()
     ph = _task_by_key(tasks, "ph_measurement")
     r = client.delete(f"/installations/{installation_id}/maintenance/{ph['id']}")
-    assert r.status_code == 400
+    assert r.status_code == 204
+
+    with Session(client.test_engine) as session:
+        _seed_maintenance_tasks(session)
+
+    remaining = client.get(f"/installations/{installation_id}/maintenance").json()
+    assert all(t["builtin_key"] != "ph_measurement" for t in remaining)
 
 
 def test_maintenance_custom_can_be_deleted(client: TestClient):

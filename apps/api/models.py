@@ -87,11 +87,16 @@ class InstallationShare(SQLModel, table=True):
 
 
 class MaintenanceTask(SQLModel, table=True):
-    """A configurable maintenance task for one installation. Completing a task
-    means logging an Action whose action_type is one of this task's
-    action_types; "due" is derived (interval_days minus days since the last such
-    action) and never stored. Built-in tasks carry a builtin_key so clients can
-    localize their name; custom tasks (builtin_key=None) use `label` verbatim.
+    """A maintenance task for one installation. Completing a task means logging
+    an Action whose action_type is one of this task's action_types; "due" is
+    derived (interval_days minus days since the last such action) and never
+    stored.
+
+    There is one kind of task. A new installation is seeded with a default set
+    for its type, but those rows are ordinary: rename, retime, re-icon, disable
+    or delete any of them. `builtin_key` is only a hint that a label is one of
+    the seeded ones and can be translated; it is cleared the moment the label is
+    edited, and clients fall back to `label`.
 
     Since issue #51 these tasks are also the only taxonomy of loggable actions:
     "add entry" offers a measurement or a maintenance entry, and the maintenance
