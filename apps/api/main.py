@@ -1544,6 +1544,19 @@ def delete_installation(
         select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
     ).all():
         session.delete(task)
+    # ...and of the treatment catalog. Ordered after the actions above, since an
+    # action's treatment_id points here.
+    for product in session.exec(
+        select(TreatmentProduct).where(TreatmentProduct.installation_id == installation_id)
+    ).all():
+        session.delete(product)
+    # The models declare foreign keys but no SQLModel Relationship(), so
+    # SQLAlchemy has no dependency graph to sort these DELETEs by and is free to
+    # emit the parent's before the children's. Postgres then rejects the whole
+    # statement on the foreign key; SQLite doesn't enforce them by default, which
+    # is why the test suite never saw it. Flushing the children first makes the
+    # order explicit rather than incidental.
+    session.flush()
     session.delete(installation)
     session.commit()
 

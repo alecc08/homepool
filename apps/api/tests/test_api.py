@@ -508,6 +508,41 @@ def test_delete_installation_removes_its_actions(client: TestClient):
     assert action_id not in [a["id"] for a in actions_r.json()]
 
 
+def test_delete_installation_removes_its_seeded_rows(fk_client: TestClient):
+    """Deleting a pool has to take its maintenance tasks and treatment catalog
+    with it. Both are seeded at creation, so *every* installation has them and
+    this is the ordinary path, not an edge case — but it only fails where
+    foreign keys are enforced, hence fk_client (see conftest)."""
+    login(fk_client)
+    fk_client.post("/installations", json={"name": "My pool"})
+    r = fk_client.post("/installations", json={"name": "Garden spa", "type": "spa"})
+    installation_id = r.json()["id"]
+
+    treatments = fk_client.get(f"/installations/{installation_id}/treatments").json()
+    tasks = fk_client.get(f"/installations/{installation_id}/maintenance").json()
+    assert treatments and tasks, "seeding should have given the new pool both"
+
+    # An action pointing at one of those products must not pin it either.
+    logged = fk_client.post("/actions", json={
+        "date": TODAY,
+        "action_type": "Add product",
+        "installation_id": installation_id,
+        "treatment_id": treatments[0]["id"],
+        "qty": "250",
+    })
+    assert logged.status_code == 200
+
+    assert fk_client.delete(f"/installations/{installation_id}").status_code == 204
+
+    with Session(fk_client.test_engine) as session:
+        assert session.exec(
+            select(TreatmentProduct).where(TreatmentProduct.installation_id == installation_id)
+        ).all() == []
+        assert session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+        ).all() == []
+
+
 def test_delete_last_installation_rejected(client: TestClient):
     login(client)
     r = client.post("/installations", json={"name": "My pool"})

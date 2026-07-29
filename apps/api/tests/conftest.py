@@ -1,6 +1,7 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlmodel import SQLModel, Session, create_engine, select
 from sqlmodel.pool import StaticPool
 
@@ -12,13 +13,23 @@ from main import app, limiter, _hash_password  # noqa: E402
 from models import User  # noqa: E402
 
 
-def _make_client(seed_admin: bool) -> TestClient:
+def _make_client(seed_admin: bool, enforce_foreign_keys: bool = False) -> TestClient:
     limiter.reset()
     test_engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    if enforce_foreign_keys:
+        # SQLite ignores foreign keys unless asked, so the default test database
+        # happily accepts deletes that Postgres — where this actually runs —
+        # rejects. Opting in makes those failures reachable from a test.
+        @event.listens_for(test_engine, "connect")
+        def _enable_sqlite_foreign_keys(dbapi_connection, _record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     SQLModel.metadata.create_all(test_engine)
 
     def get_session_override():
@@ -48,6 +59,16 @@ def _make_client(seed_admin: bool) -> TestClient:
 @pytest.fixture(name="client")
 def client_fixture():
     client = _make_client(seed_admin=True)
+    yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture(name="fk_client")
+def fk_client_fixture():
+    """A client whose database enforces foreign keys, the way the Postgres
+    deployments do. Use it for anything that deletes a row other rows point at —
+    the plain `client` would pass regardless and hide the breakage."""
+    client = _make_client(seed_admin=True, enforce_foreign_keys=True)
     yield client
     app.dependency_overrides.clear()
 

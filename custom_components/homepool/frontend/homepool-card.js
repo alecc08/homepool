@@ -196,6 +196,24 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+// A tile's label: the sensor's friendly name with the device name taken off the
+// front, since the card is already titled with the pool.
+//
+// Every measurement sensor sets _attr_has_entity_name, so HA composes
+// friendly_name as "<installation> <field>" — "Backyard pool Chlorine". Dropping
+// only the first word ("pool Chlorine") leaks the rest of a multi-word pool name
+// into every tile and then ellipsizes it, so the card's own title is tried first
+// and the single-word strip is kept as the fallback for when it doesn't match
+// (a renamed entity, or a title that isn't the pool's name).
+function tileLabel(attrs, field, title) {
+  const friendly = attrs.friendly_name;
+  if (!friendly) return field;
+  if (title && friendly.toLowerCase().startsWith(`${title.toLowerCase()} `)) {
+    return friendly.slice(title.length + 1);
+  }
+  return friendly.replace(/^.*?\s/, '');
+}
+
 function daysAgo(dateStr) {
   if (!dateStr) return null;
   const then = new Date(dateStr + 'T00:00:00Z').getTime();
@@ -469,7 +487,7 @@ class HomepoolCard extends HTMLElement {
       return `
         <div class="hp-tile${config.installation_id ? ' hp-tile-tappable' : ''}" data-field="${field}" style="--hp-rail:${rail}">
           <div class="hp-tile-top">
-            <span class="hp-label">${attrs.friendly_name ? attrs.friendly_name.replace(/^.*?\s/, '') : field}</span>
+            <span class="hp-label">${escapeHtml(tileLabel(attrs, field, config.title))}</span>
             <span class="hp-tile-top-right">
               <button class="hp-tile-info" data-info="${entityId}" title="${t(hass, 'history')}" aria-label="${t(hass, 'history')}">${CHART_ICON_SVG}</button>
               ${status ? `<span class="hp-dot" style="background:${rail}"></span>` : ''}
