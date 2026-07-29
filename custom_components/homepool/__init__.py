@@ -17,6 +17,8 @@ from homeassistant.helpers import config_validation as cv
 from .api import HomepoolApiError
 from .const import DOMAIN
 from .coordinator import HomepoolDataUpdateCoordinator
+from .external import configured_sources, push_back_enabled, push_interval_minutes
+from .pushback import HomepoolPushBack
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +79,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # The options flow rewrites which entity backs which reading, and entities
+    # are built once at platform setup — so reload the entry whenever options
+    # change instead of trying to re-plumb live entities.
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
+    # Opt-in write-back of externally-sourced readings into homepool.
+    for installation_id in coordinator.data:
+        if not push_back_enabled(entry.options, installation_id):
+            continue
+        sources = configured_sources(entry.options, installation_id)
+        if not sources:
+            continue
+        pusher = HomepoolPushBack(
+            hass,
+            coordinator,
+            installation_id,
+            sources,
+            push_interval_minutes(entry.options, installation_id),
+        )
+        entry.async_on_unload(pusher.async_start())
+
     if not hass.services.has_service(DOMAIN, SERVICE_LOG_MEASUREMENT):
         async def _async_log_measurement(call: ServiceCall) -> None:
             installation_id = call.data["installation_id"]
@@ -101,6 +124,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> 
         )
 
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: HomepoolConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> bool:

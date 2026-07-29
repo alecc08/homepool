@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à homepool",
+        "description": "Saisissez l'URL de votre serveur homepool et votre clé d'API (dans Réglages → Clé d'API de l'application web homepool), par ex. https://votre-domaine/api. Si vous omettez le schéma (http:// ou https://) ou le chemin /api, nous essaierons de les ajouter automatiquement.",
+        "data": {
+          "url": "URL de base",
+          "api_key": "Clé d'API"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Clé d'API invalide",
+      "timeout": "Délai dépassé en attendant la réponse du serveur homepool",
+      "cannot_resolve_host": "Impossible de résoudre le nom d'hôte du serveur homepool — vérifiez l'URL",
+      "connection_refused": "Connexion refusée par le serveur homepool — vérifiez l'URL et le port",
+      "cannot_connect": "Échec de la connexion au serveur homepool",
+      "no_installations": "Ce compte n'a encore aucune piscine ni aucun spa configuré"
+    },
+    "abort": {
+      "already_configured": "Ce compte homepool est déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Capteurs personnalisés",
+        "description": "Choisissez la piscine ou le spa à configurer.",
+        "data": {
+          "installation": "Piscine ou spa"
+        }
+      },
+      "sensors": {
+        "title": "Capteurs personnalisés",
+        "description": "Utilisez l'une de vos propres entités Home Assistant pour n'importe quel paramètre de {installation} — une sonde connectée, un capteur modèle, une aide — au lieu de la valeur enregistrée dans homepool. Laissez un paramètre vide pour conserver la valeur de homepool. Si l'entité choisie est indisponible, non numérique ou exprimée dans une unité non convertible, la valeur de homepool est utilisée.",
+        "data": {
+          "ph": "pH",
+          "chlorine": "Chlore",
+          "bromine": "Brome",
+          "tac": "TAC",
+          "hardness": "Dureté",
+          "salt": "Sel",
+          "stabilizer": "Stabilisant (CYA)",
+          "cc": "Chlore combiné",
+          "temp": "Température",
+          "push_back": "Renvoyer ces relevés vers homepool",
+          "push_interval_minutes": "Minutes entre deux envois"
+        },
+        "data_description": {
+          "push_back": "Enregistre les relevés ci-dessus comme de véritables mesures homepool : ils apparaissent dans l'historique de l'application web et alimentent ses recommandations de dosage. Une mesure n'est enregistrée que si au moins un relevé a changé.",
+          "push_interval_minutes": "Fréquence à laquelle les relevés sont vérifiés puis, s'ils ont changé, enregistrés dans homepool. Une valeur plus élevée réduit le nombre d'entrées d'historique."
+        }
+      }
+    },
+    "abort": {
+      "no_installations": "Aucune piscine ni aucun spa n'est disponible pour l'instant — vérifiez que l'intégration est bien connectée à votre serveur homepool, puis réessayez"
+    }
+  }
+}

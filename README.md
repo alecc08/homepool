@@ -38,7 +38,7 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 **Features:**
 
 - **Water status board** — mono-value param tiles with status dot, ideal range, and per-parameter trend sparkline
-- **Home Assistant integration** — sensors, maintenance-logging buttons, and a custom Lovelace card, installable via HACS
+- **Home Assistant integration** — sensors, maintenance-logging buttons, and a custom Lovelace card, installable via HACS. Already own a smart probe? Point any reading at your own HA entity, and optionally have its readings logged back into homepool
 - **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
@@ -160,7 +160,7 @@ Each installation gets a device with the following entities:
 
 | Entity | Description |
 |---|---|
-| `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks. Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
+| `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
 | `button.<installation>_log_cartridge_cleaning`, `_log_skimmer_filter_cleaning`, `_log_backwash`, `_log_ph_calibration`, `_log_purge`, `_log_water_change` | Press to log that maintenance action against homepool immediately, no app needed. |
@@ -214,7 +214,24 @@ max_items: 20
 types: [measurement, treatment, maintenance]
 ```
 
-#### 6. The `homepool.log_measurement` service
+#### 6. Custom sensors — use your own probes
+
+Got a smart pH probe, an ORP/temperature sensor, or a template sensor that already knows your water? You can point any homepool reading at it instead of the value homepool last recorded: **Settings → Devices & Services → homepool → Configure**, pick the pool or spa, then choose an entity for each reading you want to override (leave one empty to keep homepool's own value).
+
+The override happens *inside* the homepool sensor, so nothing else changes: `sensor.<installation>_ph` simply starts reflecting your probe, and the homepool card, the history card, your automations and your dashboards all keep working untouched. Two extra attributes tell you what's going on:
+
+| Attribute | Meaning |
+|---|---|
+| `source_entity_id` | The entity you mapped to this reading |
+| `source` | `external` while the mapped entity is providing the value, `homepool` while it's falling back |
+
+**It falls back rather than breaking.** If the mapped entity goes `unavailable`/`unknown`, reports something non-numeric, or uses a unit that can't be reconciled with your installation's (g/L vs ppm, °dH vs ppm), the sensor quietly reverts to homepool's own value. Units that *can* be reconciled are converted for you — °F/°C/K for temperature, ppm ⇄ mg/L for concentrations. The `status` dot (ok/warn/danger) is recomputed against the live external value using your installation's own ideal/acceptable bands, so the card's colours match what's on screen.
+
+A reading you've mapped gets a sensor even if homepool has never recorded that parameter — handy for a probe measuring something you don't test by hand.
+
+**Optional: write the readings back to homepool.** The same screen has a *"Write these readings back to homepool"* toggle (off by default). Turn it on and Home Assistant logs your mapped readings as real homepool measurements, so they show up in the web app's history and feed its dosing advice. It's deliberately restrained: it checks once per interval (default 60 minutes, configurable), records **one** measurement carrying all mapped readings, and only when at least one of them actually changed since the last write — so a stable pool doesn't accumulate an identical row every hour. Readings are rounded to the precision homepool records, which also filters out probe noise. Read-only shared pools simply log a warning instead of writing.
+
+#### 7. The `homepool.log_measurement` service
 
 For measurements (pH, chlorine, etc.), call the `homepool.log_measurement` service from a script, automation, or a dashboard button's `tap_action: perform-action`:
 
