@@ -21,5 +21,40 @@
     "abort": {
       "already_configured": "This homepool account is already configured"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Custom sensors",
+        "description": "Choose the pool or spa you want to configure.",
+        "data": {
+          "installation": "Pool or spa"
+        }
+      },
+      "sensors": {
+        "title": "Custom sensors",
+        "description": "Use one of your own Home Assistant entities for any reading of {installation} — a smart probe, a template sensor, a helper — instead of the value homepool recorded. Leave a reading empty to keep using homepool's own value. If the chosen entity is unavailable, non-numeric or reports a unit that can't be converted, homepool's value is used instead.",
+        "data": {
+          "ph": "pH",
+          "chlorine": "Chlorine",
+          "bromine": "Bromine",
+          "tac": "TAC",
+          "hardness": "Hardness",
+          "salt": "Salt",
+          "stabilizer": "Stabilizer (CYA)",
+          "cc": "Combined chlorine",
+          "temp": "Temperature",
+          "push_back": "Write these readings back to homepool",
+          "push_interval_minutes": "Minutes between write-backs"
+        },
+        "data_description": {
+          "push_back": "Records the readings above as real homepool measurements, so they appear in the web app's history and feed its dosing advice. A measurement is only logged when at least one reading has changed.",
+          "push_interval_minutes": "How often the readings are checked and, if they changed, logged to homepool. Higher values mean fewer history entries."
+        }
+      }
+    },
+    "abort": {
+      "no_installations": "No pools or spas are available yet — make sure the integration is connected to your homepool server, then try again"
+    }
   }
 }
