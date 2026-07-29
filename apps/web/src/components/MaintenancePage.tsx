@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FlaskConical, Wrench, Droplets, Check, CheckCircle2, SlidersHorizontal, Beaker } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Check, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MaintenanceTask } from '../types'
 import type { TranslationKey } from '../i18n/translations'
@@ -11,6 +10,7 @@ import {
   isProductTask,
   PRODUCT_ACTION_TYPE,
 } from '../utils'
+import { TaskIcon } from '../taskIcons'
 import type { EntryKind } from './ActionForm'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -25,17 +25,6 @@ const sectionCardStyle: React.CSSProperties = {
   boxShadow: 'var(--shadow-card)',
   padding: '14px 16px',
   marginBottom: 12,
-}
-
-// The API sends mdi icon names (for Home Assistant); the web app renders lucide
-// icons, so map built-in tasks to a lucide equivalent and fall back to a wrench.
-const TASK_ICON: Record<string, LucideIcon> = {
-  ph_measurement: FlaskConical,
-  filter_maintenance: Wrench,
-  water_change: Droplets,
-  ph_calibration: SlidersHorizontal,
-  purge: Droplets,
-  product_addition: Beaker,
 }
 
 type StatusTone = 'ok' | 'warn' | 'danger' | 'neutral'
@@ -169,7 +158,6 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
       )}
 
       {visibleTasks.map(task => {
-        const Icon = (task.builtin_key && TASK_ICON[task.builtin_key]) || Wrench
         const status = statusFor(task, t)
         const tone = TONE_COLORS[status.tone]
         const flashing = flashId === task.id
@@ -184,7 +172,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
                 background: tone.bg, color: tone.color,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Icon size={17} strokeWidth={1.75} aria-hidden="true" />
+                <TaskIcon name={task.icon} size={17} />
               </span>
 
               <div style={{ flex: 1, minWidth: 0 }}>

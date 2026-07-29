@@ -973,11 +973,15 @@ export default function ActionForm({
         {/* Date */}
         <div style={{ display: 'grid', gap: 6 }}>
           <Label htmlFor="date">{t('modal_date')}</Label>
+          {/* Backdate freely — this is how you record something you did days ago
+              and forgot to log. Capped at today: a mistyped year would otherwise
+              poison every derived due date. */}
           <Input
             id="date"
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
+            max={today}
             required
             style={{
               fontFamily: '"IBM Plex Mono", monospace',

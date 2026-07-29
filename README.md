@@ -40,6 +40,8 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 - **Water status board** — mono-value param tiles with status dot, ideal range, and per-parameter trend sparkline
 - **Home Assistant integration** — sensors, maintenance-logging buttons, and a custom Lovelace card, installable via HACS. Already own a smart probe? Point any reading at your own HA entity, and optionally have its readings logged back into homepool
 - **One way to log** — an entry is either a **measurement** or a **maintenance** entry, and the maintenance choices are exactly the tasks you configured and enabled (no separate action/extra taxonomy to learn)
+- **Log it whenever you get round to it** — every entry carries a date you can set, in the app and from Home Assistant, so a reading you took on Sunday still lands on Sunday
+- **Maintenance tasks are just yours** — a new pool arrives with a sensible default set (filter cleaning, water change, …), but they are ordinary tasks: rename, re-icon, retime or delete any of them, exactly like the ones you add yourself
 - **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness (manual entry is the default; the app remembers whichever you used last)
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
@@ -163,7 +165,7 @@ Each installation gets a device with the following entities:
 | `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
-| `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled (including your own custom ones). Press to log it against homepool immediately, no app needed. |
+| `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled, whether it came with the pool or you added it. Press to log it against homepool immediately, no app needed. To log one for a *past* day, use the `homepool.log_maintenance` service instead. |
 
 ![Home Assistant sensors](docs/screenshots/ha-sensors.png)
 
@@ -231,7 +233,7 @@ A reading you've mapped gets a sensor even if homepool has never recorded that p
 
 **Optional: write the readings back to homepool.** The same screen has a *"Write these readings back to homepool"* toggle (off by default). Turn it on and Home Assistant logs your mapped readings as real homepool measurements, so they show up in the web app's history and feed its dosing advice. It's deliberately restrained: it checks once per interval (default 60 minutes, configurable), records **one** measurement carrying all mapped readings, and only when at least one of them actually changed since the last write — so a stable pool doesn't accumulate an identical row every hour. Readings are rounded to the precision homepool records, which also filters out probe noise. Read-only shared pools simply log a warning instead of writing.
 
-#### 7. The `homepool.log_measurement` service
+#### 7. The `homepool.log_measurement` and `homepool.log_maintenance` services
 
 For measurements (pH, chlorine, etc.), call the `homepool.log_measurement` service from a script, automation, or a dashboard button's `tap_action: perform-action`:
 
@@ -247,6 +249,26 @@ tap_action:
     chlorine: 1.5
 name: Log measurement
 icon: mdi:flask-outline
+```
+
+For maintenance, `homepool.log_maintenance` marks a task done. `task` is the task key — the `task_key` attribute published by that task's "days until due" sensor and its "log" button:
+
+```yaml
+action: homepool.log_maintenance
+data:
+  installation_id: 1
+  task: filter_maintenance
+  notes: Backwashed until the sight glass ran clear
+```
+
+**Forgot to log it on the day?** Both services take an optional `date` (`YYYY-MM-DD`) that records the entry against a past day instead of today — the same thing the date field on the web app's entry form does:
+
+```yaml
+action: homepool.log_maintenance
+data:
+  installation_id: 1
+  task: water_change
+  date: "2026-07-24"
 ```
 
 ---

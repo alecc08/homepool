@@ -112,32 +112,27 @@ class HomepoolClient:
             params["from_date"] = from_date
         return await self._get("/v1/history", params=params)
 
-    async def create_maintenance(
+    async def complete_task(
         self,
         installation_id: int,
-        action_type: str,
-        notes: str | None = None,
+        task_id: int,
         date: str | None = None,
+        notes: str | None = None,
     ) -> dict:
-        # `action_type` must be one the installation's enabled maintenance tasks
-        # covers — the server has no fixed list of its own. complete_task() is the
-        # easier path when you have a task id, since it derives the string.
-        payload = {"installation_id": installation_id, "action_type": action_type}
-        if notes is not None:
-            payload["notes"] = notes
+        # "Mark done" for a maintenance task: logs a completion for the task's
+        # primary action_type server-side, so the caller never needs to know the
+        # action_type string. `date` (ISO YYYY-MM-DD) backdates the completion;
+        # omitted means today, which is what the per-task buttons send.
+        payload: dict = {"installation_id": installation_id, "task_id": task_id}
         if date is not None:
             payload["date"] = date
-        return await self._post("/v1/maintenance", payload)
-
-    async def complete_task(self, installation_id: int, task_id: int) -> dict:
-        # "Mark done" for a configurable maintenance task: logs a completion for
-        # the task's primary action_type server-side, so custom tasks work
-        # without the caller knowing the action_type string.
-        return await self._post(
-            "/v1/maintenance/complete",
-            {"installation_id": installation_id, "task_id": task_id},
-        )
+        if notes is not None:
+            payload["notes"] = notes
+        return await self._post("/v1/maintenance/complete", payload)
 
     async def create_measurement(self, installation_id: int, **fields: object) -> dict:
+        # Field names are passed straight through to the server, so this also
+        # carries `date` (ISO YYYY-MM-DD, backdates the entry) and `notes`
+        # alongside the chemistry values. None-valued fields are dropped.
         payload = {"installation_id": installation_id, **{k: v for k, v in fields.items() if v is not None}}
         return await self._post("/v1/measurements", payload)

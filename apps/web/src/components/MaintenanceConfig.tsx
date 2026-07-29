@@ -8,17 +8,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select'
 import type { MaintenanceTask } from '../types'
 import { maintenanceTaskLabel } from '../utils'
+import { DEFAULT_TASK_ICON, TASK_ICON_CHOICES, TaskIcon } from '../taskIcons'
 import { useT } from '../context/LocaleContext'
 
 // A row in the editable draft. Existing tasks keep their real `id`; freshly
 // added ones get a negative temp id and `isNew`. `deleted` tombstones a row
 // until Save persists it.
+//
+// Every row is editable the same way — there is no built-in/custom distinction.
+// `label` holds what the user sees, which for a never-renamed seeded task is its
+// translation; `initialLabel` is that same string as loaded, so Save can tell an
+// actual rename from "the user just left the translation alone".
 type DraftTask = {
   id: number
-  builtin_key: string | null
   label: string
+  initialLabel: string
+  icon: string
   interval_days: number
   enabled: boolean
   isNew: boolean
@@ -34,6 +47,32 @@ type Props = {
 
 let tempIdSeq = -1
 
+/** Icon chooser for a task. The mdi name is shown next to each choice on
+ * purpose: it is what the task's Home Assistant sensor and button will use. */
+function IconPicker({
+  value, onChange, label,
+}: { value: string; onChange: (icon: string) => void; label: string }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label={label} title={label} className="w-auto px-2 gap-1 shrink-0">
+        <TaskIcon name={value} />
+      </SelectTrigger>
+      <SelectContent>
+        {TASK_ICON_CHOICES.map(name => (
+          <SelectItem key={name} value={name}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <TaskIcon name={name} />
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--text-muted)' }}>
+                {name}
+              </span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 export default function MaintenanceConfig({ installationId, open, onClose, onSaved }: Props) {
   const { t } = useT()
   const [draft, setDraft] = useState<DraftTask[]>([])
@@ -44,6 +83,7 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
   const [saveError, setSaveError] = useState(false)
   const [newLabel, setNewLabel] = useState('')
   const [newInterval, setNewInterval] = useState('7')
+  const [newIcon, setNewIcon] = useState(DEFAULT_TASK_ICON)
 
   useEffect(() => {
     if (!open) return
@@ -52,22 +92,30 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
     setSaveError(false)
     setNewLabel('')
     setNewInterval('7')
+    setNewIcon(DEFAULT_TASK_ICON)
     fetch(`/api/installations/${installationId}/maintenance`, { credentials: 'same-origin' })
       .then(r => { if (!r.ok) throw new Error('failed'); return r.json() })
       .then((data: MaintenanceTask[]) => {
         setOriginal(Object.fromEntries(data.map(tk => [tk.id, tk])))
-        setDraft(data.map(tk => ({
-          id: tk.id,
-          builtin_key: tk.builtin_key,
-          label: tk.label,
-          interval_days: tk.interval_days,
-          enabled: tk.enabled,
-          isNew: false,
-          deleted: false,
-        })))
+        setDraft(data.map(tk => {
+          const label = maintenanceTaskLabel(tk, t)
+          return {
+            id: tk.id,
+            label,
+            initialLabel: label,
+            icon: tk.icon,
+            interval_days: tk.interval_days,
+            enabled: tk.enabled,
+            isNew: false,
+            deleted: false,
+          }
+        }))
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
+    // `t` is stable per locale; re-running on a locale switch would clobber
+    // pending edits, so it is deliberately not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, installationId])
 
   const patchRow = (id: number, patch: Partial<DraftTask>) => {
@@ -82,8 +130,9 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
     if (!label || !Number.isFinite(interval) || interval < 0) return
     setDraft(prev => [...prev, {
       id: tempIdSeq--,
-      builtin_key: null,
       label,
+      initialLabel: label,
+      icon: newIcon,
       interval_days: interval,
       enabled: true,
       isNew: true,
@@ -91,6 +140,7 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
     }])
     setNewLabel('')
     setNewInterval('7')
+    setNewIcon(DEFAULT_TASK_ICON)
   }
 
   const handleSave = async () => {
@@ -106,7 +156,11 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ label: row.label, interval_days: row.interval_days }),
+            body: JSON.stringify({
+              label: row.label,
+              interval_days: row.interval_days,
+              icon: row.icon,
+            }),
           }))
           continue
         }
@@ -118,7 +172,11 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
         const patch: Record<string, unknown> = {}
         if (orig.enabled !== row.enabled) patch.enabled = row.enabled
         if (orig.interval_days !== row.interval_days) patch.interval_days = row.interval_days
-        if (row.builtin_key === null && orig.label !== row.label) patch.label = row.label
+        if (orig.icon !== row.icon) patch.icon = row.icon
+        // Only a real rename is sent: leaving a seeded task's translated label
+        // untouched must not overwrite it with the current locale's string (which
+        // would drop its builtin_key server-side and freeze the language).
+        if (row.initialLabel !== row.label) patch.label = row.label
         if (Object.keys(patch).length > 0) {
           requests.push(fetch(`${base}/${row.id}`, {
             method: 'PATCH',
@@ -144,11 +202,6 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
   const rowStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '10px 0', borderBottom: '1px solid var(--border)',
-  }
-  const labelStyle: React.CSSProperties = {
-    flex: 1, minWidth: 0, fontFamily: '"Sora", sans-serif', fontSize: 13,
-    fontWeight: 600, color: 'var(--text-primary)',
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
   }
 
   return (
@@ -187,18 +240,18 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                     style={{ width: 16, height: 16, accentColor: 'var(--accent)', flexShrink: 0, cursor: 'pointer' }}
                   />
 
-                  {row.builtin_key === null ? (
-                    <Input
-                      value={row.label}
-                      onChange={e => patchRow(row.id, { label: e.target.value })}
-                      aria-label={t('maint_custom_name')}
-                      style={{ flex: 1, minWidth: 0, opacity: row.enabled ? 1 : 0.5 }}
-                    />
-                  ) : (
-                    <span style={{ ...labelStyle, opacity: row.enabled ? 1 : 0.5 }}>
-                      {maintenanceTaskLabel({ builtin_key: row.builtin_key, label: row.label }, t)}
-                    </span>
-                  )}
+                  <IconPicker
+                    value={row.icon}
+                    onChange={icon => patchRow(row.id, { icon })}
+                    label={t('maint_icon_label')}
+                  />
+
+                  <Input
+                    value={row.label}
+                    onChange={e => patchRow(row.id, { label: e.target.value })}
+                    aria-label={t('maint_task_name')}
+                    style={{ flex: 1, minWidth: 0, opacity: row.enabled ? 1 : 0.5 }}
+                  />
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     <Input
@@ -214,32 +267,35 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                     </span>
                   </div>
 
-                  {row.builtin_key === null && (
-                    <button
-                      type="button"
-                      onClick={() => patchRow(row.id, { deleted: true })}
-                      aria-label={t('maint_delete')}
-                      title={t('maint_delete')}
-                      style={{
-                        flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => patchRow(row.id, { deleted: true })}
+                    aria-label={t('maint_delete')}
+                    title={t('maint_delete')}
+                    style={{
+                      flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
+                      background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
                 </div>
               ))}
 
-              {/* Add custom task */}
+              {/* Add a task */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 12 }}>
+                <IconPicker
+                  value={newIcon}
+                  onChange={setNewIcon}
+                  label={t('maint_icon_label')}
+                />
                 <Input
                   value={newLabel}
                   onChange={e => setNewLabel(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
-                  placeholder={t('maint_custom_name_placeholder')}
-                  aria-label={t('maint_custom_name')}
+                  placeholder={t('maint_task_name_placeholder')}
+                  aria-label={t('maint_task_name')}
                   style={{ flex: 1, minWidth: 0 }}
                 />
                 <Input

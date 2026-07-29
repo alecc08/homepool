@@ -50,10 +50,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 SERVICE_LOG_MEASUREMENT = "log_measurement"
+SERVICE_LOG_MAINTENANCE = "log_maintenance"
 
+# `date` is optional everywhere and means "this happened then, not now" — for
+# recording something you did days ago and forgot to log. Omitted means today.
 SERVICE_LOG_MEASUREMENT_SCHEMA = vol.Schema(
     {
         vol.Required("installation_id"): cv.positive_int,
+        vol.Optional("date"): cv.date,
         vol.Optional("ph"): vol.Coerce(float),
         vol.Optional("chlorine"): vol.Coerce(float),
         vol.Optional("bromine"): vol.Coerce(float),
@@ -67,7 +71,32 @@ SERVICE_LOG_MEASUREMENT_SCHEMA = vol.Schema(
     }
 )
 
+# `task` is a task key, the same string the todo sensors and "log" buttons
+# publish as their `task_key` attribute — so an automation can name a task
+# without hardcoding a database id.
+SERVICE_LOG_MAINTENANCE_SCHEMA = vol.Schema(
+    {
+        vol.Required("installation_id"): cv.positive_int,
+        vol.Required("task"): cv.string,
+        vol.Optional("date"): cv.date,
+        vol.Optional("notes"): cv.string,
+    }
+)
+
 type HomepoolConfigEntry = ConfigEntry[HomepoolDataUpdateCoordinator]
+
+
+def _coordinator_for_installation(
+    hass: HomeAssistant, installation_id: int
+) -> HomepoolDataUpdateCoordinator:
+    """Finds the loaded config entry that owns an installation. Services take an
+    installation_id rather than a target entity, so the owning entry has to be
+    resolved by looking at what each coordinator polled."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        coordinator = entry.runtime_data
+        if coordinator is not None and installation_id in coordinator.data:
+            return coordinator
+    raise HomeAssistantError(f"Unknown Homepool installation_id: {installation_id}")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> bool:
@@ -103,24 +132,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> 
     if not hass.services.has_service(DOMAIN, SERVICE_LOG_MEASUREMENT):
         async def _async_log_measurement(call: ServiceCall) -> None:
             installation_id = call.data["installation_id"]
+            coordinator = _coordinator_for_installation(hass, installation_id)
             fields = {
                 k: v for k, v in call.data.items()
                 if k not in ("installation_id",)
             }
-            for candidate_entry in hass.config_entries.async_entries(DOMAIN):
-                candidate_coordinator = candidate_entry.runtime_data
-                if candidate_coordinator is None or installation_id not in candidate_coordinator.data:
-                    continue
-                try:
-                    await candidate_coordinator.client.create_measurement(installation_id, **fields)
-                except HomepoolApiError as err:
-                    raise HomeAssistantError(str(err)) from err
-                await candidate_coordinator.async_request_refresh()
-                return
-            raise HomeAssistantError(f"Unknown Homepool installation_id: {installation_id}")
+            # cv.date hands back a datetime.date; the API speaks ISO strings.
+            if "date" in fields:
+                fields["date"] = fields["date"].isoformat()
+            try:
+                await coordinator.client.create_measurement(installation_id, **fields)
+            except HomepoolApiError as err:
+                raise HomeAssistantError(str(err)) from err
+            await coordinator.async_request_refresh()
 
         hass.services.async_register(
             DOMAIN, SERVICE_LOG_MEASUREMENT, _async_log_measurement, schema=SERVICE_LOG_MEASUREMENT_SCHEMA
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_LOG_MAINTENANCE):
+        async def _async_log_maintenance(call: ServiceCall) -> None:
+            installation_id = call.data["installation_id"]
+            task_key = call.data["task"]
+            coordinator = _coordinator_for_installation(hass, installation_id)
+            task = coordinator.data[installation_id].get("todo", {}).get(task_key)
+            if task is None:
+                known = sorted(coordinator.data[installation_id].get("todo", {}))
+                raise HomeAssistantError(
+                    f"Unknown Homepool maintenance task '{task_key}'. Known tasks: {', '.join(known) or 'none'}"
+                )
+            call_date = call.data.get("date")
+            try:
+                await coordinator.client.complete_task(
+                    installation_id,
+                    task["id"],
+                    date=call_date.isoformat() if call_date else None,
+                    notes=call.data.get("notes"),
+                )
+            except HomepoolApiError as err:
+                raise HomeAssistantError(str(err)) from err
+            await coordinator.async_request_refresh()
+
+        hass.services.async_register(
+            DOMAIN, SERVICE_LOG_MAINTENANCE, _async_log_maintenance, schema=SERVICE_LOG_MAINTENANCE_SCHEMA
         )
 
     return True
@@ -139,4 +193,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) ->
         ]
         if not other_loaded:
             hass.services.async_remove(DOMAIN, SERVICE_LOG_MEASUREMENT)
+            hass.services.async_remove(DOMAIN, SERVICE_LOG_MAINTENANCE)
     return unloaded

@@ -121,6 +121,51 @@ describe('ActionForm', () => {
     )
   })
 
+  it('submits a backdated measurement with the date the user picked', () => {
+    // Logging a reading you took days ago and forgot to record.
+    setActiveInstallation(makeInstallation())
+    const onAdd = vi.fn()
+    render(<ActionForm onAdd={onAdd} products={products} />)
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-07-20' } })
+    fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
+    fireEvent.click(screen.getByText('Enregistrer'))
+
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-07-20' }))
+  })
+
+  it('caps the date at today so a mistyped year cannot poison due dates', () => {
+    setActiveInstallation(makeInstallation())
+    render(<ActionForm onAdd={vi.fn()} products={products} />)
+
+    const today = new Date().toISOString().slice(0, 10)
+    expect(screen.getByLabelText('Date')).toHaveAttribute('max', today)
+  })
+
+  it('lets a maintenance entry be backdated too', async () => {
+    setActiveInstallation(makeInstallation())
+    mockMaintenanceFetch()
+    const onAdd = vi.fn()
+    render(
+      <ActionForm
+        onAdd={onAdd}
+        products={products}
+        initialKind="maintenance"
+        initialActionType="Cartridge cleaning"
+      />
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText(translations.fr.modal_maintenance_type)).toBeInTheDocument()
+    )
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-07-18' } })
+    fireEvent.click(screen.getByText('Enregistrer'))
+
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ action_type: 'Cartridge cleaning', date: '2026-07-18' })
+    )
+  })
+
   it('calls onClose after submit when provided', () => {
     setActiveInstallation(makeInstallation())
     const onAdd = vi.fn()
@@ -337,8 +382,12 @@ describe('ActionForm', () => {
       await waitFor(() =>
         expect(fetch).toHaveBeenCalledWith('/api/installations/1/maintenance', expect.any(Object))
       )
-      // The picker is built from the installation's own tasks.
-      expect(screen.getByLabelText(translations.fr.modal_maintenance_type)).toBeInTheDocument()
+      // The picker is built from the installation's own tasks. Wait for the
+      // control itself, not just the request feeding it: the fetch resolving and
+      // the re-render it triggers are two different ticks.
+      await waitFor(() =>
+        expect(screen.getByLabelText(translations.fr.modal_maintenance_type)).toBeInTheDocument()
+      )
       fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Rincé' } })
       fireEvent.click(screen.getByText('Enregistrer'))
 
