@@ -55,6 +55,15 @@ class HomepoolDataUpdateCoordinator(DataUpdateCoordinator[dict[int, dict]]):
                 except HomepoolApiError as err:
                     _LOGGER.debug("history fetch failed for %s: %s", installation["id"], err)
                     history = []
+                # The treatment catalog is what the log_treatment service
+                # validates against and what the card's product picker reads.
+                # Same degrade-don't-sink rule as history: an older server with
+                # no /v1/treatments must not break the chemistry sensors.
+                try:
+                    treatments = await self.client.get_treatments(installation["id"])
+                except HomepoolApiError as err:
+                    _LOGGER.debug("treatments fetch failed for %s: %s", installation["id"], err)
+                    treatments = []
                 data[installation["id"]] = {
                     "name": installation["name"],
                     "type": installation["type"],
@@ -62,6 +71,7 @@ class HomepoolDataUpdateCoordinator(DataUpdateCoordinator[dict[int, dict]]):
                     "fields": fields,
                     "todo": todo,
                     "history": history,
+                    "treatments": treatments,
                 }
             return data
         except HomepoolApiError as err:

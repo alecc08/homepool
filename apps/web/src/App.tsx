@@ -5,7 +5,7 @@ import { useLocale } from './i18n/useLocale'
 import { LocaleContext, useT } from './context/LocaleContext'
 import { InstallationProvider, useInstallation } from './context/InstallationContext'
 import Topbar from './components/Topbar'
-import ActionForm, { type EntryKind } from './components/ActionForm'
+import ActionForm, { type EntryKind, type TreatmentPrefill } from './components/ActionForm'
 import ProfileDialog from './components/ProfileDialog'
 import AdminDialog from './components/AdminDialog'
 import DashboardPage from './components/DashboardPage'
@@ -52,11 +52,18 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Which half of the entry form the "new entry" dialog opens on: "add entry"
+  // Which third of the entry form the "new entry" dialog opens on: "add entry"
   // starts on a measurement; the maintenance page can hand off a pH-measurement
-  // task here rather than logging an empty measurement.
-  const [entryForm, setEntryForm] = useState<{ kind: EntryKind; actionType?: string } | null>(null)
-  const openEntryForm = (kind: EntryKind, actionType?: string) => setEntryForm({ kind, actionType })
+  // task here rather than logging an empty measurement, and the recommendations
+  // page can hand off a dose as a ready-to-save treatment.
+  type EntryFormState = {
+    kind: EntryKind
+    actionType?: string
+    treatment?: TreatmentPrefill
+  }
+  const [entryForm, setEntryForm] = useState<EntryFormState | null>(null)
+  const openEntryForm = (kind: EntryKind, actionType?: string, treatment?: TreatmentPrefill) =>
+    setEntryForm({ kind, actionType, treatment })
   const [editingAction, setEditingAction] = useState<Action | null>(null)
   const [deletingAction, setDeletingAction] = useState<Action | null>(null)
   const [showProfile, setShowProfile] = useState(false)
@@ -210,7 +217,10 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           : page === 'history'
           ? <HistoryPage actions={actions} products={products} onEdit={canEdit ? setEditingAction : undefined} onDelete={canEdit ? setDeletingAction : undefined} />
           : page === 'recommendations'
-          ? <RecommendationsPage actions={actions} />
+          ? <RecommendationsPage
+              actions={actions}
+              onLogTreatment={canEdit ? (treatment => openEntryForm('treatment', undefined, treatment)) : undefined}
+            />
           : page === 'maintenance'
           ? <MaintenancePage
               onActionLogged={loadData}
@@ -240,9 +250,9 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           {entryForm && (
             <ActionForm
               onAdd={handleAdd}
-              products={products}
               initialKind={entryForm.kind}
               initialActionType={entryForm.actionType}
+              initialTreatment={entryForm.treatment}
               onClose={() => setEntryForm(null)}
             />
           )}
@@ -259,7 +269,6 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           </DialogHeader>
           {editingAction && (
             <ActionForm
-              products={products}
               editAction={editingAction}
               onEdit={handleEdit}
               onClose={() => setEditingAction(null)}

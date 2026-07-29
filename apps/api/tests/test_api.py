@@ -10,10 +10,12 @@ from main import (
     WATER_PARAMS,
     _backfill_first_admin,
     _merge_range_overrides,
+    _retire_product_addition_tasks,
     _seed_maintenance_tasks,
+    _seed_treatment_products,
     app,
 )
-from models import Action, AppSetting, MaintenanceTask, Product, User
+from models import Action, AppSetting, MaintenanceTask, Product, TreatmentProduct, User
 
 TODAY = date.today().isoformat()
 
@@ -990,14 +992,15 @@ def test_maintenance_seeded_on_installation_create(client: TestClient):
     tasks = client.get(f"/installations/{installation_id}/maintenance").json()
     keys = {t["builtin_key"] for t in tasks}
     # Every action type the old hardcoded entry-form picker offered now has a
-    # built-in task, since the tasks are the only taxonomy (issue #51).
+    # built-in task, since the tasks are the only taxonomy (issue #51) — except
+    # adding a product, which became its own entry kind with its own catalog.
     assert {
         "ph_measurement",
         "filter_maintenance",
         "water_change",
         "ph_calibration",
-        "product_addition",
     } <= keys
+    assert "product_addition" not in keys
 
 
 def test_maintenance_spa_defaults_differ_from_pool(client: TestClient):
@@ -1015,13 +1018,15 @@ def test_maintenance_on_demand_task_is_never_due(client: TestClient):
     completion is tracked, but it never becomes due."""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
-    product = _task_by_key(tasks, "product_addition")
-    assert product["interval_days"] == 0
-    assert product["days_until_due"] is None
+    created = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Vacuum", "interval_days": 0},
+    ).json()
+    assert created["interval_days"] == 0
+    assert created["days_until_due"] is None
 
     r = client.post(
-        f"/installations/{installation_id}/maintenance/{product['id']}/complete"
+        f"/installations/{installation_id}/maintenance/{created['id']}/complete"
     )
     assert r.status_code == 200
     body = r.json()
@@ -1062,7 +1067,7 @@ def test_maintenance_backfill_leaves_configured_installations_alone(client: Test
         for task in session.exec(
             select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
         ).all():
-            if task.builtin_key in ("product_addition", "ph_calibration"):
+            if task.builtin_key == "ph_calibration":
                 session.delete(task)
             elif task.builtin_key == "water_change":
                 task.enabled = False
@@ -1120,7 +1125,6 @@ def test_maintenance_backfill_seeds_a_taskless_installation(client: TestClient):
         "filter_maintenance",
         "ph_calibration",
         "ph_measurement",
-        "product_addition",
         "water_change",
     ]
 
@@ -1141,7 +1145,6 @@ def test_maintenance_seeded_on_the_default_installation_from_register(empty_clie
         "filter_maintenance",
         "water_change",
         "ph_calibration",
-        "product_addition",
     }
 
 
@@ -1264,6 +1267,441 @@ def test_maintenance_unknown_task_404s(client: TestClient):
         f"/installations/{installation_id}/maintenance/99999", json={"interval_days": 5}
     )
     assert r.status_code == 404
+
+
+# ── /installations/{id}/treatments (catalog) ─────────────────────────────
+
+def _treatment_by_key(catalog, key):
+    return next(t for t in catalog if t["key"] == key)
+
+
+def test_treatments_seeded_on_installation_create(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    keys = {t["builtin_key"] for t in catalog}
+    assert {"chlorine", "chlorine_shock", "stabilizer", "ph_increaser", "flocculant"} <= keys
+    # The sanitizer's own products lead the list.
+    assert catalog[0]["builtin_key"] == "chlorine"
+    ph_up = _treatment_by_key(catalog, "ph_increaser")
+    assert ph_up["default_unit"] == "g"
+    assert ph_up["param"] == "ph"
+    assert ph_up["dosage_product_id"] == "soda_ash"
+
+
+def test_treatments_seeded_per_sanitizer_and_type(client: TestClient):
+    login(client)
+    spa_id = client.post(
+        "/installations", json={"name": "My spa", "type": "spa", "sanitizer": "bromine"}
+    ).json()["id"]
+    catalog = client.get(f"/installations/{spa_id}/treatments").json()
+    keys = {t["builtin_key"] for t in catalog}
+    assert "bromine" in keys and "chlorine" not in keys
+    # Anti-foam is spa-only; flocculant is a pool procedure.
+    assert "foam_reducer" in keys and "flocculant" not in keys
+    assert _treatment_by_key(catalog, "bromine")["default_unit"] == "tablet"
+
+
+def test_treatment_create_update_and_delete(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    r = client.post(
+        f"/installations/{installation_id}/treatments",
+        json={"label": "Pond juice", "icon": "mdi:flask", "default_unit": "L"},
+    )
+    assert r.status_code == 200, r.text
+    created = r.json()
+    assert created["builtin_key"] is None
+    assert created["key"] == f"custom_{created['id']}"
+    assert created["enabled"] is True
+
+    r = client.patch(
+        f"/installations/{installation_id}/treatments/{created['id']}",
+        json={"default_unit": "ml", "enabled": False},
+    )
+    assert r.status_code == 200
+    assert r.json()["default_unit"] == "ml"
+    assert r.json()["enabled"] is False
+
+    assert client.delete(
+        f"/installations/{installation_id}/treatments/{created['id']}"
+    ).status_code == 204
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    assert created["id"] not in [t["id"] for t in catalog]
+
+
+def test_treatment_rename_clears_builtin_key(client: TestClient):
+    """Same rule as maintenance tasks: builtin_key only means "this label is one
+    of ours, translate it", so renaming has to drop it or the client keeps
+    showing the translated default."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+
+    r = client.patch(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}",
+        json={"label": "Algimycin 600"},
+    )
+    assert r.status_code == 200
+    assert r.json()["builtin_key"] is None
+    assert r.json()["label"] == "Algimycin 600"
+    assert r.json()["key"] == f"custom_{algaecide['id']}"
+
+
+def test_treatment_patch_with_the_same_label_keeps_builtin_key(client: TestClient):
+    """The web config screen PATCHes whatever is in the row; re-sending an
+    unchanged label must not freeze the product in one language."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+
+    r = client.patch(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}",
+        json={"label": algaecide["label"], "default_unit": "L"},
+    )
+    assert r.status_code == 200
+    assert r.json()["builtin_key"] == "algaecide"
+
+
+def test_treatment_links_are_validated_and_clearable(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    assert client.post(
+        f"/installations/{installation_id}/treatments",
+        json={"label": "Bad param", "param": "vibes"},
+    ).status_code == 422
+    assert client.post(
+        f"/installations/{installation_id}/treatments",
+        json={"label": "Bad dosage", "dosage_product_id": "unobtainium"},
+    ).status_code == 422
+
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    ph_up = _treatment_by_key(catalog, "ph_increaser")
+    r = client.patch(
+        f"/installations/{installation_id}/treatments/{ph_up['id']}",
+        json={"dosage_product_id": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["dosage_product_id"] is None
+    # Omitting the field leaves the remaining link alone.
+    r = client.patch(
+        f"/installations/{installation_id}/treatments/{ph_up['id']}",
+        json={"default_unit": "kg"},
+    )
+    assert r.json()["param"] == "ph"
+
+
+def test_treatment_config_is_owner_only(client: TestClient):
+    """An editor logs treatments but doesn't get to redefine the catalog —
+    configuration stays with the owner, like maintenance and target ranges.
+    Non-owners 404 rather than 403 throughout (see _get_owned_installation)."""
+    installation_id, _ = share_setup(client, "editor")
+    catalog = client.get(f"/installations/{installation_id}/treatments")
+    assert catalog.status_code == 200  # an editor can read the catalog to log with it
+    first = catalog.json()[0]
+    assert client.post(
+        f"/installations/{installation_id}/treatments", json={"label": "Nope"}
+    ).status_code == 404
+    assert client.patch(
+        f"/installations/{installation_id}/treatments/{first['id']}",
+        json={"label": "Nope"},
+    ).status_code == 404
+    assert client.delete(
+        f"/installations/{installation_id}/treatments/{first['id']}"
+    ).status_code == 404
+
+
+def test_treatment_backfill_seeds_a_catalogless_installation(client: TestClient):
+    """Databases predating treatments have installations with no catalog at all;
+    the boot backfill is what gives them something to log."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    with Session(client.test_engine) as session:
+        for product in session.exec(
+            select(TreatmentProduct).where(
+                TreatmentProduct.installation_id == installation_id
+            )
+        ).all():
+            session.delete(product)
+        session.commit()
+
+        _seed_treatment_products(session)
+        _seed_treatment_products(session)  # idempotent
+
+        products = session.exec(
+            select(TreatmentProduct).where(
+                TreatmentProduct.installation_id == installation_id
+            )
+        ).all()
+
+    assert "ph_increaser" in {p.builtin_key for p in products}
+    assert len(products) == len({p.builtin_key for p in products})
+
+
+def test_treatment_backfill_leaves_configured_installations_alone(client: TestClient):
+    """Every product is deletable, so a missing default means the user removed
+    it — topping up would undo that."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    assert client.delete(
+        f"/installations/{installation_id}/treatments/"
+        f"{_treatment_by_key(catalog, 'clarifier')['id']}"
+    ).status_code == 204
+
+    with Session(client.test_engine) as session:
+        _seed_treatment_products(session)
+
+    keys = {
+        t["builtin_key"]
+        for t in client.get(f"/installations/{installation_id}/treatments").json()
+    }
+    assert "clarifier" not in keys
+
+
+def test_product_addition_task_is_retired_but_customized_copies_survive(client: TestClient):
+    """Treatments are their own entry kind now, so the old "Add product"
+    maintenance task goes — except where the owner made it theirs, which
+    renaming records by clearing builtin_key."""
+    login(client)
+    keep_id = client.post("/installations", json={"name": "Keeper"}).json()["id"]
+    drop_id = client.post("/installations", json={"name": "Dropper"}).json()["id"]
+
+    with Session(client.test_engine) as session:
+        session.add(MaintenanceTask(
+            installation_id=drop_id, builtin_key="product_addition",
+            label="Add product", action_types=["Add product"], interval_days=0,
+        ))
+        session.add(MaintenanceTask(
+            installation_id=keep_id, builtin_key=None,
+            label="Dump in the good stuff", action_types=["Add product"], interval_days=0,
+        ))
+        session.commit()
+
+        _retire_product_addition_tasks(session)
+        _retire_product_addition_tasks(session)  # idempotent
+
+        remaining = session.exec(select(MaintenanceTask)).all()
+
+    labels = {t.label for t in remaining if "Add product" in (t.action_types or [])}
+    assert labels == {"Dump in the good stuff"}
+
+
+def test_maintenance_no_longer_accepts_add_product(client: TestClient):
+    """Even a hand-made task can't reopen the old path: treatments have to go
+    through the treatment endpoint, which carries the product and amount."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Dose it", "action_types": ["Add product"], "interval_days": 0},
+    )
+    r = client.post(
+        "/v1/maintenance",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "action_type": "Add product"},
+    )
+    assert r.status_code == 422
+
+
+# ── /v1/treatments ───────────────────────────────────────────────────────
+
+def test_v1_treatment_catalog_lists_enabled_products_only(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    clarifier = _treatment_by_key(catalog, "clarifier")
+    client.patch(
+        f"/installations/{installation_id}/treatments/{clarifier['id']}",
+        json={"enabled": False},
+    )
+
+    r = client.get(
+        f"/v1/treatments?installation_id={installation_id}", headers=auth_headers(key)
+    )
+    assert r.status_code == 200
+    keys = {t["key"] for t in r.json()}
+    assert "ph_increaser" in keys
+    assert "clarifier" not in keys
+
+
+def test_v1_create_treatment_is_readable_back_in_history(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+
+    r = client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={
+            "installation_id": installation_id,
+            "treatment": "chlorine_shock",
+            "qty": "500",
+            "brand": "HTH Super",
+            "notes": "after the storm",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["action_type"] == "Add product"
+    assert r.json()["unit"] == "g"  # defaulted from the product
+    assert r.json()["brand"] == "HTH Super"
+
+    entries = client.get(
+        f"/v1/history?installation_id={installation_id}&type=treatment",
+        headers=auth_headers(key),
+    ).json()
+    assert len(entries) == 1
+    assert entries[0]["label"] == "Chlorine shock"
+    assert entries[0]["qty"] == "500"
+    assert entries[0]["brand"] == "HTH Super"
+    assert entries[0]["notes"] == "after the storm"
+
+
+def test_v1_create_treatment_accepts_a_custom_date_and_unit(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    then = (date.today() - timedelta(days=4)).isoformat()
+    r = client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={
+            "installation_id": installation_id, "treatment": "ph_decreaser",
+            "qty": "0.5", "unit": "L", "date": then,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["date"] == then
+    assert r.json()["unit"] == "L"
+
+
+def test_v1_create_treatment_rejects_unknown_and_disabled_products(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    r = client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "treatment": "moon_dust", "qty": "1"},
+    )
+    assert r.status_code == 422
+    assert "ph_increaser" in r.json()["detail"]
+
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+    client.patch(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}",
+        json={"enabled": False},
+    )
+    assert client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "treatment": "algaecide", "qty": "1"},
+    ).status_code == 422
+
+
+def test_v1_create_treatment_uses_the_custom_key_after_a_rename(client: TestClient):
+    """Renaming drops builtin_key, so the stable key becomes custom_<id> — an
+    automation keyed on it keeps working."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+    client.patch(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}",
+        json={"label": "Algimycin 600"},
+    )
+
+    r = client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={
+            "installation_id": installation_id,
+            "treatment": f"custom_{algaecide['id']}",
+            "qty": "60",
+        },
+    )
+    assert r.status_code == 200
+    entries = client.get(
+        f"/v1/history?installation_id={installation_id}&type=treatment",
+        headers=auth_headers(key),
+    ).json()
+    assert entries[0]["label"] == "Algimycin 600"
+
+
+def test_treatment_history_label_survives_deleting_the_product(client: TestClient):
+    """A deleted product must not turn its logged entries into anonymous
+    "Add product" rows — the label is snapshotted at log time."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+
+    client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "treatment": "algaecide", "qty": "60"},
+    )
+    assert client.delete(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}"
+    ).status_code == 204
+
+    entries = client.get(
+        f"/v1/history?installation_id={installation_id}&type=treatment",
+        headers=auth_headers(key),
+    ).json()
+    assert entries[0]["label"] == "Algaecide"
+    assert entries[0]["qty"] == "60"
+
+
+def test_treatment_history_label_follows_a_rename(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    algaecide = _treatment_by_key(catalog, "algaecide")
+    client.post(
+        "/v1/treatments",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "treatment": "algaecide", "qty": "60"},
+    )
+    client.patch(
+        f"/installations/{installation_id}/treatments/{algaecide['id']}",
+        json={"label": "Algimycin 600"},
+    )
+
+    entries = client.get(
+        f"/v1/history?installation_id={installation_id}&type=treatment",
+        headers=auth_headers(key),
+    ).json()
+    assert entries[0]["label"] == "Algimycin 600"
+
+
+def test_actions_reject_a_treatment_from_another_installation(client: TestClient):
+    login(client)
+    mine = client.post("/installations", json={"name": "Mine"}).json()["id"]
+    other = client.post("/installations", json={"name": "Other"}).json()["id"]
+    foreign = client.get(f"/installations/{other}/treatments").json()[0]
+
+    r = client.post("/actions", json={
+        "date": TODAY, "action_type": "Add product", "installation_id": mine,
+        "treatment_id": foreign["id"], "qty": "1",
+    })
+    assert r.status_code == 422
 
 
 # ── /v1/history ──────────────────────────────────────────────────────────
@@ -1903,6 +2341,11 @@ def test_v1_write_routes_reject_a_viewer(client: TestClient):
         json={"installation_id": installation_id, "action_type": "Backwash"},
         headers=headers,
     ).status_code == 403
+    assert client.post(
+        "/v1/treatments",
+        json={"installation_id": installation_id, "treatment": "chlorine", "qty": "100"},
+        headers=headers,
+    ).status_code == 403
 
 
 def test_v1_write_routes_accept_an_editor(client: TestClient):
@@ -1912,6 +2355,11 @@ def test_v1_write_routes_accept_an_editor(client: TestClient):
     assert client.post(
         "/v1/measurements",
         json={"installation_id": installation_id, "ph": 7.4},
+        headers=headers,
+    ).status_code == 200
+    assert client.post(
+        "/v1/treatments",
+        json={"installation_id": installation_id, "treatment": "chlorine", "qty": "100"},
         headers=headers,
     ).status_code == 200
     r = client.get(

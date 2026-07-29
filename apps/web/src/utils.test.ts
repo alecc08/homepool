@@ -18,7 +18,7 @@ import {
   maintenanceOptions,
   isMeasurementTask,
   isOnDemandTask,
-  isProductTask,
+  treatmentProductLabel,
   type MeasuredParams,
   type WaterParams,
   type DynamicRanges,
@@ -348,6 +348,23 @@ describe('maintenanceTaskLabel', () => {
   })
 })
 
+describe('treatmentProductLabel', () => {
+  it('localizes built-in products via their builtin_key', () => {
+    expect(treatmentProductLabel({ builtin_key: 'ph_increaser', label: 'pH increaser' }, t))
+      .toBe('pH+')
+  })
+
+  it('uses the stored label for custom products', () => {
+    expect(treatmentProductLabel({ builtin_key: null, label: 'Algimycin 600' }, t))
+      .toBe('Algimycin 600')
+  })
+
+  it('falls back to the stored label when a built-in has no translation', () => {
+    expect(treatmentProductLabel({ builtin_key: 'not_a_real_key', label: 'Mystery goo' }, t))
+      .toBe('Mystery goo')
+  })
+})
+
 describe('maintenanceTodoItems', () => {
   it('flags a never-done task as overdue', () => {
     const items = maintenanceTodoItems([makeTask({ days_until_due: null })], t)
@@ -394,11 +411,6 @@ describe('maintenance task taxonomy (issue #51)', () => {
   it('recognises on-demand tasks by a zero interval', () => {
     expect(isOnDemandTask(makeTask({ interval_days: 0 }))).toBe(true)
     expect(isOnDemandTask(makeTask({ interval_days: 7 }))).toBe(false)
-  })
-
-  it('recognises the product-addition task', () => {
-    expect(isProductTask(makeTask({ action_types: ['Add product'] }))).toBe(true)
-    expect(isProductTask(makeTask({ action_types: ['Purge'] }))).toBe(false)
   })
 
   it('never schedules an on-demand task on the dashboard', () => {

@@ -224,6 +224,31 @@ button {
   gap: 2px;
 }
 
+/* The primary action, sitting above the nav items and deliberately not looking
+   like one: filled accent, not a link. */
+.sidebar-add-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  font-family: "Sora", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.sidebar-add-entry:hover {
+  filter: brightness(1.08);
+}
+
 .sidebar-nav-item {
   display: flex;
   align-items: center;

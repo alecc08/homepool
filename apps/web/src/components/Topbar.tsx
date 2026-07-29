@@ -1,4 +1,4 @@
-import { Sun, Moon, Bath, Waves, Pencil, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react'
+import { Sun, Moon, Bath, Waves, Pencil, Plus, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react'
 import homepoolLogo from '@/assets/homepool-logo.svg'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import type { User } from '../types'
@@ -194,6 +194,15 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
 
         {/* Nav */}
         <nav className="sidebar-nav">
+          {/* Logging an entry is the thing this app is for, so it leads the nav
+              rather than hiding on the dashboard. Absent for viewers, who have
+              nothing to log. The mobile equivalent is BottomNav's FAB. */}
+          {onAdd && (
+            <button className="sidebar-add-entry" onClick={onAdd}>
+              <Plus size={15} strokeWidth={2.25} aria-hidden="true" />
+              {t('nav_new_entry')}
+            </button>
+          )}
           {NAV_ITEMS.map(({ page: p, labelKey, Icon }) => (
             <button
               key={p}

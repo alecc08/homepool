@@ -33,11 +33,40 @@ export type Action = {
   action_type: string
   user_id: number | null
   installation_id?: number | null
+  /** Legacy: treatments logged before the per-installation catalog existed
+   * point at the global Product table. New treatments use `treatment_id`. */
   product_id: number | null
+  treatment_id?: number | null
+  /** The treatment product's label as it stood when the entry was logged. The
+   * live catalog wins while the product exists; this is what keeps an entry
+   * readable once it's deleted. */
+  treatment_label?: string
   qty: string
   unit: string
+  /** Free-text brand on top of the catalog choice, e.g. "HTH Super". */
+  brand?: string
   notes: string
   created_at: string
+}
+
+/** One row of GET /installations/{id}/treatments — a product this installation
+ * can log a treatment with. Seeded with defaults, but every row is ordinary:
+ * `key` is stable across renames, and `builtin_key` is only a hint that the
+ * label is one of ours and can be translated (cleared on rename). Mirrors
+ * MaintenanceTask. */
+export type TreatmentProduct = {
+  id: number
+  key: string
+  builtin_key: string | null
+  label: string
+  icon: string
+  default_unit: string
+  /** WATER_PARAMS key this product moves, when it maps onto a measured one. */
+  param: string | null
+  /** dosage.py product id, so a recommendation can offer to log itself. */
+  dosage_product_id: string | null
+  enabled: boolean
+  sort_order: number
 }
 
 /** What the current account may do with an installation. Owners configure and

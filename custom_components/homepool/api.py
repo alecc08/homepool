@@ -136,3 +136,26 @@ class HomepoolClient:
         # alongside the chemistry values. None-valued fields are dropped.
         payload = {"installation_id": installation_id, **{k: v for k, v in fields.items() if v is not None}}
         return await self._post("/v1/measurements", payload)
+
+    async def get_treatments(self, installation_id: int) -> list[dict]:
+        # The installation's enabled treatment products ({id, key, builtin_key,
+        # label, icon, default_unit, param, dosage_product_id, ...}). `key` is
+        # what create_treatment expects and is stable across renames.
+        return await self._get("/v1/treatments", params={"installation_id": installation_id})
+
+    async def create_treatment(
+        self,
+        installation_id: int,
+        treatment: str,
+        **fields: object,
+    ) -> dict:
+        # Logs something added to the water. `treatment` is the product's
+        # catalog key. Remaining fields (qty, unit, brand, date, notes) pass
+        # straight through; None-valued ones are dropped so the server applies
+        # its own defaults (the product's unit, today's date).
+        payload = {
+            "installation_id": installation_id,
+            "treatment": treatment,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return await self._post("/v1/treatments", payload)

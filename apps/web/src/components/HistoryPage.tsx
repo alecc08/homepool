@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Pencil, Trash2, FlaskConical, Droplets, Wrench, Search } from 'lucide-react'
-import type { Action, Product } from '../types'
+import type { Action, Product, TreatmentProduct } from '../types'
 import {
   getWaterStatus,
   getPhStatus,
@@ -9,6 +9,8 @@ import {
   getTempStatus,
   extractMeasuredParams,
   translateLabel,
+  treatmentProductLabel,
+  PRODUCT_ACTION_TYPE,
 } from '../utils'
 import { useT } from '../context/LocaleContext'
 import { useInstallation } from '../context/InstallationContext'
@@ -40,16 +42,37 @@ function getCategory(action: Action): Category {
   return 'maintenance'
 }
 
-function getTitle(action: Action, products: Product[], t: (key: TranslationKey) => string): string {
+function getTitle(
+  action: Action,
+  products: Product[],
+  treatments: TreatmentProduct[],
+  t: (key: TranslationKey) => string,
+): string {
   if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') return t('action_type_measurement')
-  if (action.action_type === 'Add product') {
-    const p = products.find(p => p.id === action.product_id)
-    if (p) return translateLabel(t, PRODUCT_LABELS, p.name)
+  if (action.action_type === PRODUCT_ACTION_TYPE) {
+    // The live catalog first, so renaming a product carries through history.
+    const current = treatments.find(p => p.id === action.treatment_id)
+    if (current) return treatmentProductLabel(current, t)
+    // Then the label snapshotted when the entry was logged, which is all that
+    // survives once the product is deleted.
+    if (action.treatment_label) return action.treatment_label
+    // Then the global product table, for entries predating the catalog.
+    const legacy = products.find(p => p.id === action.product_id)
+    if (legacy) return translateLabel(t, PRODUCT_LABELS, legacy.name)
     return t('action_type_add_product')
   }
   return translateLabel(t, ACTION_TYPE_LABELS, action.action_type)
 }
 
+/** The amount and brand a treatment carries, e.g. "250 g · HTH Super". */
+function treatmentDetail(action: Action): string {
+  return [[action.qty, action.unit].filter(Boolean).join(' '), action.brand]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+// Accent is reserved for measurements; treatments and maintenance are told
+// apart by their icon, not their colour.
 const CATEGORY_ICON: Record<Category, { Icon: typeof FlaskConical; bg: string; color: string }> = {
   measurement: { Icon: FlaskConical, bg: 'var(--badge-accent-bg)',  color: 'var(--badge-accent-text)'  },
   treatment:   { Icon: Droplets,     bg: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-text)' },
@@ -108,9 +131,10 @@ function ParamPills({ action }: { action: Action }) {
   )
 }
 
-function EntryCard({ action, products, onEdit, onDelete }: {
+function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   action: Action
   products: Product[]
+  treatments: TreatmentProduct[]
   onEdit?: (action: Action) => void
   onDelete?: (action: Action) => void
 }) {
@@ -118,7 +142,8 @@ function EntryCard({ action, products, onEdit, onDelete }: {
   const { ranges } = useInstallation()
   const [hovered, setHovered] = useState(false)
   const cat = getCategory(action)
-  const title = getTitle(action, products, t)
+  const title = getTitle(action, products, treatments, t)
+  const detail = cat === 'treatment' ? treatmentDetail(action) : ''
   const { Icon, bg: iconBg, color: iconColor } = CATEGORY_ICON[cat]
 
   const STATUS_CFG = {
@@ -128,7 +153,7 @@ function EntryCard({ action, products, onEdit, onDelete }: {
   }
 
   const TYPE_PILL: Record<'treatment' | 'maintenance', { label: string; color: string; bg: string }> = {
-    treatment: { label: t('history_treatment_badge'), color: 'var(--badge-accent-text)', bg: 'var(--badge-accent-bg)' },
+    treatment: { label: t('history_treatment_badge'), color: 'var(--badge-neutral-text)', bg: 'var(--badge-neutral-bg)' },
     maintenance: { label: t('history_maintenance_badge'),  color: 'var(--badge-neutral-text)',   bg: 'var(--badge-neutral-bg)'   },
   }
 
@@ -197,6 +222,14 @@ function EntryCard({ action, products, onEdit, onDelete }: {
             {title}
           </span>
           {badge}
+          {detail && (
+            <span style={{
+              fontFamily: '"IBM Plex Mono", monospace',
+              fontSize: 11, color: 'var(--text-secondary)',
+            }}>
+              {detail}
+            </span>
+          )}
         </div>
 
         {/* Line 2: note */}
@@ -261,8 +294,23 @@ type Props = {
 
 export default function HistoryPage({ actions, products, onEdit, onDelete }: Props) {
   const { t, locale } = useT()
+  const { active } = useInstallation()
   const [filter, setFilter] = useState<FilterType>('all')
   const [search, setSearch] = useState('')
+
+  // The treatment catalog resolves a treatment's title, so renaming a product
+  // reads through to every entry logged with it. A failed load degrades to the
+  // snapshotted label rather than blanking the list.
+  const [treatments, setTreatments] = useState<TreatmentProduct[]>([])
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    fetch(`/api/installations/${active.id}/treatments`, { credentials: 'same-origin' })
+      .then(r => (r.ok ? r.json() : []))
+      .then((data: TreatmentProduct[]) => { if (!cancelled) setTreatments(Array.isArray(data) ? data : []) })
+      .catch(() => { /* snapshotted labels still render */ })
+    return () => { cancelled = true }
+  }, [active?.id])
 
   const FILTER_BTNS: { label: string; value: FilterType }[] = [
     { label: t('history_all'),         value: 'all' },
@@ -277,14 +325,15 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
       .filter(a => {
         if (filter !== 'all' && getCategory(a) !== filter) return false
         if (q) {
-          const title = getTitle(a, products, t).toLowerCase()
+          const title = getTitle(a, products, treatments, t).toLowerCase()
           const note = a.notes.toLowerCase()
-          if (!title.includes(q) && !note.includes(q)) return false
+          const brand = (a.brand ?? '').toLowerCase()
+          if (!title.includes(q) && !note.includes(q) && !brand.includes(q)) return false
         }
         return true
       })
       .sort((a, b) => b.date.localeCompare(a.date))
-  }, [actions, products, filter, search, t])
+  }, [actions, products, treatments, filter, search, t])
 
   const grouped = useMemo(() => {
     const map = new Map<string, Action[]>()
@@ -362,7 +411,7 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
               {monthLabel(ym, locale)}
             </div>
             {list.map(action => (
-              <EntryCard key={action.id} action={action} products={products} onEdit={onEdit} onDelete={onDelete} />
+              <EntryCard key={action.id} action={action} products={products} treatments={treatments} onEdit={onEdit} onDelete={onDelete} />
             ))}
           </div>
         ))
