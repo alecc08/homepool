@@ -104,7 +104,6 @@ The app is available at `http://localhost:8090`. Create your account on first lo
 > credentials to set in `.env` — an administrator manages accounts and can close public
 > sign-ups from the **Administration** panel in the sidebar. Upgrading an existing
 > instance? Your oldest account is promoted to administrator automatically on first boot.
-
 ---
 
 ### 👥 Sharing a pool
