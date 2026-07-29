@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { Action, Installation, Product } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Action, Installation, MaintenanceTask, Product } from '../types'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,6 +21,9 @@ import {
   getCombinedChlorineStatus,
   getTempStatus,
   translateLabel,
+  maintenanceOptions,
+  MEASURE_ACTION_TYPES,
+  PRODUCT_ACTION_TYPE,
   PARAM_RANGES,
   RX_BROMINE,
   RX_CHLORINE,
@@ -31,6 +34,7 @@ import {
   RX_CC,
   RX_TEMP,
   type DynamicRanges,
+  type MaintenanceOption,
 } from '../utils'
 import { celsiusToFahrenheit, ppmToGramsPerLiter, ppmToGermanDegrees, ppmToFrenchDegrees, convertRange, formatUnitRange } from '../units'
 import { useInstallation } from '../context/InstallationContext'
@@ -39,21 +43,8 @@ import type { TranslationKey } from '../i18n/translations'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const ACTION_TYPES_POOL = [
-  'Cartridge cleaning',
-  'Skimmer filter cleaning',
-  'Measurement',
-  'pH calibration',
-  'Add product',
-]
-const ACTION_TYPES_SPA = [
-  'Cartridge cleaning',
-  'Purge',
-  'Water change',
-  'Measurement',
-  'pH calibration',
-  'Add product',
-]
+/** The raw action_type written for a water measurement. */
+const MEASUREMENT_ACTION_TYPE = 'Measurement'
 
 /** DB-stored/matched raw action-type strings never change — only the rendered label does. */
 export const ACTION_TYPE_LABELS: Record<string, TranslationKey> = {
@@ -86,39 +77,9 @@ export const PRODUCT_LABELS: Record<string, TranslationKey> = {
   'Bromine shock': 'product_bromine_shock',
 }
 
-const QUICK_TAGS_POOL = [
-  'Clear water', 'Level OK', 'Skimmer clean', 'Basket emptied',
-  'Robot run', 'Backwash done', 'Vacuumed', 'Skimmed',
-]
-const QUICK_TAGS_SPA = [
-  'Clear water', 'Level OK', 'Filters clean', 'Basket emptied',
-  'Cover replaced', 'Purge done', 'Shell cleaning', 'Skimmed',
-]
+// ── Measured values ────────────────────────────────────────────────────────
 
-/** DB-stored/matched raw quick-tag strings (stored in notes free-text) never change — only the rendered label does. */
-export const QUICK_TAG_LABELS: Record<string, TranslationKey> = {
-  'Clear water': 'water_clear',
-  'Level OK': 'tag_level_ok',
-  'Skimmer clean': 'tag_skimmer_clean',
-  'Basket emptied': 'tag_basket_emptied',
-  'Robot run': 'tag_robot_run',
-  'Backwash done': 'tag_backwash_done',
-  'Vacuumed': 'tag_vacuumed',
-  'Skimmed': 'tag_skimmed',
-  'Filters clean': 'tag_filters_clean',
-  'Cover replaced': 'tag_cover_replaced',
-  'Purge done': 'tag_drain_done',
-  'Shell cleaning': 'tag_shell_cleaned',
-}
-
-// ── ActionRow type ─────────────────────────────────────────────────────────
-
-type ActionRow = {
-  key: string
-  action_type: string
-  product_name: string | null
-  qty: string
-  unit: string
+type MeasureValues = {
   m_ph: string
   m_bromine: string
   m_chlorine: string
@@ -130,79 +91,58 @@ type ActionRow = {
   m_temp: string
 }
 
-function makeRow(actionTypes: string[]): ActionRow {
-  return {
-    key: Math.random().toString(36).slice(2),
-    action_type: actionTypes.includes('Measurement') ? 'Measurement' : actionTypes[0],
-    product_name: null,
-    qty: '',
-    unit: UNITS[0],
-    m_ph: '',
-    m_bromine: '',
-    m_chlorine: '',
-    m_tac: '',
-    m_hardness: '',
-    m_salt: '',
-    m_stabilizer: '',
-    m_cc: '',
-    m_temp: '',
-  }
+const EMPTY_MEASURE: MeasureValues = {
+  m_ph: '', m_bromine: '', m_chlorine: '', m_tac: '',
+  m_hardness: '', m_salt: '', m_stabilizer: '', m_cc: '', m_temp: '',
 }
 
-function rowFromAction(action: Action, products: Product[]): ActionRow {
-  const product = products.find(p => p.id === action.product_id)
-  const base: ActionRow = {
-    key: 'edit',
-    action_type: action.action_type,
-    product_name: product?.name ?? null,
-    qty: action.qty,
-    unit: action.unit || UNITS[0],
-    m_ph: '',
-    m_bromine: '',
-    m_chlorine: '',
-    m_tac: '',
-    m_hardness: '',
-    m_salt: '',
-    m_stabilizer: '',
-    m_cc: '',
-    m_temp: '',
+function isMeasurement(actionType: string): boolean {
+  return MEASURE_ACTION_TYPES.includes(actionType)
+}
+
+function hasAnyValue(values: MeasureValues): boolean {
+  return Object.values(values).some(v => v !== '')
+}
+
+/** Re-reads every measured field an action stored (pH from qty, the rest from
+ * the `key: value` fields toPayload writes into notes) so edit mode round-trips. */
+function measureFromAction(action: Action): MeasureValues {
+  if (!isMeasurement(action.action_type)) return EMPTY_MEASURE
+  const values: MeasureValues = { ...EMPTY_MEASURE, m_ph: action.qty }
+  const notes = action.notes ?? ''
+  const pairs: [keyof MeasureValues, RegExp][] = [
+    ['m_bromine', RX_BROMINE],
+    ['m_chlorine', RX_CHLORINE],
+    ['m_tac', RX_TAC],
+    ['m_hardness', RX_HARDNESS],
+    ['m_salt', RX_SALT],
+    ['m_stabilizer', RX_STABILIZER],
+    ['m_cc', RX_CC],
+    ['m_temp', RX_TEMP],
+  ]
+  for (const [key, rx] of pairs) {
+    const match = notes.match(rx)
+    if (match) values[key] = match[1]
   }
-  if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') {
-    base.action_type = 'Measurement'
-    base.m_ph = action.qty
-    const bromeM = action.notes.match(RX_BROMINE)
-    if (bromeM) base.m_bromine = bromeM[1]
-    const chloreM = action.notes.match(RX_CHLORINE)
-    if (chloreM) base.m_chlorine = chloreM[1]
-    const tacM = action.notes.match(RX_TAC)
-    if (tacM) base.m_tac = tacM[1]
-    const dureteM = action.notes.match(RX_HARDNESS)
-    if (dureteM) base.m_hardness = dureteM[1]
-    const selM = action.notes.match(RX_SALT)
-    if (selM) base.m_salt = selM[1]
-    const stabilisantM = action.notes.match(RX_STABILIZER)
-    if (stabilisantM) base.m_stabilizer = stabilisantM[1]
-    const ccM = action.notes.match(RX_CC)
-    if (ccM) base.m_cc = ccM[1]
-    const tempM = action.notes.match(RX_TEMP)
-    if (tempM) base.m_temp = tempM[1]
-  }
-  return base
+  return values
 }
 
 // ── Mode toggle (localStorage) ─────────────────────────────────────────────
 
 type MeasureMode = 'strip' | 'manual'
 
+const MEASURE_MODE_KEY = 'homepool_measure_mode'
+
+/** Manual entry is the default (issue #51); the last mode the user picked is
+ * remembered across sessions. 'device' is the legacy name for 'manual'. */
 function readMode(): MeasureMode {
   try {
-    const v = localStorage.getItem('homepool_measure_mode')
-    return v === 'manual' || v === 'device' ? 'manual' : 'strip'
-  } catch { return 'strip' }
+    return localStorage.getItem(MEASURE_MODE_KEY) === 'strip' ? 'strip' : 'manual'
+  } catch { return 'manual' }
 }
 
 function saveMode(m: MeasureMode) {
-  try { localStorage.setItem('homepool_measure_mode', m) } catch { /* ignore */ }
+  try { localStorage.setItem(MEASURE_MODE_KEY, m) } catch { /* ignore */ }
 }
 
 // ── Test-strip data ───────────────────────────────────────────────────────
@@ -212,7 +152,7 @@ type ZoneKind = 'low' | 'ok' | 'ideal' | 'high' | 'vhigh'
 type ZoneDef = { label: string; flex: number; kind: ZoneKind }
 
 type BandParam = {
-  key: keyof Pick<ActionRow, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness'>
+  key: keyof Pick<MeasureValues, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness'>
   label: string
   summaryFmt: (v: number) => string
   swatches: SwatchDef[]
@@ -378,18 +318,18 @@ function pillStyle(kind: ZoneKind): { color: string; bg: string } {
 // ── Test-strip mode component ────────────────────────────────────────────
 
 type StripProps = {
-  row: ActionRow
-  onChange: (key: string, updates: Partial<ActionRow>) => void
+  values: MeasureValues
+  onChange: (updates: Partial<MeasureValues>) => void
   sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function StripMode({ row, onChange, sanitizer }: StripProps) {
+function StripMode({ values, onChange, sanitizer }: StripProps) {
   const { t } = useT()
   const [hovered, setHovered] = useState<{ param: string; idx: number } | null>(null)
   const BAND_PARAMS = getBandParams(sanitizer, t)
 
   const summaryItems = BAND_PARAMS.flatMap(p => {
-    const v = parseFloat(row[p.key])
+    const v = parseFloat(values[p.key])
     if (isNaN(v)) return []
     const kind = swatchZone(p, v)
     return [{ label: p.summaryFmt(v), ...pillStyle(kind) }]
@@ -403,7 +343,7 @@ function StripMode({ row, onChange, sanitizer }: StripProps) {
       </div>
 
       {BAND_PARAMS.map(p => {
-        const selValue = parseFloat(row[p.key])
+        const selValue = parseFloat(values[p.key])
         const hasSelection = !isNaN(selValue)
 
         return (
@@ -427,7 +367,7 @@ function StripMode({ row, onChange, sanitizer }: StripProps) {
                   <button
                     key={s.value}
                     type="button"
-                    onClick={() => onChange(row.key, { [p.key]: isSelected ? '' : String(s.value) })}
+                    onClick={() => onChange({ [p.key]: isSelected ? '' : String(s.value) })}
                     onMouseEnter={() => setHovered({ param: p.key, idx })}
                     onMouseLeave={() => setHovered(null)}
                     style={{
@@ -518,7 +458,7 @@ function StripMode({ row, onChange, sanitizer }: StripProps) {
 // ── Digital device mode ─────────────────────────────────────────────────────
 
 type DeviceField = {
-  key: keyof Pick<ActionRow, 'm_ph' | 'm_bromine' | 'm_chlorine' | 'm_tac' | 'm_hardness' | 'm_salt' | 'm_stabilizer' | 'm_cc' | 'm_temp'>
+  key: keyof MeasureValues
   label: string
   placeholder: string
   step: string
@@ -633,12 +573,12 @@ const STATUS_BORDER: Record<NonNullable<FieldStatus>, string> = {
 }
 
 type DeviceProps = {
-  row: ActionRow
-  onChange: (key: string, updates: Partial<ActionRow>) => void
+  values: MeasureValues
+  onChange: (updates: Partial<MeasureValues>) => void
   sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
+function DeviceMode({ values, onChange, sanitizer }: DeviceProps) {
   const { t } = useT()
   const { active, ranges } = useInstallation()
   const DEVICE_FIELDS = getDeviceFields(sanitizer, t, active, ranges ?? undefined)
@@ -648,7 +588,7 @@ function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       {DEVICE_FIELDS.map(f => {
-        const val = row[f.key]
+        const val = values[f.key]
         const status = touched[f.key] ? getDeviceStatus(f.key, val, ranges ?? undefined) : null
         const border = status ? STATUS_BORDER[status] : 'var(--border)'
         return (
@@ -668,7 +608,7 @@ function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
                   padding: f.unit ? '9px 44px 9px 13px' : '9px 13px',
                   width: '100%', outline: 'none', boxSizing: 'border-box' as const,
                 }}
-                onChange={e => onChange(row.key, { [f.key]: e.target.value })}
+                onChange={e => onChange({ [f.key]: e.target.value })}
                 onBlur={() => touch(f.key)}
               />
               {f.unit && (
@@ -690,12 +630,12 @@ function DeviceMode({ row, onChange, sanitizer }: DeviceProps) {
 // ── MeasureSection (toggle + dispatch) ────────────────────────────────────
 
 type MeasureSectionProps = {
-  row: ActionRow
-  onChange: (key: string, updates: Partial<ActionRow>) => void
+  values: MeasureValues
+  onChange: (updates: Partial<MeasureValues>) => void
   sanitizer: 'bromine' | 'chlorine' | 'salt'
 }
 
-function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
+function MeasureSection({ values, onChange, sanitizer }: MeasureSectionProps) {
   const { t } = useT()
   const [mode, setMode] = useState<MeasureMode>(readMode)
 
@@ -734,67 +674,77 @@ function MeasureSection({ row, onChange, sanitizer }: MeasureSectionProps) {
 
       {/* Mode content */}
       {mode === 'strip'
-        ? <StripMode row={row} onChange={onChange} sanitizer={sanitizer} />
-        : <DeviceMode row={row} onChange={onChange} sanitizer={sanitizer} />
+        ? <StripMode values={values} onChange={onChange} sanitizer={sanitizer} />
+        : <DeviceMode values={values} onChange={onChange} sanitizer={sanitizer} />
       }
     </div>
   )
 }
 
-// ── ActionRowItem ──────────────────────────────────────────────────────────
+// ── Maintenance section ────────────────────────────────────────────────────
+//
+// The choices are the installation's own enabled maintenance tasks (issue #51)
+// — there is no separate action-type list any more. Tasks completed by taking a
+// measurement (the built-in pH measurement) are excluded: those are logged from
+// the measurement half of this form, which carries the values.
 
-type RowItemProps = {
-  row: ActionRow
-  onChange: (key: string, updates: Partial<ActionRow>) => void
-  onRemove: (key: string) => void
-  canRemove: boolean
-  products: Product[]
-  actionTypes: string[]
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+type MaintenanceSectionProps = {
+  options: MaintenanceOption[]
+  loading: boolean
+  actionType: string
+  onActionTypeChange: (actionType: string) => void
+  productName: string | null
+  qty: string
+  unit: string
+  onProductChange: (updates: { product_name?: string | null; qty?: string; unit?: string }) => void
 }
 
-function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, sanitizer }: RowItemProps) {
+function MaintenanceSection({
+  options, loading, actionType, onActionTypeChange,
+  productName, qty, unit, onProductChange,
+}: MaintenanceSectionProps) {
   const { t } = useT()
-  const showProduct = row.action_type === 'Add product'
-  const showMeasure = row.action_type === 'Measurement'
+  const showProduct = actionType === PRODUCT_ACTION_TYPE
+
+  if (loading) {
+    return (
+      <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+        {t('ranges_loading')}
+      </p>
+    )
+  }
+
+  if (options.length === 0) {
+    return (
+      <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+        {t('modal_no_maintenance_tasks')}
+      </p>
+    )
+  }
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', background: 'var(--bg-surface-2)', display: 'grid', gap: 10 }}>
-      {/* Action type + remove */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <Select
-          value={row.action_type}
-          onValueChange={v => onChange(row.key, {
-            action_type: v,
-            product_name: null, qty: '', unit: UNITS[0],
-            m_ph: '', m_bromine: '', m_chlorine: '', m_tac: '', m_hardness: '',
-            m_salt: '', m_stabilizer: '', m_cc: '', m_temp: '',
-          })}
-        >
-          <SelectTrigger style={{ flex: 1 }}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {actionTypes.map(a => <SelectItem key={a} value={a}>{translateLabel(t, ACTION_TYPE_LABELS, a)}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        {canRemove && (
-          <button
-            type="button"
-            onClick={() => onRemove(row.key)}
-            aria-label={t('modal_delete_action_aria')}
-            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}
-          >×</button>
-        )}
-      </div>
-
-      {showMeasure && <MeasureSection row={row} onChange={onChange} sanitizer={sanitizer} />}
+    <div style={{ display: 'grid', gap: 10 }}>
+      <Select value={actionType || undefined} onValueChange={onActionTypeChange}>
+        <SelectTrigger aria-label={t('modal_maintenance_type')}>
+          <SelectValue placeholder={t('modal_maintenance_placeholder')} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(option => (
+            <SelectItem key={option.action_type} value={option.action_type}>{option.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       {showProduct && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 72px', gap: 8 }}>
           <Select
-            value={row.product_name ?? 'none'}
+            value={productName ?? 'none'}
             onValueChange={v => {
               const next = v === 'none' ? null : v
-              onChange(row.key, { product_name: next, unit: next === 'Bromine' ? 'pastille' : row.unit === 'pastille' ? UNITS[0] : row.unit })
+              onProductChange({
+                product_name: next,
+                unit: next === 'Bromine' ? 'pastille' : unit === 'pastille' ? UNITS[0] : unit,
+              })
             }}
           >
             <SelectTrigger><SelectValue placeholder={t('modal_product_placeholder')} /></SelectTrigger>
@@ -803,8 +753,8 @@ function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, saniti
               {PRODUCT_OPTIONS.map(p => <SelectItem key={p} value={p}>{translateLabel(t, PRODUCT_LABELS, p)}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Input type="number" value={row.qty} onChange={e => onChange(row.key, { qty: e.target.value })} placeholder={t('modal_qty_placeholder')} />
-          <Select value={row.unit} onValueChange={v => onChange(row.key, { unit: v })}>
+          <Input type="number" value={qty} onChange={e => onProductChange({ qty: e.target.value })} placeholder={t('modal_qty_placeholder')} />
+          <Select value={unit} onValueChange={v => onProductChange({ unit: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
@@ -816,117 +766,185 @@ function ActionRowItem({ row, onChange, onRemove, canRemove, actionTypes, saniti
   )
 }
 
+// ── Segmented toggle ───────────────────────────────────────────────────────
+
+function SegmentedToggle<T extends string>({ value, options, onChange }: {
+  value: T
+  options: [T, string][]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div style={{ display: 'flex', background: 'var(--bg-surface-2)', borderRadius: 8, padding: 3, gap: 2 }}>
+      {options.map(([key, label]) => {
+        const active = value === key
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            style={{
+              flex: 1,
+              fontFamily: '"Sora", sans-serif',
+              fontSize: 11, fontWeight: 500,
+              padding: '5px 8px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              background: active ? 'var(--bg-surface)' : 'transparent',
+              color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+              boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              transition: 'background 0.12s, color 0.12s, box-shadow 0.12s',
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── ActionForm ─────────────────────────────────────────────────────────────
 
+/** The two things you can log. Everything else (which filter you cleaned, which
+ * product you added) is a maintenance task the installation has configured. */
+export type EntryKind = 'measurement' | 'maintenance'
+
+type NewAction = Omit<Action, 'id' | 'created_at' | 'user_id'>
+
+/** Strips the structured `key: value` measurement fields toPayload writes into
+ * notes, leaving only what the user actually typed. */
+function stripMeasurementNotes(notes: string): string {
+  return notes
+    .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/^[\s.]+/, '')
+    .trim()
+}
+
 type Props = {
-  onAdd?: (actions: Omit<Action, 'id' | 'created_at' | 'user_id'>[]) => void
+  onAdd?: (action: NewAction) => void
   products: Product[]
   onClose?: () => void
   editAction?: Action
-  onEdit?: (id: number, data: Omit<Action, 'id' | 'created_at' | 'user_id'>) => void
+  onEdit?: (id: number, data: NewAction) => void
+  /** Which half of the form a new entry opens on. Defaults to a measurement. */
+  initialKind?: EntryKind
+  /** Preselects a maintenance task's action type (e.g. when the maintenance
+   * page hands off a task that needs a product and a quantity). */
+  initialActionType?: string
 }
 
-export default function ActionForm({ onAdd, products: _products, onClose, editAction, onEdit }: Props) {
+export default function ActionForm({
+  onAdd, products, onClose, editAction, onEdit, initialKind, initialActionType,
+}: Props) {
   const { t } = useT()
   const { active } = useInstallation()
   const sanitizer = active?.sanitizer ?? 'chlorine'
-  const installationType = active?.type ?? 'pool'
-  const actionTypes = installationType === 'spa' ? ACTION_TYPES_SPA : ACTION_TYPES_POOL
-  const quickTags = installationType === 'spa' ? QUICK_TAGS_SPA : QUICK_TAGS_POOL
 
   const isEditMode = !!editAction
+  const editingMeasurement = editAction ? isMeasurement(editAction.action_type) : false
   const today = new Date().toISOString().slice(0, 10)
 
-  const [date, setDate] = useState(editAction?.date ?? today)
-  const [rows, setRows] = useState<ActionRow[]>(() =>
-    editAction ? [rowFromAction(editAction, _products)] : [makeRow(actionTypes)]
+  const [kind, setKind] = useState<EntryKind>(() =>
+    editAction ? (editingMeasurement ? 'measurement' : 'maintenance') : (initialKind ?? 'measurement')
   )
+  const [date, setDate] = useState(editAction?.date ?? today)
+  const [values, setValues] = useState<MeasureValues>(() =>
+    editAction ? measureFromAction(editAction) : EMPTY_MEASURE
+  )
+  const [actionType, setActionType] = useState(
+    editAction ? (editingMeasurement ? '' : editAction.action_type) : (initialActionType ?? '')
+  )
+  const [productName, setProductName] = useState<string | null>(() =>
+    products.find(p => p.id === editAction?.product_id)?.name ?? null
+  )
+  const [qty, setQty] = useState(editAction && !editingMeasurement ? editAction.qty : '')
+  const [unit, setUnit] = useState(editAction?.unit || UNITS[0])
   const [notes, setNotes] = useState(() => {
     if (!editAction) return ''
-    if (editAction.action_type === 'Measurement' || editAction.action_type === 'pH Measurement') {
-      return editAction.notes
-        .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
-        .replace(/^[\s.]+/, '')
-        .trim()
-    }
-    return editAction.notes
+    return editingMeasurement ? stripMeasurementNotes(editAction.notes) : editAction.notes
   })
-  const [selectedTags, setSelectedTags] = useState<string[]>(() =>
-    quickTags.filter(tag => (editAction?.notes ?? '').includes(tag))
-  )
-  const [measureError, setMeasureError] = useState(false)
+  const [error, setError] = useState<'measure' | 'task' | null>(null)
 
-  const updateRow = (key: string, updates: Partial<ActionRow>) => {
-    setRows(prev => prev.map(r => r.key === key ? { ...r, ...updates } : r))
-    setMeasureError(false)
-  }
+  // The maintenance choices are the installation's configured tasks. A failed
+  // load degrades to "no tasks" rather than blocking the measurement half.
+  const [tasks, setTasks] = useState<MaintenanceTask[] | null>(null)
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    fetch(`/api/installations/${active.id}/maintenance`, { credentials: 'same-origin' })
+      .then(r => (r.ok ? r.json() : []))
+      .then((data: MaintenanceTask[]) => { if (!cancelled) setTasks(Array.isArray(data) ? data : []) })
+      .catch(() => { if (!cancelled) setTasks([]) })
+    return () => { cancelled = true }
+  }, [active?.id])
 
-  const addRow = () => setRows(prev => [...prev, makeRow(actionTypes)])
-  const removeRow = (key: string) => setRows(prev => prev.filter(r => r.key !== key))
-
-  const updateNotesWithTags = (selected: string[]) => {
-    const allTags = [...QUICK_TAGS_POOL, ...QUICK_TAGS_SPA]
-    let remaining = notes
-    allTags.forEach(tag => {
-      const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      remaining = remaining.replace(new RegExp(`\\b${escaped}\\b\\.?\\s*`, 'gi'), '')
-    })
-    remaining = remaining.trim()
-    const prefix = selected.length > 0 ? selected.join('. ') : ''
-    setNotes(prefix && remaining ? `${prefix}. ${remaining}` : `${prefix}${remaining}`.trim())
-  }
-
-  const toggleQuickTag = (tag: string) => {
-    const next = selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag]
-    setSelectedTags(next)
-    updateNotesWithTags(next)
-  }
-
-  const toPayload = (row: ActionRow) => {
-    if (row.action_type === 'Measurement') {
-      const parts: string[] = []
-      if (row.m_bromine)  parts.push(`bromine: ${row.m_bromine}`)
-      if (row.m_chlorine) parts.push(`chlorine: ${row.m_chlorine}`)
-      if (row.m_tac)    parts.push(`TAC: ${row.m_tac}`)
-      if (row.m_hardness) parts.push(`hardness: ${row.m_hardness}`)
-      if (row.m_salt)    parts.push(`salt: ${row.m_salt}`)
-      if (row.m_stabilizer) parts.push(`stabilizer: ${row.m_stabilizer}`)
-      if (row.m_cc)     parts.push(`combined: ${row.m_cc}`)
-      if (row.m_temp)   parts.push(`temperature: ${row.m_temp}`)
-      const fullNotes = [parts.join('. '), notes].filter(Boolean).join('. ')
-      return { date, action_type: 'Measurement', product_id: null, installation_id: active?.id ?? null, qty: row.m_ph, unit: '', notes: fullNotes }
+  const options = useMemo(() => {
+    const fromTasks = maintenanceOptions(tasks ?? [], t)
+    // Editing an entry whose type no longer matches an enabled task (a disabled
+    // task, a secondary action type, a row from an older version) must not
+    // silently rewrite it — offer it as-is.
+    if (actionType && !fromTasks.some(o => o.action_type === actionType)) {
+      return [...fromTasks, { action_type: actionType, label: translateLabel(t, ACTION_TYPE_LABELS, actionType) }]
     }
-    const productId =
-      row.action_type === 'Add product' && row.product_name
-        ? _products.find(p => p.name.toLowerCase() === row.product_name!.toLowerCase())?.id ?? null
-        : null
-    return { date, action_type: row.action_type, product_id: productId, installation_id: active?.id ?? null, qty: row.qty, unit: row.unit, notes }
+    return fromTasks
+  }, [tasks, actionType, t])
+
+  const updateValues = (updates: Partial<MeasureValues>) => {
+    setValues(prev => ({ ...prev, ...updates }))
+    setError(null)
+  }
+
+  const buildPayload = (): NewAction => {
+    const installation_id = active?.id ?? null
+    if (kind === 'measurement') {
+      const parts: string[] = []
+      if (values.m_bromine) parts.push(`bromine: ${values.m_bromine}`)
+      if (values.m_chlorine) parts.push(`chlorine: ${values.m_chlorine}`)
+      if (values.m_tac) parts.push(`TAC: ${values.m_tac}`)
+      if (values.m_hardness) parts.push(`hardness: ${values.m_hardness}`)
+      if (values.m_salt) parts.push(`salt: ${values.m_salt}`)
+      if (values.m_stabilizer) parts.push(`stabilizer: ${values.m_stabilizer}`)
+      if (values.m_cc) parts.push(`combined: ${values.m_cc}`)
+      if (values.m_temp) parts.push(`temperature: ${values.m_temp}`)
+      const fullNotes = [parts.join('. '), notes].filter(Boolean).join('. ')
+      return {
+        date, action_type: MEASUREMENT_ACTION_TYPE, product_id: null,
+        installation_id, qty: values.m_ph, unit: '', notes: fullNotes,
+      }
+    }
+    const isProduct = actionType === PRODUCT_ACTION_TYPE
+    const productId = isProduct && productName
+      ? products.find(p => p.name.toLowerCase() === productName.toLowerCase())?.id ?? null
+      : null
+    return {
+      date, action_type: actionType, product_id: productId, installation_id,
+      qty: isProduct ? qty : '', unit: isProduct ? unit : '', notes,
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    for (const row of rows) {
-      if (row.action_type === 'Measurement') {
-        if (
-          !row.m_ph && !row.m_bromine && !row.m_chlorine && !row.m_tac && !row.m_hardness &&
-          !row.m_salt && !row.m_stabilizer && !row.m_cc && !row.m_temp
-        ) {
-          setMeasureError(true)
-          return
-        }
-      }
+    if (kind === 'measurement' && !hasAnyValue(values)) {
+      setError('measure')
+      return
     }
+    if (kind === 'maintenance' && !actionType) {
+      setError('task')
+      return
+    }
+    const payload = buildPayload()
     if (isEditMode && editAction && onEdit) {
-      onEdit(editAction.id, toPayload(rows[0]))
-    } else if (onAdd) {
-      onAdd(rows.map(toPayload))
+      onEdit(editAction.id, payload)
+    } else {
+      onAdd?.(payload)
     }
     onClose?.()
   }
@@ -936,6 +954,21 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4">
+
+        {/* Entry kind — a measurement, or one of the configured maintenance tasks */}
+        {!isEditMode && (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <Label>{t('modal_entry_type')}</Label>
+            <SegmentedToggle
+              value={kind}
+              options={[
+                ['measurement', t('modal_kind_measurement')],
+                ['maintenance', t('modal_kind_maintenance')],
+              ]}
+              onChange={k => { setKind(k); setError(null) }}
+            />
+          </div>
+        )}
 
         {/* Date */}
         <div style={{ display: 'grid', gap: 6 }}>
@@ -956,40 +989,39 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
           />
         </div>
 
-        {/* Action rows */}
-        <div className="grid gap-2">
-          <Label>{t('modal_actions')}</Label>
-          {rows.map(row => (
-            <ActionRowItem key={row.key} row={row} onChange={updateRow} onRemove={removeRow} canRemove={rows.length > 1} products={_products} actionTypes={actionTypes} sanitizer={sanitizer} />
-          ))}
-          {measureError && (
-            <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
-              {t('modal_at_least_one')}
-            </p>
-          )}
-          {!isEditMode && (
-            <button
-              type="button"
-              onClick={addRow}
-              style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 14px', background: 'none', color: 'var(--accent)', fontSize: 13, fontFamily: '"Sora", sans-serif', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'left' }}
-            >
-              {t('modal_add_action')}
-            </button>
-          )}
-        </div>
-
-        {/* Quick tags */}
-        <div className="grid gap-2">
-          <Label>{t('modal_quick_status')}</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {quickTags.map(tag => (
-              <label key={tag} className="flex items-center gap-2" style={{ fontFamily: '"Sora", sans-serif', color: 'var(--text-secondary)', fontSize: 13, textTransform: 'none', letterSpacing: 'normal' }}>
-                <input type="checkbox" className="h-4 w-4" checked={selectedTags.includes(tag)} onChange={() => toggleQuickTag(tag)} />
-                {translateLabel(t, QUICK_TAG_LABELS, tag)}
-              </label>
-            ))}
+        {kind === 'measurement' ? (
+          <div className="grid gap-2">
+            <MeasureSection values={values} onChange={updateValues} sanitizer={sanitizer} />
+            {error === 'measure' && (
+              <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+                {t('modal_at_least_one')}
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="grid gap-2">
+            <Label>{t('modal_maintenance_type')}</Label>
+            <MaintenanceSection
+              options={options}
+              loading={!!active && tasks === null}
+              actionType={actionType}
+              onActionTypeChange={v => { setActionType(v); setError(null) }}
+              productName={productName}
+              qty={qty}
+              unit={unit}
+              onProductChange={updates => {
+                if (updates.product_name !== undefined) setProductName(updates.product_name)
+                if (updates.qty !== undefined) setQty(updates.qty)
+                if (updates.unit !== undefined) setUnit(updates.unit)
+              }}
+            />
+            {error === 'task' && (
+              <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+                {t('modal_select_maintenance')}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Notes */}
         <div className="grid gap-1.5">
@@ -1020,7 +1052,7 @@ export default function ActionForm({ onAdd, products: _products, onClose, editAc
           type="submit"
           className="btn-primary"
         >
-          {isEditMode ? t('modal_save_changes') : rows.length > 1 ? `${t('modal_save')} (${rows.length})` : t('modal_save')}
+          {isEditMode ? t('modal_save_changes') : t('modal_save')}
         </button>
       </div>
 

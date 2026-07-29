@@ -5,7 +5,7 @@ import { useLocale } from './i18n/useLocale'
 import { LocaleContext, useT } from './context/LocaleContext'
 import { InstallationProvider, useInstallation } from './context/InstallationContext'
 import Topbar from './components/Topbar'
-import ActionForm from './components/ActionForm'
+import ActionForm, { type EntryKind } from './components/ActionForm'
 import ProfileDialog from './components/ProfileDialog'
 import AdminDialog from './components/AdminDialog'
 import DashboardPage from './components/DashboardPage'
@@ -52,7 +52,11 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  // Which half of the entry form the "new entry" dialog opens on: "add entry"
+  // starts on a measurement; the maintenance page can hand off a pH-measurement
+  // task here rather than logging an empty measurement.
+  const [entryForm, setEntryForm] = useState<{ kind: EntryKind; actionType?: string } | null>(null)
+  const openEntryForm = (kind: EntryKind, actionType?: string) => setEntryForm({ kind, actionType })
   const [editingAction, setEditingAction] = useState<Action | null>(null)
   const [deletingAction, setDeletingAction] = useState<Action | null>(null)
   const [showProfile, setShowProfile] = useState(false)
@@ -93,18 +97,14 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
     if (active) loadData()
   }, [active?.id])
 
-  const handleAdd = async (newActions: Omit<Action, 'id' | 'created_at' | 'user_id'>[]) => {
-    const posted = await Promise.all(
-      newActions.map(a =>
-        fetch('/api/actions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ ...a, installation_id: active?.id ?? null }),
-        }).then(r => r.json() as Promise<Action>)
-      )
-    )
-    setActions(prev => [...prev, ...posted].sort((a, b) => b.date.localeCompare(a.date)))
+  const handleAdd = async (newAction: Omit<Action, 'id' | 'created_at' | 'user_id'>) => {
+    const posted: Action = await fetch('/api/actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ ...newAction, installation_id: active?.id ?? null }),
+    }).then(r => r.json())
+    setActions(prev => [...prev, posted].sort((a, b) => b.date.localeCompare(a.date)))
   }
 
   const handleExport = () => {
@@ -191,7 +191,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   return (
     <div className="app-layout">
       <Topbar
-        onAdd={canEdit ? () => setShowForm(true) : undefined}
+        onAdd={canEdit ? () => openEntryForm('measurement') : undefined}
         onLogout={onLogout}
         onProfile={() => setShowProfile(true)}
         onAdmin={user.is_admin ? () => setShowAdmin(true) : undefined}
@@ -212,7 +212,10 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           : page === 'recommendations'
           ? <RecommendationsPage actions={actions} />
           : page === 'maintenance'
-          ? <MaintenancePage onActionLogged={loadData} />
+          ? <MaintenancePage
+              onActionLogged={loadData}
+              onLogEntry={canEdit ? openEntryForm : undefined}
+            />
           : <DashboardPage
               actions={actions}
               products={products}
@@ -221,20 +224,28 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
               onExport={handleExport}
               onImport={canEdit ? handleImport : undefined}
               onNavigate={navigate}
-              onAdd={canEdit ? () => setShowForm(true) : undefined}
+              onAdd={canEdit ? () => openEntryForm('measurement') : undefined}
             />
         }
       </main>
 
       {/* Dialog — new entry */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      <Dialog open={entryForm !== null} onOpenChange={open => { if (!open) setEntryForm(null) }}>
         <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
               {t('modal_title')}
             </DialogTitle>
           </DialogHeader>
-          <ActionForm onAdd={handleAdd} products={products} onClose={() => setShowForm(false)} />
+          {entryForm && (
+            <ActionForm
+              onAdd={handleAdd}
+              products={products}
+              initialKind={entryForm.kind}
+              initialActionType={entryForm.actionType}
+              onClose={() => setEntryForm(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 

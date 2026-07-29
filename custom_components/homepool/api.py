@@ -119,6 +119,9 @@ class HomepoolClient:
         notes: str | None = None,
         date: str | None = None,
     ) -> dict:
+        # `action_type` must be one the installation's enabled maintenance tasks
+        # covers — the server has no fixed list of its own. complete_task() is the
+        # easier path when you have a task id, since it derives the string.
         payload = {"installation_id": installation_id, "action_type": action_type}
         if notes is not None:
             payload["notes"] = notes

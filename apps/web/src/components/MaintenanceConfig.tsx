@@ -77,7 +77,9 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
   const addCustom = () => {
     const label = newLabel.trim()
     const interval = parseInt(newInterval, 10)
-    if (!label || !Number.isFinite(interval) || interval < 1) return
+    // 0 is allowed and means "on demand": the task can be logged from the entry
+    // form, but never becomes due.
+    if (!label || !Number.isFinite(interval) || interval < 0) return
     setDraft(prev => [...prev, {
       id: tempIdSeq--,
       builtin_key: null,
@@ -162,6 +164,9 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
           <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 8px' }}>
             {t('maint_config_sub')}
           </p>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px' }}>
+            {t('maint_config_interval_hint')}
+          </p>
 
           {loading && (
             <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)' }}>{t('ranges_loading')}</p>
@@ -198,9 +203,9 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     <Input
                       type="number"
-                      min={1}
+                      min={0}
                       value={String(row.interval_days)}
-                      onChange={e => patchRow(row.id, { interval_days: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                      onChange={e => patchRow(row.id, { interval_days: Math.max(0, parseInt(e.target.value, 10) || 0) })}
                       aria-label={t('maint_interval_label')}
                       style={{ width: 64, opacity: row.enabled ? 1 : 0.5 }}
                     />
@@ -239,7 +244,7 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                 />
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
                   value={newInterval}
                   onChange={e => setNewInterval(e.target.value)}
                   aria-label={t('maint_interval_label')}

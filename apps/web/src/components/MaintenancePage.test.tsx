@@ -87,4 +87,41 @@ describe('MaintenancePage', () => {
     await waitFor(() => expect(screen.getByText(translations.fr.maint_empty)).toBeInTheDocument())
     expect(screen.queryByText('Entretien du filtre')).not.toBeInTheDocument()
   })
+
+  it('shows on-demand tasks as such, never as "never done"', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [task({
+        id: 20, key: 'purge', builtin_key: 'purge', label: 'Purge',
+        action_types: ['Purge'], interval_days: 0,
+        days_until_due: null, last_date: null,
+      })],
+    } as Response)
+
+    render(<MaintenancePage />)
+
+    await waitFor(() => expect(screen.getAllByText(translations.fr.maint_on_demand).length).toBeGreaterThan(0))
+    expect(screen.queryByText(translations.fr.maint_never_done)).not.toBeInTheDocument()
+  })
+
+  it('hands a measurement task off to the entry form instead of logging an empty row', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [task({
+        id: 30, key: 'ph_measurement', builtin_key: 'ph_measurement', label: 'pH measurement',
+        action_types: ['Measurement', 'pH Measurement'], interval_days: 7, days_until_due: -1,
+      })],
+    } as Response)
+
+    const onLogEntry = vi.fn()
+    render(<MaintenancePage onLogEntry={onLogEntry} />)
+
+    await waitFor(() => expect(screen.getByText('Mesure du pH')).toBeInTheDocument())
+    fireEvent.click(screen.getByText(translations.fr.maint_log_entry))
+
+    expect(onLogEntry).toHaveBeenCalledWith('measurement')
+    // No completion was POSTed — only the initial task load happened.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })

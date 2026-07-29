@@ -6,8 +6,14 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 import database
-from main import WATER_PARAMS, _backfill_first_admin, _merge_range_overrides, app
-from models import Action, AppSetting, Product, User
+from main import (
+    WATER_PARAMS,
+    _backfill_first_admin,
+    _merge_range_overrides,
+    _seed_maintenance_tasks,
+    app,
+)
+from models import Action, AppSetting, MaintenanceTask, Product, User
 
 TODAY = date.today().isoformat()
 
@@ -814,7 +820,57 @@ def test_v1_create_maintenance_rejects_unknown_action_type(client: TestClient):
     r = client.post(
         "/v1/maintenance",
         headers=auth_headers(key),
-        json={"action_type": "Add product"},
+        json={"action_type": "Polish the ladder"},
+    )
+    assert r.status_code == 422
+
+
+def test_v1_create_maintenance_rejects_measurement_action_type(client: TestClient):
+    """Measurements carry values and go through /v1/measurements — the pH
+    measurement task must not be loggable as a bare maintenance entry."""
+    login(client)
+    key = get_api_key(client)
+    client.post("/installations", json={"name": "My pool"})
+    r = client.post(
+        "/v1/maintenance",
+        headers=auth_headers(key),
+        json={"action_type": "Measurement"},
+    )
+    assert r.status_code == 422
+
+
+def test_v1_create_maintenance_accepts_a_custom_task_action_type(client: TestClient):
+    """Action types come from the configured tasks, so a custom task is writable
+    without the API knowing anything about it."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Vacuum floor", "interval_days": 10},
+    )
+    r = client.post(
+        "/v1/maintenance",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "action_type": "Vacuum floor"},
+    )
+    assert r.status_code == 200
+
+
+def test_v1_create_maintenance_rejects_a_disabled_tasks_action_type(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    water_change = _task_by_key(tasks, "water_change")
+    client.patch(
+        f"/installations/{installation_id}/maintenance/{water_change['id']}",
+        json={"enabled": False},
+    )
+    r = client.post(
+        "/v1/maintenance",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "action_type": "Water change"},
     )
     assert r.status_code == 422
 
@@ -862,7 +918,15 @@ def test_maintenance_seeded_on_installation_create(client: TestClient):
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
     tasks = client.get(f"/installations/{installation_id}/maintenance").json()
     keys = {t["builtin_key"] for t in tasks}
-    assert {"ph_measurement", "filter_maintenance", "water_change"} <= keys
+    # Every action type the old hardcoded entry-form picker offered now has a
+    # built-in task, since the tasks are the only taxonomy (issue #51).
+    assert {
+        "ph_measurement",
+        "filter_maintenance",
+        "water_change",
+        "ph_calibration",
+        "product_addition",
+    } <= keys
 
 
 def test_maintenance_spa_defaults_differ_from_pool(client: TestClient):
@@ -871,6 +935,98 @@ def test_maintenance_spa_defaults_differ_from_pool(client: TestClient):
     tasks = client.get(f"/installations/{spa_id}/maintenance").json()
     ph = _task_by_key(tasks, "ph_measurement")
     assert ph["interval_days"] == 3  # spa cadence, vs 7 for a pool
+    # Purge is a spa-only built-in.
+    assert _task_by_key(tasks, "purge")["action_types"] == ["Purge"]
+
+
+def test_maintenance_on_demand_task_is_never_due(client: TestClient):
+    """interval_days=0 marks an on-demand task: it can be logged, its last
+    completion is tracked, but it never becomes due."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    product = _task_by_key(tasks, "product_addition")
+    assert product["interval_days"] == 0
+    assert product["days_until_due"] is None
+
+    r = client.post(
+        f"/installations/{installation_id}/maintenance/{product['id']}/complete"
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["last_date"] == date.today().isoformat()
+    assert body["days_until_due"] is None
+
+
+def test_maintenance_create_on_demand_custom_task(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    r = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Skimmed", "interval_days": 0},
+    )
+    assert r.status_code == 200
+    assert r.json()["interval_days"] == 0
+    assert r.json()["days_until_due"] is None
+
+
+def test_maintenance_rejects_negative_interval(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    r = client.post(
+        f"/installations/{installation_id}/maintenance",
+        json={"label": "Nope", "interval_days": -1},
+    )
+    assert r.status_code == 422
+
+
+def test_maintenance_backfill_adds_missing_builtin_tasks(client: TestClient):
+    """The boot backfill tops up built-in tasks an older database never got,
+    without touching custom tasks or re-adding disabled ones. Idempotent."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    with Session(client.test_engine) as session:
+        # Simulate a database seeded before product_addition/ph_calibration
+        # existed, with one built-in disabled and one custom task added.
+        for task in session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+        ).all():
+            if task.builtin_key in ("product_addition", "ph_calibration"):
+                session.delete(task)
+            elif task.builtin_key == "water_change":
+                task.enabled = False
+                session.add(task)
+        session.add(
+            MaintenanceTask(
+                installation_id=installation_id,
+                builtin_key=None,
+                label="Vacuum floor",
+                action_types=["Vacuum floor"],
+                interval_days=10,
+                sort_order=99,
+            )
+        )
+        session.commit()
+
+        _seed_maintenance_tasks(session)
+        _seed_maintenance_tasks(session)  # idempotent
+
+        tasks = session.exec(
+            select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
+        ).all()
+
+    builtin_keys = [t.builtin_key for t in tasks if t.builtin_key]
+    assert sorted(builtin_keys) == [
+        "filter_maintenance",
+        "ph_calibration",
+        "ph_measurement",
+        "product_addition",
+        "water_change",
+    ]
+    # Untouched: the user's own edits survive the backfill.
+    assert next(t for t in tasks if t.builtin_key == "water_change").enabled is False
+    assert len([t for t in tasks if t.builtin_key is None]) == 1
 
 
 def test_maintenance_create_custom_task(client: TestClient):

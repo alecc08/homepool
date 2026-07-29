@@ -36,13 +36,14 @@ from models import (
 from seeds import insert_seeds
 from simulator import simulate_dosage, simulate_heating_energy
 from water_params import (
-    MAINTENANCE_ACTION_TYPES,
+    ON_DEMAND_INTERVAL,
     attach_status,
     compute_task_status,
     default_maintenance_tasks,
     encode_measurement_notes,
     extract_current_conditions,
     extract_history,
+    is_measurement_task,
 )
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -348,11 +349,25 @@ def _backfill_first_admin(session: Session) -> None:
 
 def _seed_maintenance_tasks_for_installation(
     session: Session, installation: Installation
-) -> None:
-    """Seed an installation with its type's default maintenance tasks. Called on
-    installation create and (via the boot backfill) for installations that have
-    none yet."""
-    for order, spec in enumerate(default_maintenance_tasks(installation.type)):
+) -> bool:
+    """Gives an installation one task per built-in key for its type, skipping the
+    keys it already has. Returns whether anything was added; the caller commits.
+
+    Idempotent, and safe to re-run as new built-in keys appear: built-in tasks
+    can only be disabled, never deleted (see delete_maintenance_task), so a
+    missing builtin_key always means "never seeded" rather than "the user
+    removed it". Custom tasks and edits to existing built-ins are untouched."""
+    existing = session.exec(
+        select(MaintenanceTask).where(
+            MaintenanceTask.installation_id == installation.id
+        )
+    ).all()
+    existing_keys = {t.builtin_key for t in existing if t.builtin_key}
+    next_order = max((t.sort_order for t in existing), default=-1) + 1
+    added = False
+    for spec in default_maintenance_tasks(installation.type):
+        if spec["builtin_key"] in existing_keys:
+            continue
         session.add(
             MaintenanceTask(
                 installation_id=installation.id,
@@ -362,28 +377,24 @@ def _seed_maintenance_tasks_for_installation(
                 interval_days=spec["interval_days"],
                 icon=spec["icon"],
                 enabled=True,
-                sort_order=order,
+                sort_order=next_order,
             )
         )
+        next_order += 1
+        added = True
+    return added
 
 
 def _seed_maintenance_tasks(session: Session) -> None:
-    """Boot backfill: give every installation with zero maintenance tasks its
-    type's defaults. Idempotent — once an installation has any task (even after
-    the user deletes some), it is skipped, so user edits are never clobbered and
-    deleted tasks are not re-added."""
-    installations = session.exec(select(Installation)).all()
+    """Boot backfill: tops up every installation's built-in maintenance tasks.
+
+    Since issue #51 the maintenance tasks are the only taxonomy of loggable
+    actions, so this is also what gives databases created before that change the
+    tasks covering the action types the old hardcoded picker offered (pH
+    calibration, purge, product additions)."""
     seeded = False
-    for installation in installations:
-        has_task = session.exec(
-            select(MaintenanceTask.id).where(
-                MaintenanceTask.installation_id == installation.id
-            )
-        ).first()
-        if has_task is not None:
-            continue
-        _seed_maintenance_tasks_for_installation(session, installation)
-        seeded = True
+    for installation in session.exec(select(Installation)).all():
+        seeded |= _seed_maintenance_tasks_for_installation(session, installation)
     if seeded:
         session.commit()
 
@@ -631,7 +642,9 @@ class MaintenanceTaskOut(BaseModel):
     # A configurable maintenance task with its derived due status. `key` is
     # stable across renames (builtin_key or custom_<id>); clients localize
     # built-in tasks via builtin_key and fall back to `label`. days_until_due /
-    # last_date are None when the task has never been logged.
+    # last_date are None when the task has never been logged, and days_until_due
+    # is always None when interval_days is 0 (an on-demand task: loggable, but
+    # never scheduled and never overdue).
     id: int
     key: str
     builtin_key: Optional[str] = None
@@ -647,6 +660,7 @@ class MaintenanceTaskOut(BaseModel):
 
 class MaintenanceTaskIn(BaseModel):
     # Create a custom task. action_types defaults to [label] when omitted.
+    # interval_days=0 creates an on-demand task (loggable, never due).
     label: str
     action_types: Optional[List[str]] = None
     interval_days: int = 7
@@ -1646,6 +1660,10 @@ def update_installation_params(
 # its type's defaults (see _seed_maintenance_tasks_for_installation); tasks can
 # be enabled/disabled, retimed, relabelled, or added (custom). "Due" is derived
 # from the action log, never stored (see compute_task_status).
+#
+# Since issue #51 the enabled tasks are also the list of things a client can log
+# as a maintenance entry — there is no separate action-type taxonomy — and a
+# task with interval_days=0 is "on demand": loggable, but never due.
 
 def _installation_actions_for_status(session: Session, installation_id: int) -> List[Action]:
     cutoff = date.today() - timedelta(days=365)
@@ -1663,6 +1681,25 @@ def _maintenance_status(session: Session, installation_id: int) -> List[Dict]:
     ).all()
     actions = _installation_actions_for_status(session, installation_id)
     return compute_task_status(tasks, actions)
+
+
+def _loggable_action_types(session: Session, installation_id: int) -> set:
+    """Action types an installation accepts for a maintenance entry: the union of
+    its enabled tasks' action_types, minus the measurement ones (logged through
+    the measurement endpoint instead). Since issue #51 this is the whole
+    taxonomy — there is no separate hardcoded action list any more."""
+    tasks = session.exec(
+        select(MaintenanceTask).where(
+            MaintenanceTask.installation_id == installation_id,
+            MaintenanceTask.enabled == True,  # noqa: E712
+        )
+    ).all()
+    return {
+        action_type
+        for task in tasks
+        if not is_measurement_task(task.action_types)
+        for action_type in (task.action_types or [])
+    }
 
 
 def _lookup_task(installation_id: int, task_id: int, session: Session) -> MaintenanceTask:
@@ -1729,8 +1766,8 @@ def create_maintenance_task(
     if not label:
         raise HTTPException(status_code=422, detail="label is required")
     action_types = payload.action_types or [label]
-    if payload.interval_days < 1:
-        raise HTTPException(status_code=422, detail="interval_days must be at least 1")
+    if payload.interval_days < ON_DEMAND_INTERVAL:
+        raise HTTPException(status_code=422, detail="interval_days cannot be negative")
     max_order = session.exec(
         select(MaintenanceTask.sort_order).where(
             MaintenanceTask.installation_id == installation_id
@@ -1776,8 +1813,8 @@ def update_maintenance_task(
             raise HTTPException(status_code=422, detail="action_types cannot be empty")
         task.action_types = payload.action_types
     if payload.interval_days is not None:
-        if payload.interval_days < 1:
-            raise HTTPException(status_code=422, detail="interval_days must be at least 1")
+        if payload.interval_days < ON_DEMAND_INTERVAL:
+            raise HTTPException(status_code=422, detail="interval_days cannot be negative")
         task.interval_days = payload.interval_days
     if payload.icon is not None:
         task.icon = payload.icon
@@ -2145,14 +2182,19 @@ def api_create_maintenance(
     user: User = Depends(get_current_user_by_api_key),
     session: Session = Depends(get_session),
 ):
-    if payload.action_type not in MAINTENANCE_ACTION_TYPES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"action_type must be one of {sorted(MAINTENANCE_ACTION_TYPES)}",
-        )
+    # The accepted action types are the installation's own enabled maintenance
+    # tasks (issue #51) rather than a hardcoded list, so custom tasks are
+    # writable and disabling a task stops accepting it. Measurement tasks are
+    # excluded: those go through /v1/measurements, which carries the values.
     resolved_id = _resolve_installation_for_api_key(
         payload.installation_id, user, session, require_write=True
     )
+    allowed = _loggable_action_types(session, resolved_id)
+    if payload.action_type not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"action_type must be one of {sorted(allowed)}",
+        )
     action = Action(
         date=payload.date or date.today(),
         action_type=payload.action_type,

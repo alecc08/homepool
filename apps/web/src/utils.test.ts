@@ -15,6 +15,10 @@ import {
   getChemistryTodoItems,
   maintenanceTodoItems,
   maintenanceTaskLabel,
+  maintenanceOptions,
+  isMeasurementTask,
+  isOnDemandTask,
+  isProductTask,
   type MeasuredParams,
   type WaterParams,
   type DynamicRanges,
@@ -378,6 +382,68 @@ describe('maintenanceTodoItems', () => {
   it('marks non-pH tasks as maintenance kind', () => {
     const items = maintenanceTodoItems([makeTask({ builtin_key: 'filter_maintenance', days_until_due: -1 })], t)
     expect(items[0].kind).toBe('maintenance')
+  })
+})
+
+describe('maintenance task taxonomy (issue #51)', () => {
+  it('recognises tasks completed by taking a measurement', () => {
+    expect(isMeasurementTask(makeTask({ action_types: ['Measurement', 'pH Measurement'] }))).toBe(true)
+    expect(isMeasurementTask(makeTask({ action_types: ['Backwash'] }))).toBe(false)
+  })
+
+  it('recognises on-demand tasks by a zero interval', () => {
+    expect(isOnDemandTask(makeTask({ interval_days: 0 }))).toBe(true)
+    expect(isOnDemandTask(makeTask({ interval_days: 7 }))).toBe(false)
+  })
+
+  it('recognises the product-addition task', () => {
+    expect(isProductTask(makeTask({ action_types: ['Add product'] }))).toBe(true)
+    expect(isProductTask(makeTask({ action_types: ['Purge'] }))).toBe(false)
+  })
+
+  it('never schedules an on-demand task on the dashboard', () => {
+    expect(maintenanceTodoItems([makeTask({ interval_days: 0, days_until_due: null })], t)).toHaveLength(0)
+  })
+})
+
+describe('maintenanceOptions', () => {
+  const filter = makeTask({
+    id: 2, key: 'filter_maintenance', builtin_key: 'filter_maintenance',
+    label: 'Filter maintenance',
+    action_types: ['Cartridge cleaning', 'Skimmer filter cleaning', 'Backwash'],
+    interval_days: 14,
+  })
+
+  it('offers one localized option per enabled task, logging its primary action type', () => {
+    expect(maintenanceOptions([filter], t)).toEqual([
+      { action_type: 'Cartridge cleaning', label: 'Entretien du filtre' },
+    ])
+  })
+
+  it('excludes measurement tasks — those are logged as a measurement', () => {
+    expect(maintenanceOptions([makeTask()], t)).toEqual([])
+  })
+
+  it('excludes disabled tasks', () => {
+    expect(maintenanceOptions([{ ...filter, enabled: false }], t)).toEqual([])
+  })
+
+  it('keeps on-demand tasks: never due, still loggable', () => {
+    const product = makeTask({
+      id: 3, key: 'product_addition', builtin_key: 'product_addition',
+      label: 'Add product', action_types: ['Add product'], interval_days: 0,
+    })
+    expect(maintenanceOptions([product], t)).toEqual([
+      { action_type: 'Add product', label: 'Ajout de produit' },
+    ])
+  })
+
+  it('uses the stored label of a custom task and collapses duplicate action types', () => {
+    const custom = makeTask({ id: 4, key: 'custom_4', builtin_key: null, label: 'Vacuum floor', action_types: ['Vacuum floor'] })
+    const duplicate = makeTask({ id: 5, key: 'custom_5', builtin_key: null, label: 'Also vacuum', action_types: ['Vacuum floor'] })
+    expect(maintenanceOptions([custom, duplicate], t)).toEqual([
+      { action_type: 'Vacuum floor', label: 'Vacuum floor' },
+    ])
   })
 })
 
