@@ -1,0 +1,5 @@
+# Playwright is heavy and this is a manual, run-it-when-docs-go-stale tool —
+# the exact patch version it resolves to has no bearing on anything shipped,
+# so the lockfile is deliberately not tracked.
+node_modules/
+package-lock.json

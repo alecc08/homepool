@@ -73,11 +73,32 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 |---|---|
 | ![History](docs/screenshots/history-dark.png) | ![Recommendations](docs/screenshots/recommendations-dark.png) |
 
-| New entry — AquaChek strip |
+**Logging an entry** — one form, three kinds. A measurement can be typed in or read off an
+AquaChek strip; a treatment picks from your own product catalog.
+
+| New entry — Treatment | New entry — AquaChek strip |
+|---|---|
+| ![Treatment modal](docs/screenshots/modal-treatment.png) | ![Strip modal](docs/screenshots/modal-strip.png) |
+
+**Per-installation settings** — every pool carries its own product catalog, target ranges
+and access list.
+
+| Treatments | Water Chemistry Targets |
+|---|---|
+| ![Treatments tab](docs/screenshots/installation-treatments.png) | ![Water chemistry tab](docs/screenshots/installation-water.png) |
+
+| Sharing | Dosing simulator |
+|---|---|
+| ![Sharing tab](docs/screenshots/installation-sharing.png) | ![Simulator](docs/screenshots/simulator.png) |
+
+| Installable as a PWA, with bottom navigation |
 |---|
-| ![Strip modal](docs/screenshots/modal-strip.png) |
+| <img src="docs/screenshots/mobile-dashboard.png" alt="homepool on a phone" width="300"> |
 
 </div>
+
+> Screenshots are generated, not hand-captured — see [`tools/screenshots`](tools/screenshots)
+> to refresh them after a UI change.
 
 ---
 
@@ -169,8 +190,6 @@ Each installation gets a device with the following entities:
 | `sensor.<installation>_treatments` | The products you can log a treatment with — state is the product count, with the catalog itself (`key`, `label`, `icon`, `default_unit`, `param`) on the `treatments` attribute. Powers the card's "Log treatment" picker, and the `key` values are what `homepool.log_treatment` accepts. |
 | `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled, whether it came with the pool or you added it. Press to log it against homepool immediately, no app needed. To log one for a *past* day, use the `homepool.log_maintenance` service instead. |
 
-![Home Assistant sensors](docs/screenshots/ha-sensors.png)
-
 #### 5. The homepool card
 
 A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and "Log measurement" / "Log treatment" buttons that open a popup form. The measurement form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes; the treatment form offers your installation's own product catalog, with the amount, unit (pre-filled from the product) and an optional brand. Either button can be hidden from the card's visual editor.
@@ -179,7 +198,9 @@ Each parameter tile is interactive: **tap the tile** to open the log-measurement
 
 <div align="center">
 
-<img src="docs/screenshots/hass-main-card.png" alt="homepool card in Home Assistant" width="360">
+| The card | Logging a treatment from it |
+|---|---|
+| <img src="docs/screenshots/hass-main-card.png" alt="homepool card in Home Assistant" width="330"> | <img src="docs/screenshots/hass-treatment-form.png" alt="the card's log-treatment popup" width="330"> |
 
 </div>
 
@@ -195,6 +216,24 @@ show_due: true
 ```
 
 `entity_prefix` should match the prefix HA generated for your installation's sensors (e.g. `sensor.my_pool_ph` → prefix `sensor.my_pool`). `installation_id` is only needed if you want the "Log measurement" popup and tile-tap logging — find it in the homepool web app's URL or API. In the card's visual editor, you can skip typing either by hand: pick any one of your installation's sensors from the entity picker and both fields are derived from it automatically.
+
+Everything the visual editor exposes has a YAML equivalent:
+
+| Option | Default | Does what |
+|---|---|---|
+| `title` | `homepool` | Card heading. Also what's stripped off the front of each tile's label, so setting it to the pool's name keeps the tiles reading `PH`, `CHLORINE`, … |
+| `show_header` | `true` | The title row. |
+| `show_logo` | `true` | The homepool mark beside the title. |
+| `show_due` | `true` | The "due in N days" chips along the top. |
+| `show_buttons` | `true` | The whole **Quick add** row. |
+| `parameters` | all | Restrict which tiles render, e.g. `[ph, chlorine, temp]`. |
+| `quick_add` | all shown | Hide individual quick-add buttons: `{ log_treatment: false }` drops the Log treatment button, and a maintenance task's own key drops its button. |
+
+<div align="center">
+
+<img src="docs/screenshots/hass-card-editor.png" alt="the homepool card's visual editor" width="330">
+
+</div>
 
 > If the card doesn't appear after installing/updating, hard-refresh your browser — the resource is cache-busted per release, but browsers occasionally hold onto a stale copy. As a manual fallback, add the resource yourself: Settings → Dashboards → ⋮ → Resources → Add Resource → URL `/homepool/homepool-card.js`, type JavaScript Module.
 

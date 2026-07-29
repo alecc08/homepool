@@ -1,0 +1,162 @@
+<!doctype html>
+<!--
+  Renders the real Lovelace cards outside Home Assistant.
+
+  This works because custom_components/homepool/frontend/homepool-card.js is a
+  self-contained vanilla ES module: it reads `hass.states`, calls
+  `hass.callService`, and styles its own markup from CSS variables that all have
+  fallbacks. Nothing here patches or forks the card — it is imported unmodified,
+  handed a `hass`-shaped object, and screenshotted.
+
+  Two things are imitated, both of them chrome rather than content:
+    * <ha-card>, which HA defines and the card only expects to be a block-level
+      surface (it supplies the padding and background itself);
+    * HA's default dark theme CSS variables, so the tiles are shown in the
+      colours a real dashboard would give them rather than the card's fallbacks.
+
+  ha-shots.mjs supplies window.HA_FIXTURE from the live seeded API, so these
+  cards show the same pool as the web-app screenshots.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>homepool card harness</title>
+  <style>
+    /* Home Assistant's dark theme, as far as the card is concerned. */
+    :root {
+      --primary-background-color: #111111;
+      --card-background-color: #1c1c1c;
+      --ha-card-background: #1c1c1c;
+      --secondary-background-color: #202020;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --divider-color: rgba(225, 225, 225, 0.12);
+      --accent-color: #ff9800;
+      --primary-color: #03a9f4;
+      --paper-font-body1_-_font-family: Roboto, "Noto Sans", sans-serif;
+      /* HA sets this on dark themes, which is what makes native form controls
+         (the editor's plain inputs, selects and checkboxes) render dark. Without
+         it they come out white-on-black and the editor looks broken in a way it
+         never does in Home Assistant. */
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--primary-background-color);
+      /* Inherited by the card editor, which styles its labels' size and weight
+         but leaves the colour to HA. */
+      color: var(--primary-text-color);
+      font-family: var(--paper-font-body1_-_font-family);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 24px;
+    }
+
+    /* One dashboard column, which is what fixes the cards' width — and with it
+       how many parameter tiles fit per row (the grid is
+       repeat(auto-fill, minmax(120px, 1fr))). 500px is a typical HA masonry
+       column and lands on three across. */
+    .column { width: 500px; }
+
+    /* Custom elements are display:inline until told otherwise, which gives them
+       a bounding box with stray leading/descender space around the card. HA's
+       Lovelace grid lays them out as blocks. */
+    homepool-card,
+    homepool-history-card,
+    homepool-card-editor { display: block; }
+
+    /* NB: <ha-card> cannot be styled from here. It lives inside the card's own
+       shadow root, which document CSS does not reach (only inherited properties
+       cross that boundary). It is shimmed as a real custom element below. */
+  </style>
+</head>
+<body>
+  <div class="column" id="mount"></div>
+
+  <script type="module">
+    // Stands in for Home Assistant's <ha-card>, which the cards wrap all of
+    // their markup in. HA's is a LitElement whose :host is a block-level rounded
+    // surface with a slot; that is the whole of what these cards depend on. It
+    // has to be a defined element rather than a document CSS rule, because
+    // <ha-card> is created inside the card's shadow root where document styles
+    // don't reach. Registered before the card module so nothing renders
+    // un-upgraded.
+    //
+    // Only layout is imitated here: the background, padding, colour and every
+    // pixel of the content come from the card's own stylesheet, which sets them
+    // on `ha-card` from inside its shadow root (and so still wins over :host).
+    customElements.define('ha-card', class extends HTMLElement {
+      constructor() {
+        super();
+        this.attachShadow({ mode: 'open' }).innerHTML = `
+          <style>
+            :host {
+              display: block;
+              border-radius: var(--ha-card-border-radius, 12px);
+              border: 1px solid var(--ha-card-border-color, var(--divider-color));
+              overflow: hidden;
+            }
+          </style>
+          <slot></slot>
+        `;
+      }
+    });
+
+    await import('./card.js');
+
+    const fixture = window.HA_FIXTURE;
+
+    // The slice of the hass object the cards actually touch.
+    const hass = {
+      language: 'en',
+      states: fixture.states,
+      entities: fixture.entities ?? {},
+      devices: fixture.devices ?? {},
+      // Logging a treatment or pressing a task button has nowhere to go here;
+      // resolving lets the card run its "✓ Logged" confirmation path.
+      callService: (domain, service, data) => {
+        console.log('callService', domain, service, data);
+        return Promise.resolve();
+      },
+    };
+
+    const mount = document.getElementById('mount');
+
+    /** Mounts one card and hands it a config + hass, the way Lovelace does. */
+    function addCard(tag, config) {
+      const el = document.createElement(tag);
+      el.setConfig(config);
+      el.hass = hass;
+      mount.appendChild(el);
+      return el;
+    }
+
+    window.harness = {
+      hass,
+      main: addCard('homepool-card', fixture.mainCardConfig),
+      history: addCard('homepool-history-card', fixture.historyCardConfig),
+    };
+
+    // The editors are separate elements Lovelace only builds when you open the
+    // card's visual editor, so they are mounted on demand.
+    window.harness.openEditor = () => {
+      const editor = document.createElement('homepool-card-editor');
+      // setConfig then hass, the order Lovelace uses. Note the editor builds its
+      // DOM on whichever setter lands first, so its per-task quick-add chips
+      // (discovered from hass) don't render — that's the card's own behaviour,
+      // and the screenshot shows what a user actually sees. Swapping the order
+      // here would not help: the first setter always has only half the inputs.
+      editor.setConfig(fixture.mainCardConfig);
+      editor.hass = hass;
+      editor.id = 'editor';
+      mount.appendChild(editor);
+      return editor;
+    };
+
+    window.harnessReady = true;
+  </script>
+</body>
+</html>

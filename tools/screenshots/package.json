@@ -1,0 +1,19 @@
+{
+  "name": "homepool-screenshots",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Regenerates the README screenshots in docs/screenshots. Not part of the app or CI.",
+  "type": "module",
+  "scripts": {
+    "up": "docker compose -p homepool-docs up -d --build --wait",
+    "down": "docker compose -p homepool-docs down -v",
+    "logs": "docker compose -p homepool-docs logs -f",
+    "seed": "node seed.mjs",
+    "shots": "node shots.mjs",
+    "ha-shots": "node ha-shots.mjs",
+    "all": "npm run up && npm run seed && npm run shots && npm run ha-shots"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

@@ -1,0 +1,56 @@
+# A throwaway homepool stack, used only to generate the README screenshots.
+#
+# Deliberately NOT the root compose.yaml: this one runs under its own project
+# name (`-p homepool-docs`, see package.json), on its own port, with **no named
+# volume** — Postgres writes inside the container, so `npm run down` takes the
+# demo data with it. That means you can run it next to a real stack on :8090
+# without any chance of seeding demo measurements into your own pool.
+#
+# The secrets below are hardcoded on purpose. They protect nothing: the stack
+# holds only generated demo data and is destroyed minutes later.
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: homepool
+      POSTGRES_PASSWORD: docs-throwaway
+      POSTGRES_DB: homepool
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homepool"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://homepool:docs-throwaway@db:5432/homepool
+      SESSION_SECRET: docs-throwaway-session-secret
+      ALLOWED_ORIGINS: http://localhost:8099
+      APP_BASE_URL: http://localhost:8099
+      DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8099:80"
+    environment:
+      BACKEND_URL: http://api:8003
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
