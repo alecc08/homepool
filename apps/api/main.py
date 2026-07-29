@@ -16,12 +16,12 @@ from pydantic import BaseModel, EmailStr
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlmodel import Session, SQLModel, select, text
+from sqlmodel import Session, SQLModel, col, select, text
 from starlette.middleware.sessions import SessionMiddleware
 from passlib.context import CryptContext
 
 from database import engine, get_session
-from dosage import compute_recommendations
+from dosage import TREATMENT_TABLE, compute_recommendations
 from models import (
     Action,
     ApiKey,
@@ -31,19 +31,24 @@ from models import (
     MaintenanceTask,
     PasswordResetToken,
     Product,
+    TreatmentProduct,
     User,
 )
 from seeds import insert_seeds
 from simulator import simulate_dosage, simulate_heating_energy
 from water_params import (
     ON_DEMAND_INTERVAL,
+    RETIRED_MAINTENANCE_BUILTIN_KEYS,
+    TREATMENT_ACTION_TYPE,
     attach_status,
     compute_task_status,
     default_maintenance_tasks,
+    default_treatment_products,
     encode_measurement_notes,
     extract_current_conditions,
     extract_history,
     is_measurement_task,
+    treatment_product_key,
 )
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -258,6 +263,22 @@ def _ensure_contact_columns(session: Session) -> None:
     session.commit()
 
 
+def _ensure_treatment_columns(session: Session) -> None:
+    # The treatmentproduct table itself comes from create_all; these are the
+    # columns treatments added to the pre-existing action table.
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text("""
+        ALTER TABLE action
+        ADD COLUMN IF NOT EXISTS treatment_id INTEGER
+        REFERENCES treatmentproduct(id)
+    """))
+    session.exec(text("ALTER TABLE action ADD COLUMN IF NOT EXISTS treatment_label VARCHAR NOT NULL DEFAULT ''"))
+    session.exec(text("ALTER TABLE action ADD COLUMN IF NOT EXISTS brand VARCHAR NOT NULL DEFAULT ''"))
+    session.exec(text("CREATE INDEX IF NOT EXISTS ix_action_treatment_id ON action(treatment_id)"))
+    session.commit()
+
+
 def _migrate_installations(session: Session) -> None:
     if engine.dialect.name != "postgresql":
         return
@@ -396,6 +417,76 @@ def _seed_maintenance_tasks(session: Session) -> None:
         session.commit()
 
 
+def _retire_product_addition_tasks(session: Session) -> None:
+    """Deletes the maintenance task treatments used to be logged through.
+
+    Treatments are their own entry kind now, with their own catalog and form,
+    so "Add product" as a maintenance task is a second way to do the same thing
+    — and a worse one, since it can't carry a product. Only rows still holding
+    the built-in key are removed: renaming clears builtin_key, so a row that
+    still has it is provably one the owner never touched. Logged actions are
+    untouched — they stay treatments in history (see history_kind).
+
+    Idempotent; safe to run on every boot."""
+    stale = session.exec(
+        select(MaintenanceTask).where(
+            col(MaintenanceTask.builtin_key).in_(RETIRED_MAINTENANCE_BUILTIN_KEYS)
+        )
+    ).all()
+    if not stale:
+        return
+    for task in stale:
+        session.delete(task)
+    session.commit()
+
+
+def _seed_treatment_products_for_installation(
+    session: Session, installation: Installation
+) -> bool:
+    """Gives a *catalog-less* installation the default treatment products for
+    its type and sanitizer. Returns whether anything was added; the caller
+    commits.
+
+    Same "only when completely empty" rule as _seed_maintenance_tasks_for_installation,
+    and for the same reason: the seeded rows are deletable, so a missing key
+    can't be told apart from a deliberate deletion."""
+    existing = session.exec(
+        select(TreatmentProduct).where(
+            TreatmentProduct.installation_id == installation.id
+        )
+    ).all()
+    if existing:
+        return False
+    specs = default_treatment_products(installation.type, installation.sanitizer)
+    for sort_order, spec in enumerate(specs):
+        session.add(
+            TreatmentProduct(
+                installation_id=installation.id,
+                builtin_key=spec["builtin_key"],
+                label=spec["label"],
+                icon=spec["icon"],
+                default_unit=spec["default_unit"],
+                param=spec.get("param"),
+                dosage_product_id=spec.get("dosage_product_id"),
+                enabled=True,
+                sort_order=sort_order,
+            )
+        )
+    return True
+
+
+def _seed_treatment_products(session: Session) -> None:
+    """Boot backfill: gives any installation with no treatment catalog the
+    defaults for its type and sanitizer. This is what gives databases created
+    before treatments existed something to log. Never touches an installation
+    that already has a catalog."""
+    seeded = False
+    for installation in session.exec(select(Installation)).all():
+        seeded |= _seed_treatment_products_for_installation(session, installation)
+    if seeded:
+        session.commit()
+
+
 # ── Lifespan ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -409,10 +500,13 @@ async def lifespan(app: FastAPI):
         _ensure_measurement_unit_columns(session)
         _ensure_range_overrides_column(session)
         _ensure_contact_columns(session)
+        _ensure_treatment_columns(session)
         insert_seeds(session)
         _backfill_first_admin(session)
         _migrate_installations(session)
         _seed_maintenance_tasks(session)
+        _retire_product_addition_tasks(session)
+        _seed_treatment_products(session)
     yield
 
 
@@ -586,8 +680,10 @@ class ActionIn(BaseModel):
     action_type: str
     installation_id: Optional[int] = None
     product_id: Optional[int] = None
+    treatment_id: Optional[int] = None
     qty: str = ""
     unit: str = ""
+    brand: str = ""
     notes: str = ""
 
 
@@ -690,10 +786,61 @@ class MaintenanceCompleteIn(BaseModel):
     notes: str = ""
 
 
+class TreatmentProductOut(BaseModel):
+    # A product this installation can log a treatment with. `key` is stable
+    # across renames (builtin_key or custom_<id>), and builtin_key is a hint
+    # for localizing an untouched seeded label — cleared on rename, exactly
+    # like MaintenanceTaskOut.
+    id: int
+    key: str
+    builtin_key: Optional[str] = None
+    label: str
+    icon: str
+    default_unit: str
+    param: Optional[str] = None
+    dosage_product_id: Optional[str] = None
+    enabled: bool
+    sort_order: int
+
+
+class TreatmentProductIn(BaseModel):
+    label: str
+    icon: str = "mdi:beaker-plus"
+    default_unit: str = "g"
+    param: Optional[str] = None
+    dosage_product_id: Optional[str] = None
+
+
+class TreatmentProductUpdateIn(BaseModel):
+    label: Optional[str] = None
+    icon: Optional[str] = None
+    default_unit: Optional[str] = None
+    # Explicit-null clears the link, so these use a sentinel rather than None
+    # to tell "not supplied" from "set to nothing" — see _apply_optional_link.
+    param: Optional[str] = None
+    dosage_product_id: Optional[str] = None
+    enabled: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class TreatmentIn(BaseModel):
+    # Log a treatment through the API-key surface. `treatment` is the catalog
+    # key (builtin_key or custom_<id>) rather than a raw id, so a Home
+    # Assistant automation keeps working across a re-seed. `unit` defaults to
+    # the product's default_unit; `date` backdates and defaults to today.
+    installation_id: Optional[int] = None
+    treatment: str
+    qty: str = ""
+    unit: Optional[str] = None
+    brand: str = ""
+    date: Optional[DateT] = None
+    notes: str = ""
+
+
 class HistoryEntryOut(BaseModel):
     # One row per logged action, across all three kinds. Measurement rows carry
     # the parsed param fields (ph, chlorine, …); treatment/maintenance rows
-    # leave those None and rely on label/qty/unit/notes instead.
+    # leave those None and rely on label/qty/unit/brand/notes instead.
     date: date
     kind: str  # "measurement" | "treatment" | "maintenance"
     action_type: str
@@ -701,6 +848,7 @@ class HistoryEntryOut(BaseModel):
     notes: str = ""
     qty: Optional[str] = None
     unit: Optional[str] = None
+    brand: str = ""
     ph: Optional[float] = None
     chlorine: Optional[float] = None
     bromine: Optional[float] = None
@@ -756,8 +904,10 @@ class ActionOut(BaseModel):
     user_id: Optional[int]
     installation_id: Optional[int]
     product_id: Optional[int]
+    treatment_id: Optional[int] = None
     qty: str
     unit: str
+    brand: str = ""
     notes: str
     created_at: datetime
 
@@ -987,12 +1137,14 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.refresh(user)
     # Create a default installation for the new user, seeded like any other —
     # otherwise a fresh account has an empty maintenance page (and nothing to
-    # log as a maintenance entry) until the next API restart backfills it.
+    # log as a maintenance or treatment entry) until the next API restart
+    # backfills it.
     installation = Installation(user_id=user.id)
     session.add(installation)
     session.commit()
     session.refresh(installation)
     _seed_maintenance_tasks_for_installation(session, installation)
+    _seed_treatment_products_for_installation(session, installation)
     session.commit()
     request.session["user_id"] = user.id
     return {"user": _user_out(user)}
@@ -1320,6 +1472,7 @@ def create_installation(
     session.commit()
     session.refresh(installation)
     _seed_maintenance_tasks_for_installation(session, installation)
+    _seed_treatment_products_for_installation(session, installation)
     session.commit()
     return installation
 
@@ -1391,6 +1544,19 @@ def delete_installation(
         select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
     ).all():
         session.delete(task)
+    # ...and of the treatment catalog. Ordered after the actions above, since an
+    # action's treatment_id points here.
+    for product in session.exec(
+        select(TreatmentProduct).where(TreatmentProduct.installation_id == installation_id)
+    ).all():
+        session.delete(product)
+    # The models declare foreign keys but no SQLModel Relationship(), so
+    # SQLAlchemy has no dependency graph to sort these DELETEs by and is free to
+    # emit the parent's before the children's. Postgres then rejects the whole
+    # statement on the foreign key; SQLite doesn't enforce them by default, which
+    # is why the test suite never saw it. Flushing the children first makes the
+    # order explicit rather than incidental.
+    session.flush()
     session.delete(installation)
     session.commit()
 
@@ -1701,8 +1867,10 @@ def _maintenance_status(session: Session, installation_id: int) -> List[Dict]:
 def _loggable_action_types(session: Session, installation_id: int) -> set:
     """Action types an installation accepts for a maintenance entry: the union of
     its enabled tasks' action_types, minus the measurement ones (logged through
-    the measurement endpoint instead). Since issue #51 this is the whole
-    taxonomy — there is no separate hardcoded action list any more."""
+    the measurement endpoint instead) and the treatment one (logged through the
+    treatment endpoint, which carries the product and amount). Since issue #51
+    this is the whole taxonomy — there is no separate hardcoded action list any
+    more."""
     tasks = session.exec(
         select(MaintenanceTask).where(
             MaintenanceTask.installation_id == installation_id,
@@ -1714,6 +1882,7 @@ def _loggable_action_types(session: Session, installation_id: int) -> set:
         for task in tasks
         if not is_measurement_task(task.action_types)
         for action_type in (task.action_types or [])
+        if action_type != TREATMENT_ACTION_TYPE
     }
 
 
@@ -1889,6 +2058,214 @@ def complete_maintenance_task(
     return MaintenanceTaskOut(**match)
 
 
+# ── Treatment catalog ──────────────────────────────────────────────────────
+#
+# The per-installation list of products a treatment can be logged with. Like
+# maintenance tasks: seeded with defaults, but every row is ordinary, and
+# configuration stays with the owner while editors can still log entries.
+
+def _treatment_out(product: TreatmentProduct) -> TreatmentProductOut:
+    return TreatmentProductOut(
+        id=product.id,
+        key=treatment_product_key(product),
+        builtin_key=product.builtin_key,
+        label=product.label,
+        icon=product.icon,
+        default_unit=product.default_unit,
+        param=product.param,
+        dosage_product_id=product.dosage_product_id,
+        enabled=product.enabled,
+        sort_order=product.sort_order,
+    )
+
+
+def _list_treatment_products(
+    session: Session, installation_id: int, enabled_only: bool = False
+) -> List[TreatmentProduct]:
+    query = select(TreatmentProduct).where(
+        TreatmentProduct.installation_id == installation_id
+    )
+    if enabled_only:
+        query = query.where(TreatmentProduct.enabled == True)  # noqa: E712
+    products = session.exec(query).all()
+    return sorted(products, key=lambda p: (p.sort_order, p.id))
+
+
+def _validate_treatment_links(param: Optional[str], dosage_product_id: Optional[str]) -> None:
+    """Both links are optional, but a non-empty value has to name something
+    real — an unknown param would never match a measurement and an unknown
+    dosage id would never match a recommendation, so either is a silent
+    no-op the user can't see."""
+    if param and param not in PARAM_BOUNDS:
+        raise HTTPException(
+            status_code=422, detail=f"param must be one of {sorted(PARAM_BOUNDS)}"
+        )
+    if dosage_product_id:
+        known = {
+            option["product_id"]
+            for entry in TREATMENT_TABLE.values()
+            for direction in entry.values()
+            for option in direction.get("options", [])
+            if option.get("product_id")
+        }
+        if dosage_product_id not in known:
+            raise HTTPException(
+                status_code=422, detail=f"dosage_product_id must be one of {sorted(known)}"
+            )
+
+
+def _resolve_treatment_id(
+    treatment_id: Optional[int], installation_id: Optional[int], session: Session
+) -> Optional[TreatmentProduct]:
+    """Validates that a treatment_id sent by a client belongs to the
+    installation the entry is being logged against. None means "not a
+    treatment" (or an entry logged without picking a product)."""
+    if treatment_id is None:
+        return None
+    product = session.get(TreatmentProduct, treatment_id)
+    if not product or product.installation_id != installation_id:
+        raise HTTPException(status_code=422, detail="Unknown treatment product")
+    return product
+
+
+def _resolve_treatment_key(
+    key: str, installation_id: int, session: Session
+) -> TreatmentProduct:
+    """Looks a treatment up by its stable client-facing key among the
+    installation's *enabled* products — disabling a product stops accepting it,
+    exactly like a disabled maintenance task."""
+    products = _list_treatment_products(session, installation_id, enabled_only=True)
+    match = next((p for p in products if treatment_product_key(p) == key), None)
+    if match is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"treatment must be one of {sorted(treatment_product_key(p) for p in products)}",
+        )
+    return match
+
+
+def _get_owned_treatment(
+    installation_id: int, treatment_id: int, user: User, session: Session
+) -> TreatmentProduct:
+    _get_owned_installation(installation_id, user, session)
+    product = session.get(TreatmentProduct, treatment_id)
+    if not product or product.installation_id != installation_id:
+        raise HTTPException(status_code=404, detail="Treatment product not found")
+    return product
+
+
+@app.get("/installations/{installation_id}/treatments", response_model=List[TreatmentProductOut])
+def list_treatment_products(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # Anyone who can read the installation gets the whole catalog, disabled rows
+    # included — the config screen needs them, and the entry form filters.
+    _get_installation_for_read(installation_id, user, session)
+    return [_treatment_out(p) for p in _list_treatment_products(session, installation_id)]
+
+
+@app.post("/installations/{installation_id}/treatments", response_model=TreatmentProductOut)
+def create_treatment_product(
+    installation_id: int,
+    payload: TreatmentProductIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    _get_owned_installation(installation_id, user, session)
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="label is required")
+    _validate_treatment_links(payload.param, payload.dosage_product_id)
+    orders = session.exec(
+        select(TreatmentProduct.sort_order).where(
+            TreatmentProduct.installation_id == installation_id
+        )
+    ).all()
+    product = TreatmentProduct(
+        installation_id=installation_id,
+        builtin_key=None,
+        label=label,
+        icon=payload.icon,
+        default_unit=payload.default_unit,
+        param=payload.param or None,
+        dosage_product_id=payload.dosage_product_id or None,
+        enabled=True,
+        sort_order=(max(orders) + 1) if orders else 0,
+    )
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return _treatment_out(product)
+
+
+@app.patch(
+    "/installations/{installation_id}/treatments/{treatment_id}",
+    response_model=TreatmentProductOut,
+)
+def update_treatment_product(
+    installation_id: int,
+    treatment_id: int,
+    payload: TreatmentProductUpdateIn,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    product = _get_owned_treatment(installation_id, treatment_id, user, session)
+    sent = payload.model_fields_set
+    if payload.label is not None:
+        label = payload.label.strip()
+        if not label:
+            raise HTTPException(status_code=422, detail="label cannot be empty")
+        if label != product.label:
+            # Same rule as maintenance tasks: builtin_key only says "this label
+            # is one of ours, translate it". Once renamed, the stored label wins.
+            product.builtin_key = None
+        product.label = label
+    _validate_treatment_links(
+        payload.param if "param" in sent else product.param,
+        payload.dosage_product_id if "dosage_product_id" in sent else product.dosage_product_id,
+    )
+    # Sent-but-null clears the link; omitted leaves it alone.
+    if "param" in sent:
+        product.param = payload.param or None
+    if "dosage_product_id" in sent:
+        product.dosage_product_id = payload.dosage_product_id or None
+    if payload.icon is not None:
+        product.icon = payload.icon
+    if payload.default_unit is not None:
+        product.default_unit = payload.default_unit
+    if payload.enabled is not None:
+        product.enabled = payload.enabled
+    if payload.sort_order is not None:
+        product.sort_order = payload.sort_order
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return _treatment_out(product)
+
+
+@app.delete("/installations/{installation_id}/treatments/{treatment_id}", status_code=204)
+def delete_treatment_product(
+    installation_id: int,
+    treatment_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # Every product is deletable, seeded defaults included — the boot backfill
+    # only fills installations with no catalog at all, so a deletion sticks.
+    # Treatments already logged against it keep their qty/unit/brand and read
+    # back under their snapshotted label (see Action.treatment_label).
+    product = _get_owned_treatment(installation_id, treatment_id, user, session)
+    session.exec(
+        text("UPDATE action SET treatment_id = NULL WHERE treatment_id = :tid").bindparams(
+            tid=treatment_id
+        )
+    )
+    session.delete(product)
+    session.commit()
+
+
 # ── Actions ────────────────────────────────────────────────────────────────
 
 def _get_action_for_write(action_id: int, user: User, session: Session) -> Action:
@@ -1944,14 +2321,18 @@ def create_action(
     resolved_installation_id = _resolve_installation(
         payload.installation_id, user, session, require_write=True
     )
+    treatment = _resolve_treatment_id(payload.treatment_id, resolved_installation_id, session)
     action = Action(
         date=payload.date,
         action_type=payload.action_type,
         user_id=user.id,
         installation_id=resolved_installation_id,
         product_id=payload.product_id,
+        treatment_id=treatment.id if treatment else None,
+        treatment_label=treatment.label if treatment else "",
         qty=payload.qty,
         unit=payload.unit,
+        brand=payload.brand,
         notes=payload.notes,
         created_at=datetime.now(timezone.utc),
     )
@@ -1974,12 +2355,16 @@ def update_action(
     action.product_id = payload.product_id
     action.qty = payload.qty
     action.unit = payload.unit
+    action.brand = payload.brand
     action.notes = payload.notes
     if payload.installation_id is not None:
         resolved = _resolve_installation(
             payload.installation_id, user, session, require_write=True
         )
         action.installation_id = resolved
+    treatment = _resolve_treatment_id(payload.treatment_id, action.installation_id, session)
+    action.treatment_id = treatment.id if treatment else None
+    action.treatment_label = treatment.label if treatment else ""
     session.add(action)
     session.commit()
     session.refresh(action)
@@ -2001,14 +2386,18 @@ def import_actions(
     now = datetime.now(timezone.utc)
     for action_in in actions:
         inst_id = action_in.installation_id if action_in.installation_id is not None else default_id
+        treatment = _resolve_treatment_id(action_in.treatment_id, inst_id, session)
         session.add(Action(
             date=action_in.date,
             action_type=action_in.action_type,
             user_id=user.id,
             installation_id=inst_id,
             product_id=action_in.product_id,
+            treatment_id=treatment.id if treatment else None,
+            treatment_label=treatment.label if treatment else "",
             qty=action_in.qty,
             unit=action_in.unit,
+            brand=action_in.brand,
             notes=action_in.notes,
             created_at=now,
         ))
@@ -2106,7 +2495,10 @@ def api_history(
         query = query.where(Action.date <= date.fromisoformat(to_date))
     actions = session.exec(query.order_by(Action.date.desc()).limit(limit)).all()
     product_names = {p.id: p.name for p in session.exec(select(Product)).all()}
-    entries = extract_history(actions, product_names)
+    treatment_names = {
+        p.id: p.label for p in _list_treatment_products(session, resolved_id)
+    }
+    entries = extract_history(actions, product_names, treatment_names)
     if type != "all":
         entries = [e for e in entries if e["kind"] == type]
     return [HistoryEntryOut(**entry) for entry in entries]
@@ -2208,8 +2600,9 @@ def api_create_maintenance(
 ):
     # The accepted action types are the installation's own enabled maintenance
     # tasks (issue #51) rather than a hardcoded list, so custom tasks are
-    # writable and disabling a task stops accepting it. Measurement tasks are
-    # excluded: those go through /v1/measurements, which carries the values.
+    # writable and disabling a task stops accepting it. Measurement and
+    # treatment types are excluded: those go through /v1/measurements and
+    # /v1/treatments, which carry the values and the product.
     resolved_id = _resolve_installation_for_api_key(
         payload.installation_id, user, session, require_write=True
     )
@@ -2224,6 +2617,57 @@ def api_create_maintenance(
         action_type=payload.action_type,
         user_id=user.id,
         installation_id=resolved_id,
+        notes=payload.notes,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(action)
+    session.commit()
+    session.refresh(action)
+    return action
+
+
+@app.get("/v1/treatments", response_model=List[TreatmentProductOut])
+@limiter.limit("60/minute")
+def api_treatment_catalog(
+    request: Request,
+    installation_id: Optional[int] = None,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    # Enabled products only — this is the picker an external client offers, and
+    # /v1/treatments rejects anything not on it.
+    resolved_id = _resolve_installation_for_api_key(installation_id, user, session)
+    return [
+        _treatment_out(p)
+        for p in _list_treatment_products(session, resolved_id, enabled_only=True)
+    ]
+
+
+@app.post("/v1/treatments", response_model=ActionOut)
+@limiter.limit("60/minute")
+def api_create_treatment(
+    request: Request,
+    payload: TreatmentIn,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    # Treatments are keyed by their stable catalog key rather than a row id, so
+    # an automation survives a re-seed. Unit falls back to the product's
+    # default, which is what the web form pre-fills too.
+    resolved_id = _resolve_installation_for_api_key(
+        payload.installation_id, user, session, require_write=True
+    )
+    product = _resolve_treatment_key(payload.treatment, resolved_id, session)
+    action = Action(
+        date=payload.date or date.today(),
+        action_type=TREATMENT_ACTION_TYPE,
+        user_id=user.id,
+        installation_id=resolved_id,
+        treatment_id=product.id,
+        treatment_label=product.label,
+        qty=payload.qty,
+        unit=payload.unit if payload.unit is not None else product.default_unit,
+        brand=payload.brand,
         notes=payload.notes,
         created_at=datetime.now(timezone.utc),
     )

@@ -47,6 +47,9 @@ async def async_setup_entry(
         entities.append(
             HomepoolHistorySensor(coordinator, entry.entry_id, installation_id)
         )
+        entities.append(
+            HomepoolTreatmentsSensor(coordinator, entry.entry_id, installation_id)
+        )
 
     # Maintenance-task sensors are fully data-driven: one "days until due" sensor
     # per configurable task. Because tasks can be added/enabled after setup, a
@@ -407,3 +410,82 @@ class HomepoolHistorySensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Se
     @property
     def extra_state_attributes(self) -> dict:
         return {"entries": self._history}
+
+
+class HomepoolTreatmentsSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):
+    """The installation's enabled treatment products.
+
+    State is the number of products; the catalog rides on the `treatments`
+    attribute. This exists because the Lovelace card can only read
+    `hass.states` — it is how the card's "Log treatment" form knows which
+    products to offer, and which unit each one defaults to. Frontend-facing
+    only, like the history sensor.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:beaker-plus"
+    _attr_name = "Treatments"
+
+    def __init__(
+        self,
+        coordinator: HomepoolDataUpdateCoordinator,
+        entry_id: str,
+        installation_id: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._installation_id = installation_id
+        self._attr_unique_id = f"{entry_id}_{installation_id}_treatments"
+
+        # Deterministic, area-free entity-id (see issue #42 / HomepoolSensor).
+        # The card derives this from its entity_prefix, so it must be exactly
+        # <prefix>_treatments.
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} Treatments", hass=coordinator.hass
+        )
+
+    @property
+    def _installation(self) -> dict | None:
+        return self.coordinator.data.get(self._installation_id)
+
+    @property
+    def _treatments(self) -> list[dict]:
+        installation = self._installation
+        return installation.get("treatments", []) if installation else []
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        installation = self._installation
+        if not installation:
+            return None
+        return DeviceInfo(
+            identifiers={(DOMAIN, str(self._installation_id))},
+            name=installation["name"],
+            manufacturer="homepool",
+            model=installation["type"].capitalize(),
+        )
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._installation is not None
+
+    @property
+    def native_value(self) -> int:
+        return len(self._treatments)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        # Only what the card's picker needs — the full catalog rows carry
+        # server-side ids and dosage links no frontend uses.
+        return {
+            "treatments": [
+                {
+                    "key": product["key"],
+                    "label": product["label"],
+                    "icon": product.get("icon"),
+                    "default_unit": product.get("default_unit", ""),
+                    "param": product.get("param"),
+                }
+                for product in self._treatments
+            ]
+        }

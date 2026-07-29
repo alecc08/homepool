@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import ActionForm from './ActionForm'
-import type { Action, Installation, MaintenanceTask } from '../types'
+import type { Action, Installation, MaintenanceTask, TreatmentProduct } from '../types'
 import { translations } from '../i18n/translations'
 import { PARAM_RANGES, type DynamicRanges } from '../utils'
 import { convertRange, celsiusToFahrenheit } from '../units'
-
-const products = [{ id: 1, name: 'Chlorine', type: 'seed', unit_default: 'g' }]
 
 // Mocked directly rather than mounted via real providers: LocaleContext and
 // InstallationContext are both unconditionally required by ActionForm, and the
@@ -76,18 +74,52 @@ const maintenanceTasks: MaintenanceTask[] = [
     icon: 'mdi:air-filter', action_types: ['Cartridge cleaning', 'Skimmer filter cleaning', 'Backwash'],
     interval_days: 14, enabled: true, sort_order: 1, days_until_due: 5, last_date: '2026-07-20',
   },
+]
+
+// Likewise for the treatment half: the products a chlorine pool is seeded with.
+const treatmentProducts: TreatmentProduct[] = [
   {
-    id: 3, key: 'product_addition', builtin_key: 'product_addition', label: 'Add product',
-    icon: 'mdi:beaker-plus', action_types: ['Add product'],
-    interval_days: 0, enabled: true, sort_order: 2, days_until_due: null, last_date: null,
+    id: 10, key: 'chlorine', builtin_key: 'chlorine', label: 'Chlorine',
+    icon: 'mdi:water-check', default_unit: 'g', param: 'cl',
+    dosage_product_id: 'dichlor', enabled: true, sort_order: 0,
+  },
+  {
+    id: 11, key: 'ph_increaser', builtin_key: 'ph_increaser', label: 'pH increaser',
+    icon: 'mdi:arrow-up-bold', default_unit: 'g', param: 'ph',
+    dosage_product_id: 'soda_ash', enabled: true, sort_order: 1,
+  },
+  {
+    id: 12, key: 'ph_decreaser', builtin_key: 'ph_decreaser', label: 'pH decreaser',
+    icon: 'mdi:arrow-down-bold', default_unit: 'ml', param: 'ph',
+    dosage_product_id: 'muriatic_acid', enabled: true, sort_order: 2,
   },
 ]
 
-function mockMaintenanceFetch(tasks: MaintenanceTask[] = maintenanceTasks) {
-  return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+/** Opens a Radix select and picks an option by its visible label. Scoped to the
+ * popup: Radix also renders a hidden native select carrying every option, so a
+ * bare getByText would match twice. */
+async function pickFromSelect(triggerLabel: string, optionLabel: string) {
+  fireEvent.click(screen.getByLabelText(triggerLabel))
+  const listbox = await screen.findByRole('listbox')
+  fireEvent.click(within(listbox).getByText(optionLabel))
+}
+
+/** What a Radix select currently displays, which is the only place the chosen
+ * option is unambiguous. */
+function selectedValue(triggerLabel: string): string {
+  return screen.getByLabelText(triggerLabel).textContent ?? ''
+}
+
+/** The form loads two catalogs on mount. Route by URL so a maintenance test
+ * doesn't get treatment products fed into its picker, and vice versa. */
+function mockCatalogFetch(
+  tasks: MaintenanceTask[] = maintenanceTasks,
+  treatments: TreatmentProduct[] = treatmentProducts,
+) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => ({
     ok: true,
-    json: async () => tasks,
-  } as Response)
+    json: async () => (String(input).endsWith('/treatments') ? treatments : tasks),
+  } as Response))
 }
 
 beforeEach(() => {
@@ -106,7 +138,7 @@ describe('ActionForm', () => {
   it('calls onAdd with a single structured measurement payload when submitted', () => {
     setActiveInstallation(makeInstallation())
     const onAdd = vi.fn()
-    render(<ActionForm onAdd={onAdd} products={products} />)
+    render(<ActionForm onAdd={onAdd} />)
 
     fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
     fireEvent.click(screen.getByText('Enregistrer'))
@@ -125,7 +157,7 @@ describe('ActionForm', () => {
     // Logging a reading you took days ago and forgot to record.
     setActiveInstallation(makeInstallation())
     const onAdd = vi.fn()
-    render(<ActionForm onAdd={onAdd} products={products} />)
+    render(<ActionForm onAdd={onAdd} />)
 
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-07-20' } })
     fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
@@ -136,7 +168,7 @@ describe('ActionForm', () => {
 
   it('caps the date at today so a mistyped year cannot poison due dates', () => {
     setActiveInstallation(makeInstallation())
-    render(<ActionForm onAdd={vi.fn()} products={products} />)
+    render(<ActionForm onAdd={vi.fn()} />)
 
     const today = new Date().toISOString().slice(0, 10)
     expect(screen.getByLabelText('Date')).toHaveAttribute('max', today)
@@ -144,12 +176,12 @@ describe('ActionForm', () => {
 
   it('lets a maintenance entry be backdated too', async () => {
     setActiveInstallation(makeInstallation())
-    mockMaintenanceFetch()
+    mockCatalogFetch()
     const onAdd = vi.fn()
     render(
       <ActionForm
         onAdd={onAdd}
-        products={products}
+       
         initialKind="maintenance"
         initialActionType="Cartridge cleaning"
       />
@@ -170,7 +202,7 @@ describe('ActionForm', () => {
     setActiveInstallation(makeInstallation())
     const onAdd = vi.fn()
     const onClose = vi.fn()
-    render(<ActionForm onAdd={onAdd} products={products} onClose={onClose} />)
+    render(<ActionForm onAdd={onAdd} onClose={onClose} />)
 
     fireEvent.change(screen.getByPlaceholderText('7.2'), { target: { value: '7.4' } })
     fireEvent.click(screen.getByText('Enregistrer'))
@@ -181,7 +213,7 @@ describe('ActionForm', () => {
   it('sel installation, device mode: renders Sel, Chlore libre, Stabilisant and Chlore combiné fields', () => {
     setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
-    render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+    render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
     expect(screen.getByText('Sel')).toBeInTheDocument()
     expect(screen.getByText('Chlore libre')).toBeInTheDocument()
@@ -192,7 +224,7 @@ describe('ActionForm', () => {
   it('chlore installation, device mode: renders Chlore combiné field', () => {
     setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
     const editAction = makeMesureAction()
-    render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+    render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
     expect(screen.getByText('Chlore combiné (CC)')).toBeInTheDocument()
   })
@@ -200,7 +232,7 @@ describe('ActionForm', () => {
   it('brome installation, device mode: does not render Chlore combiné field', () => {
     setActiveInstallation(makeInstallation({ sanitizer: 'bromine' }))
     const editAction = makeMesureAction()
-    render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+    render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
     expect(screen.queryByText('Chlore combiné (CC)')).not.toBeInTheDocument()
   })
@@ -209,7 +241,7 @@ describe('ActionForm', () => {
     setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
     const onEdit = vi.fn()
-    render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
+    render(<ActionForm editAction={editAction} onEdit={onEdit} />)
 
     fireEvent.change(screen.getByPlaceholderText('3000'), { target: { value: '3000' } })
     fireEvent.change(screen.getByPlaceholderText('70'), { target: { value: '70' } })
@@ -228,7 +260,7 @@ describe('ActionForm', () => {
     localStorage.setItem('homepool_measure_mode', 'strip')
     setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
     const editAction = makeMesureAction()
-    render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+    render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
     expect(screen.queryByText('Sel')).not.toBeInTheDocument()
     expect(screen.queryByText('Stabilisant (CYA)')).not.toBeInTheDocument()
@@ -240,7 +272,7 @@ describe('ActionForm', () => {
     it.each(['bromine', 'chlorine', 'salt'] as const)('device mode renders a Température field for %s installations', (sanitizer) => {
       setActiveInstallation(makeInstallation({ sanitizer }))
       const editAction = makeMesureAction()
-      render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
       expect(screen.getByText('Température')).toBeInTheDocument()
     })
@@ -249,7 +281,7 @@ describe('ActionForm', () => {
       const ranges: DynamicRanges = { temp: convertRange(PARAM_RANGES.temp, celsiusToFahrenheit) }
       setActiveInstallation(makeInstallation({ sanitizer: 'chlorine', temp_unit: 'F' }), ranges)
       const editAction = makeMesureAction()
-      render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
       expect(screen.getByText(/Idéal.*°F/)).toBeInTheDocument()
 
@@ -267,7 +299,7 @@ describe('ActionForm', () => {
       setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
       const editAction = makeMesureAction()
       const onEdit = vi.fn()
-      render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
+      render(<ActionForm editAction={editAction} onEdit={onEdit} />)
 
       fireEvent.change(screen.getByPlaceholderText('25'), { target: { value: '26' } })
       fireEvent.click(screen.getByText('Enregistrer les modifications'))
@@ -280,7 +312,7 @@ describe('ActionForm', () => {
     it('edit mode does not leak an existing température note into the visible Notes textarea', () => {
       setActiveInstallation(makeInstallation({ sanitizer: 'chlorine' }))
       const editAction = makeMesureAction({ notes: 'temperature: 26. Clear water' })
-      render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
       expect(notes.value).not.toContain('température')
@@ -291,7 +323,7 @@ describe('ActionForm', () => {
       localStorage.setItem('homepool_measure_mode', 'strip')
       setActiveInstallation(makeInstallation({ sanitizer: 'salt' }))
       const editAction = makeMesureAction()
-      render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
       expect(screen.queryByText('Température')).not.toBeInTheDocument()
     })
@@ -306,7 +338,7 @@ describe('ActionForm', () => {
         qty: '7',
         notes: 'chlorine: 1.5. TAC: 120. hardness: 250. salt: 3200. stabilizer: 65. combined: 0.1. temperature: 82. Clear water. Level OK',
       })
-      render(<ActionForm products={products} editAction={editAction} onEdit={vi.fn()} />)
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
 
       expect((screen.getByPlaceholderText('7.2') as HTMLInputElement).value).toBe('7')
       expect((screen.getByPlaceholderText('3000') as HTMLInputElement).value).toBe('3200')
@@ -328,7 +360,7 @@ describe('ActionForm', () => {
   describe('entry kind', () => {
     it('opens on the measurement half in manual entry by default', () => {
       setActiveInstallation(makeInstallation())
-      render(<ActionForm onAdd={vi.fn()} products={products} />)
+      render(<ActionForm onAdd={vi.fn()} />)
 
       // Manual entry fields, not the AquaChek swatch panel.
       expect(screen.getByPlaceholderText('7.2')).toBeInTheDocument()
@@ -337,19 +369,19 @@ describe('ActionForm', () => {
 
     it('remembers the AquaChek strip choice across renders', () => {
       setActiveInstallation(makeInstallation())
-      const { unmount } = render(<ActionForm onAdd={vi.fn()} products={products} />)
+      const { unmount } = render(<ActionForm onAdd={vi.fn()} />)
 
       fireEvent.click(screen.getByText(translations.fr.modal_strip))
       expect(localStorage.getItem('homepool_measure_mode')).toBe('strip')
       unmount()
 
-      render(<ActionForm onAdd={vi.fn()} products={products} />)
+      render(<ActionForm onAdd={vi.fn()} />)
       expect(screen.getByText(translations.fr.modal_compare)).toBeInTheDocument()
     })
 
     it('no longer offers quick-status checkboxes', () => {
       setActiveInstallation(makeInstallation())
-      render(<ActionForm onAdd={vi.fn()} products={products} />)
+      render(<ActionForm onAdd={vi.fn()} />)
 
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
       expect(screen.getByLabelText('Notes')).toBeInTheDocument()
@@ -358,7 +390,7 @@ describe('ActionForm', () => {
     it('rejects a measurement with no value at all', () => {
       setActiveInstallation(makeInstallation())
       const onAdd = vi.fn()
-      render(<ActionForm onAdd={onAdd} products={products} />)
+      render(<ActionForm onAdd={onAdd} />)
 
       fireEvent.click(screen.getByText('Enregistrer'))
 
@@ -368,12 +400,12 @@ describe('ActionForm', () => {
 
     it('logs a maintenance entry with the task action type', async () => {
       setActiveInstallation(makeInstallation())
-      mockMaintenanceFetch()
+      mockCatalogFetch()
       const onAdd = vi.fn()
       render(
         <ActionForm
           onAdd={onAdd}
-          products={products}
+         
           initialKind="maintenance"
           initialActionType="Cartridge cleaning"
         />
@@ -398,9 +430,9 @@ describe('ActionForm', () => {
 
     it('refuses a maintenance entry with no task chosen', async () => {
       setActiveInstallation(makeInstallation())
-      mockMaintenanceFetch()
+      mockCatalogFetch()
       const onAdd = vi.fn()
-      render(<ActionForm onAdd={onAdd} products={products} initialKind="maintenance" />)
+      render(<ActionForm onAdd={onAdd} initialKind="maintenance" />)
 
       await waitFor(() =>
         expect(screen.getByText(translations.fr.modal_maintenance_placeholder)).toBeInTheDocument()
@@ -413,8 +445,8 @@ describe('ActionForm', () => {
 
     it('tells the user when no maintenance task is enabled', async () => {
       setActiveInstallation(makeInstallation())
-      mockMaintenanceFetch([])
-      render(<ActionForm onAdd={vi.fn()} products={products} initialKind="maintenance" />)
+      mockCatalogFetch([])
+      render(<ActionForm onAdd={vi.fn()} initialKind="maintenance" />)
 
       await waitFor(() =>
         expect(screen.getByText(translations.fr.modal_no_maintenance_tasks)).toBeInTheDocument()
@@ -425,12 +457,171 @@ describe('ActionForm', () => {
       setActiveInstallation(makeInstallation())
       const onEdit = vi.fn()
       const editAction = makeMesureAction({ action_type: 'Backwash', qty: '', notes: 'Fait' })
-      render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
+      render(<ActionForm editAction={editAction} onEdit={onEdit} />)
 
       expect(screen.queryByText(translations.fr.modal_entry_type)).not.toBeInTheDocument()
       fireEvent.click(screen.getByText('Enregistrer les modifications'))
 
       expect(onEdit).toHaveBeenCalledWith(1, expect.objectContaining({ action_type: 'Backwash', notes: 'Fait' }))
+    })
+
+    it('offers all three kinds, not just measurement and maintenance', () => {
+      setActiveInstallation(makeInstallation())
+      render(<ActionForm onAdd={vi.fn()} />)
+
+      expect(screen.getByText(translations.fr.modal_kind_measurement)).toBeInTheDocument()
+      expect(screen.getByText(translations.fr.modal_kind_treatment)).toBeInTheDocument()
+      expect(screen.getByText(translations.fr.modal_kind_maintenance)).toBeInTheDocument()
+    })
+
+    it('no longer offers "add product" as a maintenance task', async () => {
+      // It is a treatment now, with its own half of the form.
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      render(<ActionForm onAdd={vi.fn()} initialKind="maintenance" />)
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(translations.fr.modal_maintenance_type)).toBeInTheDocument()
+      )
+      expect(screen.queryByText(translations.fr.maint_task_product_addition)).not.toBeInTheDocument()
+    })
+  })
+
+  // ── Treatments: adding something to the water, from the installation's own
+  // product catalog.
+
+  describe('treatment kind', () => {
+    it('logs a treatment with the product, amount, unit and brand', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} initialKind="treatment" />)
+
+      await waitFor(() =>
+        expect(fetch).toHaveBeenCalledWith('/api/installations/1/treatments', expect.any(Object))
+      )
+      await waitFor(() =>
+        expect(screen.getByLabelText(translations.fr.modal_treatment_product)).toBeInTheDocument()
+      )
+
+      await pickFromSelect(translations.fr.modal_treatment_product, 'pH+')
+      fireEvent.change(screen.getByLabelText(translations.fr.modal_amount), { target: { value: '250' } })
+      fireEvent.change(screen.getByLabelText(translations.fr.modal_brand), { target: { value: 'HTH Super' } })
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
+        action_type: 'Add product',
+        treatment_id: 11,
+        qty: '250',
+        unit: 'g',
+        brand: 'HTH Super',
+        product_id: null,
+      }))
+    })
+
+    it('re-seeds the unit from the product you pick', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} initialKind="treatment" />)
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(translations.fr.modal_treatment_product)).toBeInTheDocument()
+      )
+      // pH decreaser is a liquid: picking it must not leave you dosing grams.
+      await pickFromSelect(translations.fr.modal_treatment_product, 'pH−')
+      fireEvent.change(screen.getByLabelText(translations.fr.modal_amount), { target: { value: '500' } })
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ treatment_id: 12, unit: 'ml' }))
+    })
+
+    it('refuses a treatment with no product chosen', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} initialKind="treatment" />)
+
+      await waitFor(() =>
+        expect(screen.getByText(translations.fr.modal_treatment_placeholder)).toBeInTheDocument()
+      )
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(screen.getByText(translations.fr.modal_select_treatment)).toBeInTheDocument()
+    })
+
+    it('tells the user when no product is enabled', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch(maintenanceTasks, [])
+      render(<ActionForm onAdd={vi.fn()} initialKind="treatment" />)
+
+      await waitFor(() =>
+        expect(screen.getByText(translations.fr.modal_no_treatments)).toBeInTheDocument()
+      )
+    })
+
+    it('preselects the product and amount a recommendation handed off', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      const onAdd = vi.fn()
+      render(
+        <ActionForm
+          onAdd={onAdd}
+          initialKind="treatment"
+          initialTreatment={{ dosage_product_id: 'soda_ash', qty: '250', unit: 'g' }}
+        />
+      )
+
+      await waitFor(() =>
+        expect(selectedValue(translations.fr.modal_treatment_product)).toBe('pH+')
+      )
+      expect((screen.getByLabelText(translations.fr.modal_amount) as HTMLInputElement).value).toBe('250')
+
+      fireEvent.click(screen.getByText('Enregistrer'))
+      expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
+        treatment_id: 11, qty: '250', unit: 'g',
+      }))
+    })
+
+    it('keeps an edited treatment on the treatment half, with its values re-filled', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch()
+      const onEdit = vi.fn()
+      const editAction = makeMesureAction({
+        action_type: 'Add product', treatment_id: 10, qty: '300', unit: 'g',
+        brand: 'HTH Super', notes: 'Après l’orage',
+      })
+      render(<ActionForm editAction={editAction} onEdit={onEdit} />)
+
+      await waitFor(() =>
+        expect(selectedValue(translations.fr.modal_treatment_product)).toBe('Chlore')
+      )
+      expect(screen.queryByText(translations.fr.modal_entry_type)).not.toBeInTheDocument()
+      expect((screen.getByLabelText(translations.fr.modal_amount) as HTMLInputElement).value).toBe('300')
+      expect((screen.getByLabelText(translations.fr.modal_brand) as HTMLInputElement).value).toBe('HTH Super')
+
+      fireEvent.click(screen.getByText('Enregistrer les modifications'))
+      expect(onEdit).toHaveBeenCalledWith(1, expect.objectContaining({
+        action_type: 'Add product', treatment_id: 10, qty: '300', unit: 'g', brand: 'HTH Super',
+      }))
+    })
+
+    it('keeps offering a disabled product while editing an entry that uses it', async () => {
+      setActiveInstallation(makeInstallation())
+      mockCatalogFetch(maintenanceTasks, [
+        ...treatmentProducts.slice(1),
+        { ...treatmentProducts[0], enabled: false },
+      ])
+      const editAction = makeMesureAction({
+        action_type: 'Add product', treatment_id: 10, qty: '300', unit: 'g',
+      })
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
+
+      // Saving must not silently rewrite the entry to a different product.
+      await waitFor(() =>
+        expect(selectedValue(translations.fr.modal_treatment_product)).toBe('Chlore')
+      )
     })
   })
 })

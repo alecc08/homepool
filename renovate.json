@@ -3,6 +3,8 @@
   "extends": ["config:recommended"],
   "schedule": ["before 6am on monday"],
   "minimumReleaseAge": "3 days",
+  "description": "tools/ holds manual developer utilities (the screenshot pipeline) that ship with no release. Bumping their deps would still drag a release:* label onto the PR and version the whole product, so they are left alone.",
+  "ignorePaths": ["tools/**"],
   "packageRules": [
     {
       "description": "Non-breaking updates auto-merge once CI passes; major bumps always wait for manual review.",

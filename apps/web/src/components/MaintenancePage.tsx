@@ -7,8 +7,6 @@ import {
   maintenanceTaskLabel,
   isMeasurementTask,
   isOnDemandTask,
-  isProductTask,
-  PRODUCT_ACTION_TYPE,
 } from '../utils'
 import { TaskIcon } from '../taskIcons'
 import type { EntryKind } from './ActionForm'
@@ -52,9 +50,9 @@ type Props = {
   /** Called after a task is marked done so the rest of the app (history,
    * dashboard) can refresh its action list. */
   onActionLogged?: () => void
-  /** Opens the entry form. Tasks whose completion carries data — a measurement,
-   * or a product and a quantity — hand off to the form instead of logging an
-   * empty row, so there is exactly one way to record them (issue #51). */
+  /** Opens the entry form. Tasks whose completion carries data — a measurement
+   * — hand off to the form instead of logging an empty row, so there is exactly
+   * one way to record them (issue #51). */
   onLogEntry?: (kind: EntryKind, actionType?: string) => void
 }
 
@@ -85,10 +83,6 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
     if (!active) return
     if (onLogEntry && isMeasurementTask(task)) {
       onLogEntry('measurement')
-      return
-    }
-    if (onLogEntry && isProductTask(task)) {
-      onLogEntry('maintenance', PRODUCT_ACTION_TYPE)
       return
     }
     setBusyId(task.id)
@@ -161,9 +155,9 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
         const status = statusFor(task, t)
         const tone = TONE_COLORS[status.tone]
         const flashing = flashId === task.id
-        // These carry data (values, or a product and a quantity), so completing
-        // them opens the entry form rather than logging an empty row.
-        const opensEntryForm = !!onLogEntry && (isMeasurementTask(task) || isProductTask(task))
+        // A measurement carries values, so completing one opens the entry form
+        // rather than logging an empty row.
+        const opensEntryForm = !!onLogEntry && isMeasurementTask(task)
         return (
           <div key={task.id} style={sectionCardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -129,3 +129,67 @@ log_maintenance:
       example: Backwashed until the sight glass ran clear
       selector:
         text:
+
+log_treatment:
+  name: Log treatment
+  description: Records something added to the water — a sanitizer, a pH adjuster, an algaecide — for a homepool installation.
+  fields:
+    installation_id:
+      name: Installation ID
+      description: The homepool installation to log the treatment for.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          mode: box
+    treatment:
+      name: Product
+      description: The product added, given as its treatment key — one of the keys published by that installation's "Treatments" sensor.
+      required: true
+      example: ph_increaser
+      selector:
+        text:
+    qty:
+      name: Amount
+      description: How much was added.
+      example: "250"
+      selector:
+        text:
+    unit:
+      name: Unit
+      description: Unit for the amount. Leave empty to use the product's own default unit.
+      example: g
+      selector:
+        select:
+          custom_value: true
+          options:
+            - g
+            - kg
+            - ml
+            - L
+            - oz
+            - lb
+            - fl oz
+            - gal
+            - tablet
+            - cap
+            - scoop
+    brand:
+      name: Brand
+      description: Optional brand of the product actually used.
+      example: HTH Super
+      selector:
+        text:
+    date:
+      name: Date
+      description: Day the treatment was added. Leave empty for today — set it to log a treatment you did earlier and forgot to record.
+      example: "2026-07-24"
+      selector:
+        date:
+    notes:
+      name: Notes
+      description: Optional free-text notes.
+      example: After the storm
+      selector:
+        text:

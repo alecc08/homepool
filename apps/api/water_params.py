@@ -11,9 +11,16 @@ import re
 from datetime import date as date_type
 from typing import Dict, List, Optional, Tuple
 
-from models import Action, Installation, MaintenanceTask
+from models import Action, Installation, MaintenanceTask, TreatmentProduct
 
 MEASURE_ACTION_TYPES = {"pH Measurement", "Measurement"}
+
+# The action_type every treatment is stored under. It predates the treatment
+# catalog (it used to be a maintenance task, "Add product"), and keeping the
+# string means every treatment ever logged stays classified as one — see
+# history_kind. It is deliberately *not* a loggable maintenance action type any
+# more: treatments have their own form and endpoint.
+TREATMENT_ACTION_TYPE = "Add product"
 
 # `interval_days` sentinel for a task that is logged on demand rather than on a
 # schedule (e.g. adding a product): it is offered when logging a maintenance
@@ -63,13 +70,6 @@ _PURGE = {
     "action_types": ["Purge"],
     "icon": "mdi:pipe-valve",
 }
-# On demand: logging a product addition is never something you're "late" for.
-_PRODUCT_ADDITION = {
-    "builtin_key": "product_addition",
-    "label": "Add product",
-    "action_types": ["Add product"],
-    "icon": "mdi:beaker-plus",
-}
 
 DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
     "pool": [
@@ -77,7 +77,6 @@ DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
         {**_FILTER_MAINTENANCE, "interval_days": 14},
         {**_WATER_CHANGE, "interval_days": 90},
         {**_PH_CALIBRATION, "interval_days": 90},
-        {**_PRODUCT_ADDITION, "interval_days": ON_DEMAND_INTERVAL},
     ],
     "spa": [
         {**_PH_MEASUREMENT, "interval_days": 3},
@@ -85,15 +84,107 @@ DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
         {**_WATER_CHANGE, "interval_days": 30},
         {**_PURGE, "interval_days": 90},
         {**_PH_CALIBRATION, "interval_days": 90},
-        {**_PRODUCT_ADDITION, "interval_days": ON_DEMAND_INTERVAL},
     ],
 }
+
+# The maintenance task treatments used to be logged through, before they became
+# their own entry kind. Untouched copies are deleted on boot
+# (_retire_product_addition_tasks in main.py); the constant stays so that
+# migration can recognize them.
+RETIRED_MAINTENANCE_BUILTIN_KEYS = {"product_addition"}
 
 
 def default_maintenance_tasks(installation_type: str) -> List[Dict]:
     """Default task specs to seed a new installation of the given type with.
     Falls back to the pool set for unknown types."""
     return [dict(spec) for spec in DEFAULT_MAINTENANCE_TASKS.get(installation_type, DEFAULT_MAINTENANCE_TASKS["pool"])]
+
+
+# ── Default treatment catalog ──────────────────────────────────────────────
+#
+# Seeded per installation on creation, keyed by (type, sanitizer) like
+# WATER_PARAMS. Composed from a shared base plus a per-sanitizer and per-type
+# set rather than six near-identical lists. Like the maintenance defaults this
+# is code, not data: editing it only affects installations created afterwards.
+#
+# `param` is a WATER_PARAMS range key (validated against PARAM_BOUNDS in
+# main.py) and `dosage_product_id` an id from dosage.TREATMENT_TABLE; both are
+# omitted for products that don't map onto a measured parameter.
+_TREATMENT_UNITS = ["g", "kg", "ml", "L", "oz", "lb", "fl oz", "gal", "tablet", "cap", "scoop"]
+
+_COMMON_TREATMENTS: List[Dict] = [
+    {"builtin_key": "ph_increaser", "label": "pH increaser", "icon": "mdi:arrow-up-bold",
+     "default_unit": "g", "param": "ph", "dosage_product_id": "soda_ash"},
+    {"builtin_key": "ph_decreaser", "label": "pH decreaser", "icon": "mdi:arrow-down-bold",
+     "default_unit": "ml", "param": "ph", "dosage_product_id": "muriatic_acid"},
+    {"builtin_key": "alkalinity_increaser", "label": "Alkalinity increaser", "icon": "mdi:waves-arrow-up",
+     "default_unit": "g", "param": "tac", "dosage_product_id": "baking_soda"},
+    {"builtin_key": "hardness_increaser", "label": "Calcium hardness increaser", "icon": "mdi:water-plus",
+     "default_unit": "g", "param": "hardness", "dosage_product_id": "calcium_chloride"},
+    {"builtin_key": "non_chlorine_shock", "label": "Non-chlorine shock", "icon": "mdi:flash",
+     "default_unit": "g"},
+    {"builtin_key": "algaecide", "label": "Algaecide", "icon": "mdi:spray-bottle", "default_unit": "ml"},
+    {"builtin_key": "clarifier", "label": "Clarifier", "icon": "mdi:water-opacity", "default_unit": "ml"},
+    {"builtin_key": "metal_sequestrant", "label": "Metal & scale control", "icon": "mdi:magnet",
+     "default_unit": "ml"},
+    {"builtin_key": "filter_cleaner", "label": "Filter cleaner", "icon": "mdi:air-filter",
+     "default_unit": "ml"},
+]
+
+# Flocculant drops debris to the floor to be vacuumed — a pool procedure; a spa
+# gets an anti-foam instead, which pools essentially never need.
+_POOL_TREATMENTS: List[Dict] = [
+    {"builtin_key": "flocculant", "label": "Flocculant", "icon": "mdi:arrow-collapse-down",
+     "default_unit": "ml"},
+]
+_SPA_TREATMENTS: List[Dict] = [
+    {"builtin_key": "foam_reducer", "label": "Anti-foam", "icon": "mdi:chart-bubble",
+     "default_unit": "ml"},
+]
+
+_STABILIZER = {"builtin_key": "stabilizer", "label": "Stabilizer (cyanuric acid)", "icon": "mdi:weather-sunny",
+               "default_unit": "g", "param": "cya", "dosage_product_id": "cya_granular"}
+_CHLORINE_SHOCK = {"builtin_key": "chlorine_shock", "label": "Chlorine shock", "icon": "mdi:flash-triangle",
+                   "default_unit": "g", "param": "cl", "dosage_product_id": "cal_hypo"}
+
+_SANITIZER_TREATMENTS: Dict[str, List[Dict]] = {
+    "chlorine": [
+        {"builtin_key": "chlorine", "label": "Chlorine", "icon": "mdi:water-check",
+         "default_unit": "g", "param": "cl", "dosage_product_id": "dichlor"},
+        _CHLORINE_SHOCK,
+        _STABILIZER,
+    ],
+    "bromine": [
+        {"builtin_key": "bromine", "label": "Bromine tablets", "icon": "mdi:water-check",
+         "default_unit": "tablet", "param": "br", "dosage_product_id": "bromine_tablets"},
+        {"builtin_key": "bromine_shock", "label": "Bromine shock", "icon": "mdi:flash-triangle",
+         "default_unit": "g", "param": "br"},
+    ],
+    # A salt pool still needs shock and stabilizer; the salt itself is what the
+    # generator turns into chlorine.
+    "salt": [
+        {"builtin_key": "salt", "label": "Pool salt", "icon": "mdi:shaker-outline",
+         "default_unit": "kg", "param": "salt", "dosage_product_id": "pool_salt"},
+        _CHLORINE_SHOCK,
+        _STABILIZER,
+    ],
+}
+
+
+def default_treatment_products(installation_type: str, sanitizer: str) -> List[Dict]:
+    """Default treatment catalog to seed a new installation with. Sanitizer
+    products come first (they are what you reach for most), then the shared
+    balancers, then the type-specific extras. Unknown type/sanitizer fall back
+    to the pool/chlorine set."""
+    type_extras = _SPA_TREATMENTS if installation_type == "spa" else _POOL_TREATMENTS
+    sanitizer_set = _SANITIZER_TREATMENTS.get(sanitizer, _SANITIZER_TREATMENTS["chlorine"])
+    return [dict(spec) for spec in [*sanitizer_set, *_COMMON_TREATMENTS, *type_extras]]
+
+
+def treatment_product_key(product: TreatmentProduct) -> str:
+    """Stable client-facing key for a treatment product, unchanged by renames.
+    Mirrors maintenance_task_key."""
+    return product.builtin_key or f"custom_{product.id}"
 
 
 def is_measurement_task(action_types: Optional[List[str]]) -> bool:
@@ -271,11 +362,11 @@ def extract_current_conditions(
 def history_kind(action_type: str) -> str:
     """Classifies an action into the three history categories the frontend
     shows. Mirrors apps/web/src/components/HistoryPage.tsx's categoryOf:
-    measurement = pH/generic Measurement, treatment = "Add product", and
-    everything else (backwash, purge, calibration, …) is maintenance."""
+    measurement = pH/generic Measurement, treatment = TREATMENT_ACTION_TYPE,
+    and everything else (backwash, purge, calibration, …) is maintenance."""
     if action_type in MEASURE_ACTION_TYPES:
         return "measurement"
-    if action_type == "Add product":
+    if action_type == TREATMENT_ACTION_TYPE:
         return "treatment"
     return "maintenance"
 
@@ -283,20 +374,32 @@ def history_kind(action_type: str) -> str:
 def extract_history(
     actions: List[Action],
     product_names: Optional[Dict[int, str]] = None,
+    treatment_names: Optional[Dict[int, str]] = None,
 ) -> List[Dict]:
     """Returns one parsed entry per action, newest first, across every action
     type (measurements, treatments, maintenance). Each entry carries `kind`,
     the raw `action_type`, a human `label` (product name for treatments, else
-    the action_type), `notes`, `qty`, `unit`, plus the parsed measurement
-    fields (ph, chlorine, …) for measurement rows. `product_names` maps
-    product_id -> name so treatment rows resolve a readable label."""
+    the action_type), `notes`, `qty`, `unit`, `brand`, plus the parsed
+    measurement fields (ph, chlorine, …) for measurement rows.
+
+    A treatment's label comes from `treatment_names` (treatment_id -> label) so
+    renaming a product propagates through history; once the product is deleted
+    it falls back to the label snapshotted on the action, then to
+    `product_names` (product_id -> name) for rows logged before the
+    per-installation catalog existed, then to the raw action_type."""
     product_names = product_names or {}
+    treatment_names = treatment_names or {}
     sorted_actions = sorted(actions, key=lambda a: a.date, reverse=True)
     history: List[Dict] = []
     for action in sorted_actions:
         kind = history_kind(action.action_type)
         if kind == "treatment":
-            label = product_names.get(action.product_id) or action.action_type
+            label = (
+                treatment_names.get(action.treatment_id)
+                or action.treatment_label
+                or product_names.get(action.product_id)
+                or action.action_type
+            )
         else:
             label = action.action_type
         entry = {
@@ -307,6 +410,7 @@ def extract_history(
             "notes": action.notes or "",
             "qty": action.qty or None,
             "unit": action.unit or None,
+            "brand": action.brand or "",
         }
         if kind == "measurement":
             entry.update(parse_measurement_action(action))

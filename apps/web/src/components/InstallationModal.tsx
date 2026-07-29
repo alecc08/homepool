@@ -9,6 +9,7 @@ import { useT } from '../context/LocaleContext'
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
 import type { Installation } from '../types'
 import WaterChemistryTargets from './WaterChemistryTargets'
+import TreatmentConfig from './TreatmentConfig'
 import SharingTab from './SharingTab'
 
 type Props = {
@@ -17,7 +18,7 @@ type Props = {
   installation?: Installation
 }
 
-type Tab = 'general' | 'water' | 'sharing'
+type Tab = 'general' | 'water' | 'treatments' | 'sharing'
 
 /** What someone a pool was shared with sees instead of the edit form: who owns
  * it, what their role lets them do, and a way to give the access back. */
@@ -213,7 +214,7 @@ export default function InstallationModal({ open, onClose, installation }: Props
 
         {isEdit && isOwner && (
           <div className="flex-shrink-0" style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
-            {(['general', 'water', 'sharing'] as Tab[]).map(tb => (
+            {(['general', 'water', 'treatments', 'sharing'] as Tab[]).map(tb => (
               <button
                 key={tb}
                 type="button"
@@ -230,6 +231,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
                   ? t('modal_tab_general')
                   : tb === 'water'
                   ? t('modal_tab_water_chemistry')
+                  : tb === 'treatments'
+                  ? t('modal_tab_treatments')
                   : t('modal_tab_sharing')}
               </button>
             ))}
@@ -240,6 +243,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
           <SharedInstallationView installation={installation} onLeave={handleLeave} leaving={loading} error={error} />
         ) : isEdit && tab === 'water' && installation ? (
           <WaterChemistryTargets installation={installation} onSaved={handleClose} />
+        ) : isEdit && tab === 'treatments' && installation ? (
+          <TreatmentConfig installation={installation} onSaved={handleClose} />
         ) : isEdit && tab === 'sharing' && installation ? (
           <SharingTab installation={installation} />
         ) : (

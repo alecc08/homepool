@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Action, Installation, MaintenanceTask, Product } from '../types'
+import type { Action, Installation, MaintenanceTask, TreatmentProduct } from '../types'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,6 +24,8 @@ import {
   maintenanceOptions,
   MEASURE_ACTION_TYPES,
   PRODUCT_ACTION_TYPE,
+  TREATMENT_UNITS,
+  treatmentProductLabel,
   PARAM_RANGES,
   RX_BROMINE,
   RX_CHLORINE,
@@ -58,13 +60,10 @@ export const ACTION_TYPE_LABELS: Record<string, TranslationKey> = {
   'Water change': 'action_type_water_change',
 }
 
-const UNITS = ['g', 'ml', 'pastille', 'L']
-const PRODUCT_OPTIONS = [
-  'Chlorine', 'Bromine', 'pH -', 'pH +', 'Salt',
-  'Flocculant', 'Algaecide', 'Chlorine shock', 'Bromine shock',
-]
-
-/** DB-stored/matched raw product names never change — only the rendered label does. */
+/** Legacy product names, from before treatments had a per-installation catalog.
+ * Nothing writes these any more — they exist so an old treatment still reads
+ * back with a translated label in history. DB-stored raw names never change;
+ * only the rendered label does. */
 export const PRODUCT_LABELS: Record<string, TranslationKey> = {
   'Chlorine': 'modal_install_chlorine',
   'Bromine': 'modal_install_bromine',
@@ -686,25 +685,20 @@ function MeasureSection({ values, onChange, sanitizer }: MeasureSectionProps) {
 // The choices are the installation's own enabled maintenance tasks (issue #51)
 // — there is no separate action-type list any more. Tasks completed by taking a
 // measurement (the built-in pH measurement) are excluded: those are logged from
-// the measurement half of this form, which carries the values.
+// the measurement half of this form, which carries the values. So is adding a
+// product: that is a treatment, logged from TreatmentSection below.
 
 type MaintenanceSectionProps = {
   options: MaintenanceOption[]
   loading: boolean
   actionType: string
   onActionTypeChange: (actionType: string) => void
-  productName: string | null
-  qty: string
-  unit: string
-  onProductChange: (updates: { product_name?: string | null; qty?: string; unit?: string }) => void
 }
 
 function MaintenanceSection({
   options, loading, actionType, onActionTypeChange,
-  productName, qty, unit, onProductChange,
 }: MaintenanceSectionProps) {
   const { t } = useT()
-  const showProduct = actionType === PRODUCT_ACTION_TYPE
 
   if (loading) {
     return (
@@ -723,45 +717,111 @@ function MaintenanceSection({
   }
 
   return (
+    <Select value={actionType || undefined} onValueChange={onActionTypeChange}>
+      <SelectTrigger aria-label={t('modal_maintenance_type')}>
+        <SelectValue placeholder={t('modal_maintenance_placeholder')} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(option => (
+          <SelectItem key={option.action_type} value={option.action_type}>{option.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+// ── Treatment section ──────────────────────────────────────────────────────
+//
+// Adding something to the water: which product, how much, and optionally the
+// brand you actually bought. The choices are the installation's own enabled
+// treatment products, configured under Installation › Treatments.
+
+type TreatmentSectionProps = {
+  products: TreatmentProduct[]
+  loading: boolean
+  treatmentId: number | null
+  qty: string
+  unit: string
+  brand: string
+  onChange: (updates: { treatment_id?: number | null; qty?: string; unit?: string; brand?: string }) => void
+}
+
+function TreatmentSection({
+  products, loading, treatmentId, qty, unit, brand, onChange,
+}: TreatmentSectionProps) {
+  const { t } = useT()
+
+  if (loading) {
+    return (
+      <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+        {t('ranges_loading')}
+      </p>
+    )
+  }
+
+  if (products.length === 0) {
+    return (
+      <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+        {t('modal_no_treatments')}
+      </p>
+    )
+  }
+
+  // A unit the entry already carries but that is no longer offered (an older
+  // "pastille" row, say) is kept as a choice so editing can't silently rewrite it.
+  const units = TREATMENT_UNITS.includes(unit) ? TREATMENT_UNITS : [unit, ...TREATMENT_UNITS]
+
+  return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <Select value={actionType || undefined} onValueChange={onActionTypeChange}>
-        <SelectTrigger aria-label={t('modal_maintenance_type')}>
-          <SelectValue placeholder={t('modal_maintenance_placeholder')} />
+      {/* '' rather than undefined for "nothing picked": undefined would make
+          Radix treat the select as uncontrolled, and a product chosen for us
+          later (a recommendation handing off a dose) would never show up. */}
+      <Select
+        value={treatmentId === null ? '' : String(treatmentId)}
+        onValueChange={v => {
+          // Radix echoes the empty value back once when a controlled select
+          // goes from '' to a real id; Number('') would land on product 0.
+          if (!v) return
+          const next = Number(v)
+          const picked = products.find(p => p.id === next)
+          // Switching product re-seeds the unit, so picking "Bromine tablets"
+          // doesn't leave you dosing grams.
+          onChange({ treatment_id: next, unit: picked?.default_unit ?? unit })
+        }}
+      >
+        <SelectTrigger aria-label={t('modal_treatment_product')}>
+          <SelectValue placeholder={t('modal_treatment_placeholder')} />
         </SelectTrigger>
         <SelectContent>
-          {options.map(option => (
-            <SelectItem key={option.action_type} value={option.action_type}>{option.label}</SelectItem>
+          {products.map(p => (
+            <SelectItem key={p.id} value={String(p.id)}>{treatmentProductLabel(p, t)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
 
-      {showProduct && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 72px', gap: 8 }}>
-          <Select
-            value={productName ?? 'none'}
-            onValueChange={v => {
-              const next = v === 'none' ? null : v
-              onProductChange({
-                product_name: next,
-                unit: next === 'Bromine' ? 'pastille' : unit === 'pastille' ? UNITS[0] : unit,
-              })
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder={t('modal_product_placeholder')} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">{t('modal_product_placeholder')}</SelectItem>
-              {PRODUCT_OPTIONS.map(p => <SelectItem key={p} value={p}>{translateLabel(t, PRODUCT_LABELS, p)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Input type="number" value={qty} onChange={e => onProductChange({ qty: e.target.value })} placeholder={t('modal_qty_placeholder')} />
-          <Select value={unit} onValueChange={v => onProductChange({ unit: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: 8 }}>
+        <Input
+          type="number"
+          step="any"
+          value={qty}
+          onChange={e => onChange({ qty: e.target.value })}
+          placeholder={t('modal_amount')}
+          aria-label={t('modal_amount')}
+        />
+        <Select value={unit} onValueChange={v => onChange({ unit: v })}>
+          <SelectTrigger aria-label={t('treat_unit_label')}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {units.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Input
+        value={brand}
+        onChange={e => onChange({ brand: e.target.value })}
+        placeholder={t('modal_brand_placeholder')}
+        aria-label={t('modal_brand')}
+      />
     </div>
   )
 }
@@ -806,9 +866,11 @@ function SegmentedToggle<T extends string>({ value, options, onChange }: {
 
 // ── ActionForm ─────────────────────────────────────────────────────────────
 
-/** The two things you can log. Everything else (which filter you cleaned, which
- * product you added) is a maintenance task the installation has configured. */
-export type EntryKind = 'measurement' | 'maintenance'
+/** The three things you can log: a water measurement, a treatment (something
+ * you added to the water, from the installation's product catalog), or a
+ * maintenance entry (one of the installation's configured tasks). These are the
+ * same three categories history has always shown. */
+export type EntryKind = 'measurement' | 'treatment' | 'maintenance'
 
 type NewAction = Omit<Action, 'id' | 'created_at' | 'user_id'>
 
@@ -830,19 +892,31 @@ function stripMeasurementNotes(notes: string): string {
 
 type Props = {
   onAdd?: (action: NewAction) => void
-  products: Product[]
   onClose?: () => void
   editAction?: Action
   onEdit?: (id: number, data: NewAction) => void
-  /** Which half of the form a new entry opens on. Defaults to a measurement. */
+  /** Which third of the form a new entry opens on. Defaults to a measurement. */
   initialKind?: EntryKind
   /** Preselects a maintenance task's action type (e.g. when the maintenance
-   * page hands off a task that needs a product and a quantity). */
+   * page hands one off). */
   initialActionType?: string
+  /** Preselects a treatment and its amount — how the recommendations page hands
+   * off "add 250 g of soda ash" as a ready-to-save entry. */
+  initialTreatment?: TreatmentPrefill
+}
+
+/** A dose handed to the entry form from elsewhere. The product is matched on
+ * its dosage_product_id rather than a row id: a caller looking at dosing advice
+ * has no idea how this installation's catalog is numbered. */
+export type TreatmentPrefill = {
+  dosage_product_id: string
+  qty?: string
+  unit?: string
 }
 
 export default function ActionForm({
-  onAdd, products, onClose, editAction, onEdit, initialKind, initialActionType,
+  onAdd, onClose, editAction, onEdit, initialKind, initialActionType,
+  initialTreatment,
 }: Props) {
   const { t } = useT()
   const { active } = useInstallation()
@@ -850,28 +924,36 @@ export default function ActionForm({
 
   const isEditMode = !!editAction
   const editingMeasurement = editAction ? isMeasurement(editAction.action_type) : false
+  const editingTreatment = editAction ? editAction.action_type === PRODUCT_ACTION_TYPE : false
   const today = new Date().toISOString().slice(0, 10)
 
+  const editKind: EntryKind = editingMeasurement
+    ? 'measurement'
+    : editingTreatment ? 'treatment' : 'maintenance'
   const [kind, setKind] = useState<EntryKind>(() =>
-    editAction ? (editingMeasurement ? 'measurement' : 'maintenance') : (initialKind ?? 'measurement')
+    editAction ? editKind : (initialKind ?? 'measurement')
   )
   const [date, setDate] = useState(editAction?.date ?? today)
   const [values, setValues] = useState<MeasureValues>(() =>
     editAction ? measureFromAction(editAction) : EMPTY_MEASURE
   )
   const [actionType, setActionType] = useState(
-    editAction ? (editingMeasurement ? '' : editAction.action_type) : (initialActionType ?? '')
+    editAction ? (editingMeasurement || editingTreatment ? '' : editAction.action_type) : (initialActionType ?? '')
   )
-  const [productName, setProductName] = useState<string | null>(() =>
-    products.find(p => p.id === editAction?.product_id)?.name ?? null
+  const [treatmentId, setTreatmentId] = useState<number | null>(editAction?.treatment_id ?? null)
+  const [qty, setQty] = useState(() => {
+    if (initialTreatment?.qty) return initialTreatment.qty
+    return editAction && !editingMeasurement ? editAction.qty : ''
+  })
+  const [unit, setUnit] = useState(
+    initialTreatment?.unit ?? editAction?.unit ?? TREATMENT_UNITS[0]
   )
-  const [qty, setQty] = useState(editAction && !editingMeasurement ? editAction.qty : '')
-  const [unit, setUnit] = useState(editAction?.unit || UNITS[0])
+  const [brand, setBrand] = useState(editAction?.brand ?? '')
   const [notes, setNotes] = useState(() => {
     if (!editAction) return ''
     return editingMeasurement ? stripMeasurementNotes(editAction.notes) : editAction.notes
   })
-  const [error, setError] = useState<'measure' | 'task' | null>(null)
+  const [error, setError] = useState<'measure' | 'task' | 'treatment' | null>(null)
 
   // The maintenance choices are the installation's configured tasks. A failed
   // load degrades to "no tasks" rather than blocking the measurement half.
@@ -885,6 +967,41 @@ export default function ActionForm({
       .catch(() => { if (!cancelled) setTasks([]) })
     return () => { cancelled = true }
   }, [active?.id])
+
+  // Same for the treatment choices: the installation's own product catalog.
+  const [treatments, setTreatments] = useState<TreatmentProduct[] | null>(null)
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    fetch(`/api/installations/${active.id}/treatments`, { credentials: 'same-origin' })
+      .then(r => (r.ok ? r.json() : []))
+      .then((data: TreatmentProduct[]) => { if (!cancelled) setTreatments(Array.isArray(data) ? data : []) })
+      .catch(() => { if (!cancelled) setTreatments([]) })
+    return () => { cancelled = true }
+  }, [active?.id])
+
+  const treatmentOptions = useMemo(() => {
+    const enabled = (treatments ?? []).filter(p => p.enabled)
+    // Editing an entry whose product has since been disabled must not silently
+    // rewrite it — offer it as-is, the same way the maintenance picker does.
+    const current = (treatments ?? []).find(p => p.id === treatmentId)
+    if (current && !current.enabled) return [...enabled, current]
+    return enabled
+  }, [treatments, treatmentId])
+
+  // The recommendations page hands off a dosage product id rather than a row id
+  // — it has no idea how this installation's catalog is numbered. Resolve it
+  // once the catalog lands.
+  useEffect(() => {
+    if (!initialTreatment || treatments === null || treatmentId !== null) return
+    const match = treatments.find(
+      p => p.enabled && p.dosage_product_id === initialTreatment.dosage_product_id
+    )
+    if (match) {
+      setTreatmentId(match.id)
+      if (!initialTreatment.unit) setUnit(match.default_unit)
+    }
+  }, [treatments, initialTreatment, treatmentId])
 
   const options = useMemo(() => {
     const fromTasks = maintenanceOptions(tasks ?? [], t)
@@ -917,16 +1034,22 @@ export default function ActionForm({
       const fullNotes = [parts.join('. '), notes].filter(Boolean).join('. ')
       return {
         date, action_type: MEASUREMENT_ACTION_TYPE, product_id: null,
-        installation_id, qty: values.m_ph, unit: '', notes: fullNotes,
+        treatment_id: null, installation_id, qty: values.m_ph, unit: '',
+        brand: '', notes: fullNotes,
       }
     }
-    const isProduct = actionType === PRODUCT_ACTION_TYPE
-    const productId = isProduct && productName
-      ? products.find(p => p.name.toLowerCase() === productName.toLowerCase())?.id ?? null
-      : null
+    if (kind === 'treatment') {
+      // Treatments keep the historical action_type so every one ever logged —
+      // including those from before treatments were their own kind — stays
+      // classified the same way. The product lives in treatment_id.
+      return {
+        date, action_type: PRODUCT_ACTION_TYPE, product_id: null,
+        treatment_id: treatmentId, installation_id, qty, unit, brand, notes,
+      }
+    }
     return {
-      date, action_type: actionType, product_id: productId, installation_id,
-      qty: isProduct ? qty : '', unit: isProduct ? unit : '', notes,
+      date, action_type: actionType, product_id: null, treatment_id: null,
+      installation_id, qty: '', unit: '', brand: '', notes,
     }
   }
 
@@ -934,6 +1057,10 @@ export default function ActionForm({
     e.preventDefault()
     if (kind === 'measurement' && !hasAnyValue(values)) {
       setError('measure')
+      return
+    }
+    if (kind === 'treatment' && treatmentId === null) {
+      setError('treatment')
       return
     }
     if (kind === 'maintenance' && !actionType) {
@@ -955,7 +1082,7 @@ export default function ActionForm({
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-contain grid gap-4">
 
-        {/* Entry kind — a measurement, or one of the configured maintenance tasks */}
+        {/* Entry kind — a measurement, a treatment, or a configured maintenance task */}
         {!isEditMode && (
           <div style={{ display: 'grid', gap: 6 }}>
             <Label>{t('modal_entry_type')}</Label>
@@ -963,6 +1090,7 @@ export default function ActionForm({
               value={kind}
               options={[
                 ['measurement', t('modal_kind_measurement')],
+                ['treatment', t('modal_kind_treatment')],
                 ['maintenance', t('modal_kind_maintenance')],
               ]}
               onChange={k => { setKind(k); setError(null) }}
@@ -1002,6 +1130,29 @@ export default function ActionForm({
               </p>
             )}
           </div>
+        ) : kind === 'treatment' ? (
+          <div className="grid gap-2">
+            <Label>{t('modal_treatment_product')}</Label>
+            <TreatmentSection
+              products={treatmentOptions}
+              loading={!!active && treatments === null}
+              treatmentId={treatmentId}
+              qty={qty}
+              unit={unit}
+              brand={brand}
+              onChange={updates => {
+                if (updates.treatment_id !== undefined) { setTreatmentId(updates.treatment_id); setError(null) }
+                if (updates.qty !== undefined) setQty(updates.qty)
+                if (updates.unit !== undefined) setUnit(updates.unit)
+                if (updates.brand !== undefined) setBrand(updates.brand)
+              }}
+            />
+            {error === 'treatment' && (
+              <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+                {t('modal_select_treatment')}
+              </p>
+            )}
+          </div>
         ) : (
           <div className="grid gap-2">
             <Label>{t('modal_maintenance_type')}</Label>
@@ -1010,14 +1161,6 @@ export default function ActionForm({
               loading={!!active && tasks === null}
               actionType={actionType}
               onActionTypeChange={v => { setActionType(v); setError(null) }}
-              productName={productName}
-              qty={qty}
-              unit={unit}
-              onProductChange={updates => {
-                if (updates.product_name !== undefined) setProductName(updates.product_name)
-                if (updates.qty !== undefined) setQty(updates.qty)
-                if (updates.unit !== undefined) setUnit(updates.unit)
-              }}
             />
             {error === 'task' && (
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>

@@ -23,12 +23,17 @@ const FIELD_SUFFIXES = {
   temp: 'temperature',
 };
 
-// The form-toggle "Log measurement" button is still a fixed quick-add entry
-// (it opens the measurement form). Maintenance quick-add buttons and the
+// The two form-toggle buttons are fixed quick-add entries (they open the
+// measurement and treatment forms). Maintenance quick-add buttons and the
 // "days until due" chips are no longer a fixed set: they're discovered from the
 // homepool task entities by their `task_key` attribute (see discoverTaskEntities),
 // so the card stays in sync with whatever configurable tasks the API returns.
 const FORM_TOGGLE_KEY = 'log_measurement';
+const TREATMENT_TOGGLE_KEY = 'log_treatment';
+
+// Amounts a treatment can be recorded in, mirroring TREATMENT_UNITS in the web
+// app. The product's own default_unit is preselected; this is the override list.
+const TREATMENT_UNITS = ['g', 'kg', 'ml', 'L', 'oz', 'lb', 'fl oz', 'gal', 'tablet', 'cap', 'scoop'];
 
 // Finds the homepool maintenance-task entities (todo "days until due" sensors,
 // or "mark done" buttons) for one installation by their `task_key` attribute.
@@ -118,6 +123,12 @@ const STRINGS = {
     due_in: (n) => `due in ${n}d`,
     quick_add: 'Quick add',
     log_measurement: 'Log measurement',
+    log_treatment: 'Log treatment',
+    treatment_product: 'Product',
+    treatment_amount: 'Amount',
+    treatment_unit: 'Unit',
+    treatment_brand: 'Brand',
+    no_treatments: 'No treatment products are set up for this pool yet.',
     save: 'Save',
     cancel: 'Cancel',
     more_fields: 'More fields',
@@ -145,6 +156,12 @@ const STRINGS = {
     due_in: (n) => `dans ${n}j`,
     quick_add: 'Ajout rapide',
     log_measurement: 'Enregistrer une mesure',
+    log_treatment: 'Enregistrer un traitement',
+    treatment_product: 'Produit',
+    treatment_amount: 'Quantité',
+    treatment_unit: 'Unité',
+    treatment_brand: 'Marque',
+    no_treatments: 'Aucun produit de traitement configuré pour ce bassin.',
     save: 'Enregistrer',
     cancel: 'Annuler',
     more_fields: 'Plus de champs',
@@ -165,6 +182,36 @@ function t(hass, key, ...args) {
   const lang = (hass && hass.language && hass.language.startsWith('fr')) ? 'fr' : 'en';
   const entry = STRINGS[lang][key] ?? STRINGS.en[key];
   return typeof entry === 'function' ? entry(...args) : entry;
+}
+
+// Product and task labels are free text the user typed into homepool, and this
+// card builds its DOM with innerHTML — so anything user-authored goes through
+// here before it lands in markup.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// A tile's label: the sensor's friendly name with the device name taken off the
+// front, since the card is already titled with the pool.
+//
+// Every measurement sensor sets _attr_has_entity_name, so HA composes
+// friendly_name as "<installation> <field>" — "Backyard pool Chlorine". Dropping
+// only the first word ("pool Chlorine") leaks the rest of a multi-word pool name
+// into every tile and then ellipsizes it, so the card's own title is tried first
+// and the single-word strip is kept as the fallback for when it doesn't match
+// (a renamed entity, or a title that isn't the pool's name).
+function tileLabel(attrs, field, title) {
+  const friendly = attrs.friendly_name;
+  if (!friendly) return field;
+  if (title && friendly.toLowerCase().startsWith(`${title.toLowerCase()} `)) {
+    return friendly.slice(title.length + 1);
+  }
+  return friendly.replace(/^.*?\s/, '');
 }
 
 function daysAgo(dateStr) {
@@ -263,7 +310,8 @@ class HomepoolCard extends HTMLElement {
       quick_add: config.quick_add || {},
     };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    this._modalOpen = false;
+    // null when closed, otherwise which form the shared modal is showing.
+    this._modalKind = null;
     this._formMoreOpen = false;
     this._pressed = {};
     this._pressTimers = {};
@@ -283,6 +331,15 @@ class HomepoolCard extends HTMLElement {
 
   _entityId(base) {
     return `${this._config.entity_prefix}_${base}`;
+  }
+
+  // The installation's treatment catalog, published by its Treatments sensor
+  // (sensor.py's HomepoolTreatmentsSensor). Empty on an older server that has
+  // no such entity, which is what hides the "Log treatment" button.
+  _treatments() {
+    const st = this._hass?.states?.[this._entityId('treatments')];
+    const list = st?.attributes?.treatments;
+    return Array.isArray(list) ? list : [];
   }
 
   // Sourced from the pH sensor's `sanitizer` attribute (every installation
@@ -343,6 +400,25 @@ class HomepoolCard extends HTMLElement {
       data[k] = k === 'notes' ? v : parseFloat(v);
     }
     this._hass.callService('homepool', 'log_measurement', data);
+    return true;
+  }
+
+  // Posts the log_treatment service call. Returns false (no-op) when the card
+  // has no installation_id, or when no product was picked, so callers can skip
+  // the success UI.
+  _submitTreatment(values) {
+    if (!this._config.installation_id) return false;
+    if (!values.treatment) return false;
+    const data = {
+      installation_id: this._config.installation_id,
+      treatment: values.treatment,
+    };
+    // Everything else is optional; an empty unit lets the server fall back to
+    // the product's own default rather than storing a blank one.
+    for (const key of ['qty', 'unit', 'brand', 'notes']) {
+      if (values[key]) data[key] = values[key];
+    }
+    this._hass.callService('homepool', 'log_treatment', data);
     return true;
   }
 
@@ -411,7 +487,7 @@ class HomepoolCard extends HTMLElement {
       return `
         <div class="hp-tile${config.installation_id ? ' hp-tile-tappable' : ''}" data-field="${field}" style="--hp-rail:${rail}">
           <div class="hp-tile-top">
-            <span class="hp-label">${attrs.friendly_name ? attrs.friendly_name.replace(/^.*?\s/, '') : field}</span>
+            <span class="hp-label">${escapeHtml(tileLabel(attrs, field, config.title))}</span>
             <span class="hp-tile-top-right">
               <button class="hp-tile-info" data-info="${entityId}" title="${t(hass, 'history')}" aria-label="${t(hass, 'history')}">${CHART_ICON_SVG}</button>
               ${status ? `<span class="hp-dot" style="background:${rail}"></span>` : ''}
@@ -438,20 +514,28 @@ class HomepoolCard extends HTMLElement {
       const text = overdue ? t(hass, 'due_overdue', Math.abs(Math.round(days)))
         : days === 0 ? t(hass, 'due_today')
         : t(hass, 'due_in', Math.round(days));
-      return `<span class="hp-chip ${chipClass}">${label}: ${text}</span>`;
+      return `<span class="hp-chip ${chipClass}">${escapeHtml(label)}: ${text}</span>`;
     }).join('');
 
     const showFormToggle = config.installation_id && config.quick_add?.[FORM_TOGGLE_KEY] !== false;
     const formToggleHtml = showFormToggle
       ? `<button class="hp-btn hp-btn-accent" id="hp-form-toggle">${t(hass, 'log_measurement')}</button>`
       : '';
+    // Hidden when the server predates the treatment catalog: without the
+    // Treatments sensor there is nothing to offer in the product picker.
+    const showTreatmentToggle = config.installation_id
+      && config.quick_add?.[TREATMENT_TOGGLE_KEY] !== false
+      && this._treatments().length > 0;
+    const treatmentToggleHtml = showTreatmentToggle
+      ? `<button class="hp-btn hp-btn-accent" id="hp-treatment-toggle">${t(hass, 'log_treatment')}</button>`
+      : '';
     const taskButtonsHtml = buttons.map((btn) => {
       const pressed = this._pressed[btn.entityId];
-      return `<button class="hp-btn${pressed ? ' hp-btn-success' : ''}" data-entity="${btn.entityId}">${
-        pressed ? `✓ ${t(hass, 'logged')}` : btn.label
+      return `<button class="hp-btn${pressed ? ' hp-btn-success' : ''}" data-entity="${escapeHtml(btn.entityId)}">${
+        pressed ? `✓ ${t(hass, 'logged')}` : escapeHtml(btn.label)
       }</button>`;
     }).join('');
-    const buttonsHtml = formToggleHtml + taskButtonsHtml;
+    const buttonsHtml = formToggleHtml + treatmentToggleHtml + taskButtonsHtml;
 
     this._cardMount.innerHTML = `
       <ha-card>
@@ -463,7 +547,7 @@ class HomepoolCard extends HTMLElement {
         ` : ''}
         ${dueHtml ? `<div class="hp-due-row">${dueHtml}</div>` : ''}
         ${params.length ? `<div class="hp-grid">${tilesHtml}</div>` : ''}
-        ${buttons.length || showFormToggle ? `
+        ${buttons.length || showFormToggle || showTreatmentToggle ? `
           <div class="hp-section-label">${t(hass, 'quick_add')}</div>
           <div class="hp-buttons">
             ${buttonsHtml}
@@ -477,6 +561,8 @@ class HomepoolCard extends HTMLElement {
     });
     const toggle = this._cardMount.querySelector('#hp-form-toggle');
     if (toggle) toggle.addEventListener('click', () => this._openModal());
+    const treatmentToggle = this._cardMount.querySelector('#hp-treatment-toggle');
+    if (treatmentToggle) treatmentToggle.addEventListener('click', () => this._openTreatmentModal());
     // A tile's chart icon opens HA's native more-info dialog for that sensor;
     // tapping the tile body opens the log modal focused on the field.
     this._cardMount.querySelectorAll('.hp-tile-info[data-info]').forEach((btn) => {
@@ -504,7 +590,7 @@ class HomepoolCard extends HTMLElement {
   // "more fields" first if that field isn't in the sanitizer's primary set).
   _openModal(field) {
     if (!this._config.installation_id) return;
-    this._modalOpen = true;
+    this._modalKind = 'measurement';
     if (field) {
       const primary = SANITIZER_FORM_FIELDS[this._sanitizer()] || DEFAULT_FORM_FIELDS;
       if (!primary.includes(field)) this._formMoreOpen = true;
@@ -515,27 +601,37 @@ class HomepoolCard extends HTMLElement {
     if (target) target.focus();
   }
 
+  // Same modal shell, different form: which product went in and how much.
+  _openTreatmentModal() {
+    if (!this._config.installation_id) return;
+    this._modalKind = 'treatment';
+    this._renderModal();
+    const amount = this._modalMount.querySelector('#hp-form input[name="qty"]');
+    if (amount) amount.focus();
+  }
+
   _closeModal() {
-    this._modalOpen = false;
+    this._modalKind = null;
     this._formMoreOpen = false;
     this._renderModal();
   }
 
   _renderModal() {
     if (!this._modalMount) return;
-    if (!this._modalOpen) {
+    if (!this._modalKind) {
       this._modalMount.innerHTML = '';
       return;
     }
     const hass = this._hass;
+    const isTreatment = this._modalKind === 'treatment';
     this._modalMount.innerHTML = `
       <div class="hp-modal-backdrop" id="hp-modal-backdrop" tabindex="-1">
         <div class="hp-modal" role="dialog" aria-modal="true">
           <div class="hp-modal-header">
-            <span>${t(hass, 'log_measurement')}</span>
+            <span>${t(hass, isTreatment ? 'log_treatment' : 'log_measurement')}</span>
             <button class="hp-modal-close" id="hp-modal-close" aria-label="${t(hass, 'cancel')}">✕</button>
           </div>
-          ${this._formHtml(hass, this._sanitizer())}
+          ${isTreatment ? this._treatmentFormHtml(hass) : this._formHtml(hass, this._sanitizer())}
         </div>
       </div>
     `;
@@ -549,10 +645,25 @@ class HomepoolCard extends HTMLElement {
     formEl.addEventListener('submit', (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(formEl).entries());
-      if (this._submitForm(data)) this._showModalSuccess();
+      const submitted = isTreatment ? this._submitTreatment(data) : this._submitForm(data);
+      if (submitted) this._showModalSuccess();
       else this._closeModal();
     });
     this._modalMount.querySelector('#hp-form-cancel').addEventListener('click', () => this._closeModal());
+    // Picking a product re-seeds the unit, so choosing bromine tablets doesn't
+    // leave you dosing grams — unless the unit was already changed by hand.
+    const productSelect = this._modalMount.querySelector('#hp-treatment-product');
+    if (productSelect) {
+      const unitSelect = this._modalMount.querySelector('#hp-treatment-unit');
+      productSelect.addEventListener('change', () => {
+        if (!unitSelect || unitSelect.dataset.touched === '1') return;
+        const picked = this._treatments().find((p) => p.key === productSelect.value);
+        if (picked?.default_unit) unitSelect.value = picked.default_unit;
+      });
+      if (unitSelect) {
+        unitSelect.addEventListener('change', () => { unitSelect.dataset.touched = '1'; });
+      }
+    }
     // "More fields" just reveals the pre-rendered section — no rebuild, so
     // values already typed into the primary fields are never lost.
     const moreToggle = this._modalMount.querySelector('#hp-form-more-toggle');
@@ -600,6 +711,62 @@ class HomepoolCard extends HTMLElement {
             </label>
           </div>
         ` : ''}
+        <div class="hp-form-actions">
+          <button type="button" id="hp-form-cancel" class="hp-btn">${t(hass, 'cancel')}</button>
+          <button type="submit" class="hp-btn hp-btn-accent">${t(hass, 'save')}</button>
+        </div>
+      </form>
+    `;
+  }
+
+  // Which product, how much, and optionally the brand you actually bought.
+  // Products come from the Treatments sensor, so the picker always matches the
+  // installation's own catalog.
+  _treatmentFormHtml(hass) {
+    const products = this._treatments();
+    if (!products.length) {
+      return `
+        <form id="hp-form" class="hp-form">
+          <div class="hp-form-empty">${t(hass, 'no_treatments')}</div>
+          <div class="hp-form-actions">
+            <button type="button" id="hp-form-cancel" class="hp-btn">${t(hass, 'cancel')}</button>
+          </div>
+        </form>
+      `;
+    }
+    const first = products[0];
+    // A product's own unit may not be in the standard list (a custom product
+    // configured through the API); keep it selectable rather than silently
+    // rewriting it.
+    const units = [...new Set([...products.map((p) => p.default_unit).filter(Boolean), ...TREATMENT_UNITS])];
+    return `
+      <form id="hp-form" class="hp-form">
+        <div class="hp-form-grid">
+          <label class="hp-form-field hp-form-field-wide">
+            <span>${t(hass, 'treatment_product')}</span>
+            <select name="treatment" id="hp-treatment-product">
+              ${products.map((p) => `<option value="${escapeHtml(p.key)}">${escapeHtml(p.label)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="hp-form-field">
+            <span>${t(hass, 'treatment_amount')}</span>
+            <input name="qty" type="number" step="any" inputmode="decimal" />
+          </label>
+          <label class="hp-form-field">
+            <span>${t(hass, 'treatment_unit')}</span>
+            <select name="unit" id="hp-treatment-unit">
+              ${units.map((u) => `<option value="${escapeHtml(u)}"${u === first.default_unit ? ' selected' : ''}>${escapeHtml(u)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="hp-form-field hp-form-field-wide">
+            <span>${t(hass, 'treatment_brand')}</span>
+            <input name="brand" type="text" />
+          </label>
+          <label class="hp-form-field hp-form-field-wide">
+            <span>${t(hass, 'notes')}</span>
+            <input name="notes" type="text" />
+          </label>
+        </div>
         <div class="hp-form-actions">
           <button type="button" id="hp-form-cancel" class="hp-btn">${t(hass, 'cancel')}</button>
           <button type="submit" class="hp-btn hp-btn-accent">${t(hass, 'save')}</button>
@@ -864,7 +1031,8 @@ class HomepoolCard extends HTMLElement {
           font-size: 10px;
           color: var(--hp-text-muted);
         }
-        .hp-form-field input {
+        .hp-form-field input,
+        .hp-form-field select {
           font-family: monospace;
           font-size: 13px;
           padding: 5px 6px;
@@ -875,6 +1043,11 @@ class HomepoolCard extends HTMLElement {
         }
         .hp-form-field-wide {
           grid-column: 1 / -1;
+        }
+        .hp-form-empty {
+          font-size: 12px;
+          color: var(--hp-text-muted);
+          padding: 4px 0 8px;
         }
         .hp-form-more[hidden] {
           /* The [hidden] attribute must win over .hp-form-grid's display:grid,
@@ -937,7 +1110,8 @@ class HomepoolCardEditor extends HTMLElement {
       : [];
     const quickAddChipsHtml = [
       `<button type="button" class="chip" data-quick-add="${FORM_TOGGLE_KEY}">${STRINGS.en.log_measurement}</button>`,
-      ...taskChips.map((tb) => `<button type="button" class="chip" data-quick-add="${tb.key}">${tb.label}</button>`),
+      `<button type="button" class="chip" data-quick-add="${TREATMENT_TOGGLE_KEY}">${STRINGS.en.log_treatment}</button>`,
+      ...taskChips.map((tb) => `<button type="button" class="chip" data-quick-add="${escapeHtml(tb.key)}">${escapeHtml(tb.label)}</button>`),
     ].join('');
     const parameterChipsHtml = Object.keys(FIELD_SUFFIXES)
       .map((key) => `<button type="button" class="chip" data-parameter="${key}">${FORM_FIELD_LABELS[key] || key}</button>`)
@@ -1202,11 +1376,13 @@ class HomepoolHistoryCard extends HTMLElement {
           .filter((f) => e[f] !== undefined && e[f] !== null)
           .map((f) => `<span class="hp-hist-pill">${FORM_FIELD_LABELS[f]} ${fmtValue(e[f])}</span>`)
           .join('');
-        detail = pills || (e.label || '');
+        detail = pills || escapeHtml(e.label || '');
       } else if (e.kind === 'treatment') {
-        detail = `${e.label || ''}${e.qty ? ` — ${e.qty}${e.unit || ''}` : ''}`;
+        const amount = e.qty ? ` — ${e.qty}${e.unit ? ` ${e.unit}` : ''}` : '';
+        const brand = e.brand ? ` · ${e.brand}` : '';
+        detail = escapeHtml(`${e.label || ''}${amount}${brand}`);
       } else {
-        detail = e.label || '';
+        detail = escapeHtml(e.label || '');
       }
       return `
         <tr>
@@ -1214,7 +1390,7 @@ class HomepoolHistoryCard extends HTMLElement {
           <td><span class="hp-chip hp-kind-${e.kind}">${t(hass, `kind_${e.kind}`)}</span></td>
           <td class="hp-hist-detail">
             <div class="hp-hist-main">${detail}</div>
-            ${e.notes && e.kind !== 'measurement' ? `<div class="hp-hist-notes">${e.notes}</div>` : ''}
+            ${e.notes && e.kind !== 'measurement' ? `<div class="hp-hist-notes">${escapeHtml(e.notes)}</div>` : ''}
           </td>
         </tr>
       `;

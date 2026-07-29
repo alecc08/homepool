@@ -38,10 +38,11 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 **Features:**
 
 - **Water status board** — mono-value param tiles with status dot, ideal range, and per-parameter trend sparkline
-- **Home Assistant integration** — sensors, maintenance-logging buttons, and a custom Lovelace card, installable via HACS. Already own a smart probe? Point any reading at your own HA entity, and optionally have its readings logged back into homepool
-- **One way to log** — an entry is either a **measurement** or a **maintenance** entry, and the maintenance choices are exactly the tasks you configured and enabled (no separate action/extra taxonomy to learn)
+- **Home Assistant integration** — sensors, maintenance- and treatment-logging, and a custom Lovelace card, installable via HACS. Already own a smart probe? Point any reading at your own HA entity, and optionally have its readings logged back into homepool
+- **One way to log** — an entry is a **measurement**, a **treatment** or a **maintenance** entry, and the treatment and maintenance choices are exactly the products and tasks you configured and enabled (no separate action/extra taxonomy to learn)
 - **Log it whenever you get round to it** — every entry carries a date you can set, in the app and from Home Assistant, so a reading you took on Sunday still lands on Sunday
 - **Maintenance tasks are just yours** — a new pool arrives with a sensible default set (filter cleaning, water change, …), but they are ordinary tasks: rename, re-icon, retime or delete any of them, exactly like the ones you add yourself
+- **So is your product shelf** — treatments come from a per-pool catalog seeded for your type and sanitizer (pH ±, alkalinity, shock, algaecide, clarifier, …), and every product is equally ordinary: rename, re-icon, change its default unit, disable or delete it, or add the specific brand you actually buy. Record how much went in, in whichever unit you measure it
 - **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness (manual entry is the default; the app remembers whichever you used last)
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
@@ -72,11 +73,32 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 |---|---|
 | ![History](docs/screenshots/history-dark.png) | ![Recommendations](docs/screenshots/recommendations-dark.png) |
 
-| New entry — AquaChek strip |
+**Logging an entry** — one form, three kinds. A measurement can be typed in or read off an
+AquaChek strip; a treatment picks from your own product catalog.
+
+| New entry — Treatment | New entry — AquaChek strip |
+|---|---|
+| ![Treatment modal](docs/screenshots/modal-treatment.png) | ![Strip modal](docs/screenshots/modal-strip.png) |
+
+**Per-installation settings** — every pool carries its own product catalog, target ranges
+and access list.
+
+| Treatments | Water Chemistry Targets |
+|---|---|
+| ![Treatments tab](docs/screenshots/installation-treatments.png) | ![Water chemistry tab](docs/screenshots/installation-water.png) |
+
+| Sharing | Dosing simulator |
+|---|---|
+| ![Sharing tab](docs/screenshots/installation-sharing.png) | ![Simulator](docs/screenshots/simulator.png) |
+
+| Installable as a PWA, with bottom navigation |
 |---|
-| ![Strip modal](docs/screenshots/modal-strip.png) |
+| <img src="docs/screenshots/mobile-dashboard.png" alt="homepool on a phone" width="300"> |
 
 </div>
+
+> Screenshots are generated, not hand-captured — see [`tools/screenshots`](tools/screenshots)
+> to refresh them after a UI change.
 
 ---
 
@@ -165,19 +187,20 @@ Each installation gets a device with the following entities:
 | `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
+| `sensor.<installation>_treatments` | The products you can log a treatment with — state is the product count, with the catalog itself (`key`, `label`, `icon`, `default_unit`, `param`) on the `treatments` attribute. Powers the card's "Log treatment" picker, and the `key` values are what `homepool.log_treatment` accepts. |
 | `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled, whether it came with the pool or you added it. Press to log it against homepool immediately, no app needed. To log one for a *past* day, use the `homepool.log_maintenance` service instead. |
-
-![Home Assistant sensors](docs/screenshots/ha-sensors.png)
 
 #### 5. The homepool card
 
-A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and a "Log measurement" button that opens a popup form for logging a full measurement. The form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes.
+A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and "Log measurement" / "Log treatment" buttons that open a popup form. The measurement form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes; the treatment form offers your installation's own product catalog, with the amount, unit (pre-filled from the product) and an optional brand. Either button can be hidden from the card's visual editor.
 
 Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
 
 <div align="center">
 
-<img src="docs/screenshots/hass-main-card.png" alt="homepool card in Home Assistant" width="360">
+| The card | Logging a treatment from it |
+|---|---|
+| <img src="docs/screenshots/hass-main-card.png" alt="homepool card in Home Assistant" width="330"> | <img src="docs/screenshots/hass-treatment-form.png" alt="the card's log-treatment popup" width="330"> |
 
 </div>
 
@@ -193,6 +216,24 @@ show_due: true
 ```
 
 `entity_prefix` should match the prefix HA generated for your installation's sensors (e.g. `sensor.my_pool_ph` → prefix `sensor.my_pool`). `installation_id` is only needed if you want the "Log measurement" popup and tile-tap logging — find it in the homepool web app's URL or API. In the card's visual editor, you can skip typing either by hand: pick any one of your installation's sensors from the entity picker and both fields are derived from it automatically.
+
+Everything the visual editor exposes has a YAML equivalent:
+
+| Option | Default | Does what |
+|---|---|---|
+| `title` | `homepool` | Card heading. Also what's stripped off the front of each tile's label, so setting it to the pool's name keeps the tiles reading `PH`, `CHLORINE`, … |
+| `show_header` | `true` | The title row. |
+| `show_logo` | `true` | The homepool mark beside the title. |
+| `show_due` | `true` | The "due in N days" chips along the top. |
+| `show_buttons` | `true` | The whole **Quick add** row. |
+| `parameters` | all | Restrict which tiles render, e.g. `[ph, chlorine, temp]`. |
+| `quick_add` | all shown | Hide individual quick-add buttons: `{ log_treatment: false }` drops the Log treatment button, and a maintenance task's own key drops its button. |
+
+<div align="center">
+
+<img src="docs/screenshots/hass-card-editor.png" alt="the homepool card's visual editor" width="330">
+
+</div>
 
 > If the card doesn't appear after installing/updating, hard-refresh your browser — the resource is cache-busted per release, but browsers occasionally hold onto a stale copy. As a manual fallback, add the resource yourself: Settings → Dashboards → ⋮ → Resources → Add Resource → URL `/homepool/homepool-card.js`, type JavaScript Module.
 
@@ -233,7 +274,7 @@ A reading you've mapped gets a sensor even if homepool has never recorded that p
 
 **Optional: write the readings back to homepool.** The same screen has a *"Write these readings back to homepool"* toggle (off by default). Turn it on and Home Assistant logs your mapped readings as real homepool measurements, so they show up in the web app's history and feed its dosing advice. It's deliberately restrained: it checks once per interval (default 60 minutes, configurable), records **one** measurement carrying all mapped readings, and only when at least one of them actually changed since the last write — so a stable pool doesn't accumulate an identical row every hour. Readings are rounded to the precision homepool records, which also filters out probe noise. Read-only shared pools simply log a warning instead of writing.
 
-#### 7. The `homepool.log_measurement` and `homepool.log_maintenance` services
+#### 7. The `homepool.log_measurement`, `log_treatment` and `log_maintenance` services
 
 For measurements (pH, chlorine, etc.), call the `homepool.log_measurement` service from a script, automation, or a dashboard button's `tap_action: perform-action`:
 
@@ -251,6 +292,17 @@ name: Log measurement
 icon: mdi:flask-outline
 ```
 
+For something you added to the water, `homepool.log_treatment` records the product and how much. `treatment` is the product key — one of the keys on your installation's `sensor.<installation>_treatments` entity. `unit` is optional and defaults to the product's own unit, and `brand` is free text for the product you actually bought:
+
+```yaml
+action: homepool.log_treatment
+data:
+  installation_id: 1
+  treatment: ph_increaser
+  qty: "250"
+  brand: HTH Super
+```
+
 For maintenance, `homepool.log_maintenance` marks a task done. `task` is the task key — the `task_key` attribute published by that task's "days until due" sensor and its "log" button:
 
 ```yaml
@@ -261,7 +313,7 @@ data:
   notes: Backwashed until the sight glass ran clear
 ```
 
-**Forgot to log it on the day?** Both services take an optional `date` (`YYYY-MM-DD`) that records the entry against a past day instead of today — the same thing the date field on the web app's entry form does:
+**Forgot to log it on the day?** All three services take an optional `date` (`YYYY-MM-DD`) that records the entry against a past day instead of today — the same thing the date field on the web app's entry form does:
 
 ```yaml
 action: homepool.log_maintenance

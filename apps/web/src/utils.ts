@@ -100,13 +100,35 @@ export function isOnDemandTask(task: { interval_days: number }): boolean {
   return task.interval_days <= 0
 }
 
-/** Raw action_type of the built-in "add product" task — the one maintenance
- * entry that also carries a product and a quantity, so it is logged through the
- * entry form rather than a bare "mark done". */
+/** The raw action_type every treatment is stored under. It predates the
+ * treatment catalog (it used to be the "Add product" maintenance task), and
+ * keeping the string means every treatment ever logged stays classified as one.
+ * Mirrors TREATMENT_ACTION_TYPE in apps/api/water_params.py. */
 export const PRODUCT_ACTION_TYPE = 'Add product'
 
-export function isProductTask(task: { action_types: string[] }): boolean {
-  return (task.action_types ?? []).includes(PRODUCT_ACTION_TYPE)
+/** Units a treatment amount can be recorded in. Metric first (the app's
+ * default), then imperial, then the count-based ones for tablets and dosing
+ * caps. Older entries may carry units no longer offered (e.g. "pastille") —
+ * those still display, they just aren't choices any more. */
+export const TREATMENT_UNITS = [
+  'g', 'kg', 'ml', 'L', 'oz', 'lb', 'fl oz', 'gal', 'tablet', 'cap', 'scoop',
+]
+
+/** Localized label for a treatment product: built-ins the user never renamed
+ * translate through their builtin_key, everything else shows what's stored.
+ * Mirrors maintenanceTaskLabel. */
+export function treatmentProductLabel(
+  product: { builtin_key: string | null; label: string },
+  t: (key: TranslationKey) => string,
+): string {
+  if (product.builtin_key) {
+    const key = `treatment_${product.builtin_key}` as TranslationKey
+    const translated = t(key)
+    // t() returns the raw key when a translation is missing — fall back to the
+    // stored label rather than surfacing the key.
+    if (translated && translated !== key) return translated
+  }
+  return product.label
 }
 
 // ── Measurement-parsing regexes ─────────────────────────────────────────────

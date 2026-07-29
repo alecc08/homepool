@@ -120,6 +120,51 @@ def test_create_measurement_forwards_date_and_drops_empty_fields() -> None:
     )
 
 
+def _capture_get() -> tuple[HomepoolClient, MagicMock]:
+    """A client whose _get is captured instead of hitting the network."""
+    client = HomepoolClient(MagicMock(), "https://example.test", "key")
+    get = AsyncMock(return_value=[])
+    client._get = get
+    return client, get
+
+
+def test_get_treatments_scopes_to_the_installation() -> None:
+    client, get = _capture_get()
+    asyncio.run(client.get_treatments(3))
+    assert get.await_args.args == ("/v1/treatments",)
+    assert get.await_args.kwargs == {"params": {"installation_id": 3}}
+
+
+def test_create_treatment_forwards_the_key_and_fields() -> None:
+    client, post = _capture_post()
+    asyncio.run(client.create_treatment(
+        3, "ph_increaser", qty="250", unit="g", brand="HTH Super", date="2026-07-24"
+    ))
+    assert post.await_args.args == (
+        "/v1/treatments",
+        {
+            "installation_id": 3,
+            "treatment": "ph_increaser",
+            "qty": "250",
+            "unit": "g",
+            "brand": "HTH Super",
+            "date": "2026-07-24",
+        },
+    )
+
+
+def test_create_treatment_drops_empty_fields_so_the_server_defaults_apply() -> None:
+    """Omitting unit must leave it out of the payload entirely, so the server
+    falls back to the product's own default rather than storing an empty one."""
+    client, post = _capture_post()
+    asyncio.run(client.create_treatment(3, "algaecide", qty="60", unit=None, notes=None))
+    assert post.await_args.args[1] == {
+        "installation_id": 3,
+        "treatment": "algaecide",
+        "qty": "60",
+    }
+
+
 def test_candidate_urls_bare_host_port_fans_out_scheme_and_path() -> None:
     assert build_candidate_base_urls("192.168.1.5:8090") == [
         "https://192.168.1.5:8090",

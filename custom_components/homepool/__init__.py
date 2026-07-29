@@ -51,6 +51,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 SERVICE_LOG_MEASUREMENT = "log_measurement"
 SERVICE_LOG_MAINTENANCE = "log_maintenance"
+SERVICE_LOG_TREATMENT = "log_treatment"
 
 # `date` is optional everywhere and means "this happened then, not now" — for
 # recording something you did days ago and forgot to log. Omitted means today.
@@ -78,6 +79,22 @@ SERVICE_LOG_MAINTENANCE_SCHEMA = vol.Schema(
     {
         vol.Required("installation_id"): cv.positive_int,
         vol.Required("task"): cv.string,
+        vol.Optional("date"): cv.date,
+        vol.Optional("notes"): cv.string,
+    }
+)
+
+# `treatment` is a product key from the installation's treatment catalog — the
+# same strings the Treatments sensor publishes, so an automation can name a
+# product without hardcoding a database id. `unit` is optional and defaults
+# server-side to the product's own unit.
+SERVICE_LOG_TREATMENT_SCHEMA = vol.Schema(
+    {
+        vol.Required("installation_id"): cv.positive_int,
+        vol.Required("treatment"): cv.string,
+        vol.Optional("qty"): vol.Coerce(str),
+        vol.Optional("unit"): cv.string,
+        vol.Optional("brand"): cv.string,
         vol.Optional("date"): cv.date,
         vol.Optional("notes"): cv.string,
     }
@@ -177,6 +194,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) -> 
             DOMAIN, SERVICE_LOG_MAINTENANCE, _async_log_maintenance, schema=SERVICE_LOG_MAINTENANCE_SCHEMA
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_LOG_TREATMENT):
+        async def _async_log_treatment(call: ServiceCall) -> None:
+            installation_id = call.data["installation_id"]
+            treatment_key = call.data["treatment"]
+            coordinator = _coordinator_for_installation(hass, installation_id)
+            catalog = coordinator.data[installation_id].get("treatments", [])
+            if not any(product["key"] == treatment_key for product in catalog):
+                known = sorted(product["key"] for product in catalog)
+                raise HomeAssistantError(
+                    f"Unknown Homepool treatment '{treatment_key}'. Known treatments: {', '.join(known) or 'none'}"
+                )
+            fields = {
+                k: v for k, v in call.data.items()
+                if k not in ("installation_id", "treatment")
+            }
+            # cv.date hands back a datetime.date; the API speaks ISO strings.
+            if "date" in fields:
+                fields["date"] = fields["date"].isoformat()
+            try:
+                await coordinator.client.create_treatment(
+                    installation_id, treatment_key, **fields
+                )
+            except HomepoolApiError as err:
+                raise HomeAssistantError(str(err)) from err
+            await coordinator.async_request_refresh()
+
+        hass.services.async_register(
+            DOMAIN, SERVICE_LOG_TREATMENT, _async_log_treatment, schema=SERVICE_LOG_TREATMENT_SCHEMA
+        )
+
     return True
 
 
@@ -194,4 +241,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomepoolConfigEntry) ->
         if not other_loaded:
             hass.services.async_remove(DOMAIN, SERVICE_LOG_MEASUREMENT)
             hass.services.async_remove(DOMAIN, SERVICE_LOG_MAINTENANCE)
+            hass.services.async_remove(DOMAIN, SERVICE_LOG_TREATMENT)
     return unloaded

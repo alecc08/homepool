@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { Action, Recommendation, RecommendationsResponse } from '../types'
+import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
 import { gramsToDisplay, mlToDisplay } from '../units'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TranslationKey } from '../i18n/translations'
+import type { TreatmentPrefill } from './ActionForm'
 import SimulatorModal from './SimulatorModal'
 
 const sectionCardStyle: React.CSSProperties = {
@@ -21,12 +22,31 @@ function formatValue(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
-export default function RecommendationsPage({ actions }: { actions: Action[] }) {
+/** The display converters spell two units differently from the treatment form's
+ * list (they're written for reading, not for a select). */
+function toTreatmentUnit(unit: string): string {
+  if (unit === 'mL') return 'ml'
+  if (unit === 'fl_oz') return 'fl oz'
+  return unit
+}
+
+type Props = {
+  actions: Action[]
+  /** Opens the entry form with this dose preselected as a treatment. Absent for
+   * viewers, who can read recommendations but not log anything. */
+  onLogTreatment?: (treatment: TreatmentPrefill) => void
+}
+
+export default function RecommendationsPage({ actions, onLogTreatment }: Props) {
   const { active } = useInstallation()
   const { t } = useT()
   const [data, setData] = useState<RecommendationsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSimulator, setShowSimulator] = useState(false)
+  // Which dosage products this installation actually stocks. A recommendation
+  // only offers to log itself when one of them matches — otherwise the form
+  // would open on an empty product picker.
+  const [dosageProducts, setDosageProducts] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!active) return
@@ -36,6 +56,22 @@ export default function RecommendationsPage({ actions }: { actions: Action[] }) 
       .then(setData)
       .finally(() => setLoading(false))
   }, [active?.id])
+
+  const canLog = !!onLogTreatment
+  useEffect(() => {
+    if (!active || !canLog) return
+    let cancelled = false
+    fetch(`/api/installations/${active.id}/treatments`, { credentials: 'same-origin' })
+      .then(r => (r.ok ? r.json() : []))
+      .then((products: TreatmentProduct[]) => {
+        if (cancelled || !Array.isArray(products)) return
+        setDosageProducts(new Set(
+          products.filter(p => p.enabled && p.dosage_product_id).map(p => p.dosage_product_id!)
+        ))
+      })
+      .catch(() => { /* no catalog, no log buttons — recommendations still read */ })
+    return () => { cancelled = true }
+  }, [active?.id, canLog])
 
   return (
     <div>
@@ -76,13 +112,22 @@ export default function RecommendationsPage({ actions }: { actions: Action[] }) 
       )}
 
       {!loading && data && data.recommendations.map(rec => (
-        <RecommendationCard key={rec.param} rec={rec} />
+        <RecommendationCard
+          key={rec.param}
+          rec={rec}
+          onLogTreatment={onLogTreatment}
+          dosageProducts={dosageProducts}
+        />
       ))}
     </div>
   )
 }
 
-function RecommendationCard({ rec }: { rec: Recommendation }) {
+function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
+  rec: Recommendation
+  onLogTreatment?: (treatment: TreatmentPrefill) => void
+  dosageProducts: Set<string>
+}) {
   const { t } = useT()
   const guidance = PARAM_GUIDANCE[rec.param]
   const directionLabel = rec.direction === 'raise' ? t('recommendations_raise') : t('recommendations_lower')
@@ -133,10 +178,52 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
             {opt.side_effect && (
               <SideEffectLine side={opt.side_effect} />
             )}
+            {onLogTreatment && opt.product_id && dosageProducts.has(opt.product_id) && (
+              <LogTreatmentButton
+                productId={opt.product_id}
+                grams={opt.amount_grams}
+                mL={opt.amount_ml}
+                onLogTreatment={onLogTreatment}
+              />
+            )}
           </div>
         ))}
       </div>
     </div>
+  )
+}
+
+/** Turns a dosing suggestion into a pre-filled treatment entry, so acting on
+ * the advice and recording that you did are one step. Guidance-only options
+ * (dilution, "follow the label") carry no amount — the form still opens with
+ * the product picked, ready for whatever you actually poured in. */
+function LogTreatmentButton({ productId, grams, mL, onLogTreatment }: {
+  productId: string
+  grams: number | null
+  mL: number | null
+  onLogTreatment: (treatment: TreatmentPrefill) => void
+}) {
+  const { t } = useT()
+  const { active } = useInstallation()
+  const volumeUnit = active?.volume_unit
+
+  const display = grams !== null
+    ? gramsToDisplay(grams, volumeUnit)
+    : mL !== null ? mlToDisplay(mL, volumeUnit) : null
+
+  return (
+    <button
+      type="button"
+      className="btn-ghost"
+      style={{ alignSelf: 'flex-start', marginTop: 4, fontSize: 11, padding: '4px 8px' }}
+      onClick={() => onLogTreatment({
+        dosage_product_id: productId,
+        qty: display ? String(display.value) : undefined,
+        unit: display ? toTreatmentUnit(display.unit) : undefined,
+      })}
+    >
+      {t('recommendations_log_treatment')}
+    </button>
   )
 }
 
