@@ -85,7 +85,29 @@ export const STRIP_OK_RANGES = {
 }
 
 /** Action types that carry water-quality measurements. */
-const MEASURE_ACTION_TYPES = ['pH Measurement', 'Measurement']
+export const MEASURE_ACTION_TYPES = ['pH Measurement', 'Measurement']
+
+/** True when completing a maintenance task means logging a water measurement.
+ * Those are logged from the measurement half of the entry form (which carries
+ * the values), never as a bare maintenance entry — see issue #51. */
+export function isMeasurementTask(task: { action_types: string[] }): boolean {
+  return (task.action_types ?? []).some(a => MEASURE_ACTION_TYPES.includes(a))
+}
+
+/** A task with no schedule (interval_days = 0): loggable on demand, never due.
+ * Mirrors ON_DEMAND_INTERVAL in apps/api/water_params.py. */
+export function isOnDemandTask(task: { interval_days: number }): boolean {
+  return task.interval_days <= 0
+}
+
+/** Raw action_type of the built-in "add product" task — the one maintenance
+ * entry that also carries a product and a quantity, so it is logged through the
+ * entry form rather than a bare "mark done". */
+export const PRODUCT_ACTION_TYPE = 'Add product'
+
+export function isProductTask(task: { action_types: string[] }): boolean {
+  return (task.action_types ?? []).includes(PRODUCT_ACTION_TYPE)
+}
 
 // ── Measurement-parsing regexes ─────────────────────────────────────────────
 // Single source of truth for parsing the `key: value` measurement fields that
@@ -391,22 +413,6 @@ export function getDaysSince(dateStr: string): number {
   return Math.floor((todayUtc - dateUtc) / (1000 * 60 * 60 * 24))
 }
 
-/**
- * Treatment counts for a given year-month string (YYYY-MM).
- * maintenance = Cartridge cleaning / skimmer filter / pH calibration
- * additions   = Add product
- */
-export function getTreatmentsThisMonth(
-  actions: Action[],
-  yearMonth: string,
-): { total: number; maintenance: number; additions: number } {
-  const MAINTENANCE_TYPES = ['Cartridge cleaning', 'Skimmer filter cleaning', 'pH calibration']
-  const monthActions = actions.filter(a => a.date.startsWith(yearMonth))
-  const maintenance = monthActions.filter(a => MAINTENANCE_TYPES.includes(a.action_type)).length
-  const additions = monthActions.filter(a => a.action_type === 'Add product').length
-  return { total: monthActions.length, maintenance, additions }
-}
-
 // Show a maintenance task on the dashboard's attention panel when it is
 // never-done, overdue, or coming due within this many days.
 const MAINTENANCE_WARN_WITHIN_DAYS = 5
@@ -429,8 +435,10 @@ export function maintenanceTaskLabel(
 
 /**
  * Maps configured maintenance tasks (with derived due status from the API) to
- * dashboard attention-panel items, keeping only enabled tasks that are
- * never-done, overdue, or due within the warn window.
+ * dashboard attention-panel items, keeping only enabled, scheduled tasks that
+ * are never-done, overdue, or due within the warn window. On-demand tasks
+ * (interval_days = 0, e.g. adding a product) are never "late", so they never
+ * appear here.
  */
 export function maintenanceTodoItems(
   tasks: MaintenanceTask[],
@@ -438,7 +446,7 @@ export function maintenanceTodoItems(
 ): TodoItem[] {
   const items: TodoItem[] = []
   for (const task of tasks) {
-    if (!task.enabled) continue
+    if (!task.enabled || isOnDemandTask(task)) continue
     const days = task.days_until_due
     if (days !== null && days > MAINTENANCE_WARN_WITHIN_DAYS) continue
     const neverDone = days === null
@@ -457,6 +465,32 @@ export function maintenanceTodoItems(
     })
   }
   return items
+}
+
+/** One choice in the entry form's maintenance picker. */
+export type MaintenanceOption = { action_type: string; label: string }
+
+/**
+ * The maintenance entries an installation offers: its enabled tasks, minus the
+ * ones completed by taking a measurement (logged from the measurement half of
+ * the form instead). Each option logs the task's primary action_type — the same
+ * string "mark done" writes — so history classification and due tracking stay
+ * consistent. Duplicate action types (two tasks sharing one) collapse.
+ */
+export function maintenanceOptions(
+  tasks: MaintenanceTask[],
+  t: (key: TranslationKey) => string,
+): MaintenanceOption[] {
+  const seen = new Set<string>()
+  const options: MaintenanceOption[] = []
+  for (const task of tasks) {
+    if (!task.enabled || isMeasurementTask(task)) continue
+    const action_type = task.action_types?.[0] ?? task.label
+    if (!action_type || seen.has(action_type)) continue
+    seen.add(action_type)
+    options.push({ action_type, label: maintenanceTaskLabel(task, t) })
+  }
+  return options
 }
 
 /**

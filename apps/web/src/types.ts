@@ -80,7 +80,11 @@ export type Installation = {
 /** A configurable maintenance task with its derived due status, as returned by
  * GET /installations/{id}/maintenance. `key` is stable across renames
  * (builtin_key or custom_<id>); built-in tasks localize via builtin_key and
- * fall back to `label`. days_until_due / last_date are null when never logged. */
+ * fall back to `label`. days_until_due / last_date are null when never logged.
+ *
+ * The enabled tasks are also the maintenance entries the entry form offers —
+ * there is no separate action-type taxonomy (issue #51). interval_days = 0 means
+ * "on demand": loggable, but never due (days_until_due stays null). */
 export type MaintenanceTask = {
   id: number
   key: string

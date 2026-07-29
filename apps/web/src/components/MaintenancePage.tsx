@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FlaskConical, Wrench, Droplets, Check, CheckCircle2 } from 'lucide-react'
+import { FlaskConical, Wrench, Droplets, Check, CheckCircle2, SlidersHorizontal, Beaker } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MaintenanceTask } from '../types'
 import type { TranslationKey } from '../i18n/translations'
-import { maintenanceTaskLabel } from '../utils'
+import {
+  maintenanceTaskLabel,
+  isMeasurementTask,
+  isOnDemandTask,
+  isProductTask,
+  PRODUCT_ACTION_TYPE,
+} from '../utils'
+import type { EntryKind } from './ActionForm'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import MaintenanceConfig from './MaintenanceConfig'
@@ -26,11 +33,17 @@ const TASK_ICON: Record<string, LucideIcon> = {
   ph_measurement: FlaskConical,
   filter_maintenance: Wrench,
   water_change: Droplets,
+  ph_calibration: SlidersHorizontal,
+  purge: Droplets,
+  product_addition: Beaker,
 }
 
 type StatusTone = 'ok' | 'warn' | 'danger' | 'neutral'
 
 function statusFor(task: MaintenanceTask, t: Translate): { label: string; tone: StatusTone } {
+  // On-demand tasks (interval 0) are loggable but never scheduled, so they never
+  // read as "never done" / overdue.
+  if (isOnDemandTask(task)) return { label: t('maint_on_demand'), tone: 'neutral' }
   const days = task.days_until_due
   if (days === null) return { label: t('maint_never_done'), tone: 'neutral' }
   if (days < 0) return { label: `${t('maint_overdue')} · ${Math.abs(days)} ${t('todo_day_abbr')}`, tone: 'danger' }
@@ -50,9 +63,13 @@ type Props = {
   /** Called after a task is marked done so the rest of the app (history,
    * dashboard) can refresh its action list. */
   onActionLogged?: () => void
+  /** Opens the entry form. Tasks whose completion carries data — a measurement,
+   * or a product and a quantity — hand off to the form instead of logging an
+   * empty row, so there is exactly one way to record them (issue #51). */
+  onLogEntry?: (kind: EntryKind, actionType?: string) => void
 }
 
-export default function MaintenancePage({ onActionLogged }: Props) {
+export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
   const { active, isOwner, canEdit } = useInstallation()
   const { t } = useT()
   const [tasks, setTasks] = useState<MaintenanceTask[]>([])
@@ -77,6 +94,14 @@ export default function MaintenancePage({ onActionLogged }: Props) {
 
   const markDone = async (task: MaintenanceTask) => {
     if (!active) return
+    if (onLogEntry && isMeasurementTask(task)) {
+      onLogEntry('measurement')
+      return
+    }
+    if (onLogEntry && isProductTask(task)) {
+      onLogEntry('maintenance', PRODUCT_ACTION_TYPE)
+      return
+    }
     setBusyId(task.id)
     try {
       const res = await fetch(
@@ -148,6 +173,9 @@ export default function MaintenancePage({ onActionLogged }: Props) {
         const status = statusFor(task, t)
         const tone = TONE_COLORS[status.tone]
         const flashing = flashId === task.id
+        // These carry data (values, or a product and a quantity), so completing
+        // them opens the entry form rather than logging an empty row.
+        const opensEntryForm = !!onLogEntry && (isMeasurementTask(task) || isProductTask(task))
         return (
           <div key={task.id} style={sectionCardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -164,7 +192,9 @@ export default function MaintenancePage({ onActionLogged }: Props) {
                   {maintenanceTaskLabel(task, t)}
                 </div>
                 <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {t('maint_every')} {task.interval_days} {t('todo_day_abbr')}
+                  {isOnDemandTask(task)
+                    ? t('maint_on_demand')
+                    : `${t('maint_every')} ${task.interval_days} ${t('todo_day_abbr')}`}
                   {task.last_date && (
                     <> · {t('maint_last_done')} {task.last_date.split('-').reverse().join('/')}</>
                   )}
@@ -196,7 +226,7 @@ export default function MaintenancePage({ onActionLogged }: Props) {
                 ) : (
                   <>
                     <Check size={14} strokeWidth={2} aria-hidden="true" />
-                    {t('maint_mark_done')}
+                    {opensEntryForm ? t('maint_log_entry') : t('maint_mark_done')}
                   </>
                 )}
               </Button>

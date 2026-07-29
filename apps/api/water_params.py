@@ -15,67 +15,77 @@ from models import Action, Installation, MaintenanceTask
 
 MEASURE_ACTION_TYPES = {"pH Measurement", "Measurement"}
 
-# Mirrors ActionForm.tsx:43-45's raw action-type strings (also duplicated as
-# utils.ts's getTodoItems filterTypes).
-FILTER_MAINTENANCE_TYPES = {"Cartridge cleaning", "Skimmer filter cleaning", "Backwash"}
-
-# Maintenance action types writable via /v1/maintenance. Excludes "Measurement"
-# (own endpoint, /v1/measurements) and "Add product" (needs a product_id lookup
-# that isn't meaningful for an external caller like Home Assistant).
-MAINTENANCE_ACTION_TYPES = FILTER_MAINTENANCE_TYPES | {"pH calibration", "Purge", "Water change"}
+# `interval_days` sentinel for a task that is logged on demand rather than on a
+# schedule (e.g. adding a product): it is offered when logging a maintenance
+# entry, its last completion is still tracked, but it never becomes "due" and
+# never nags from the dashboard.
+ON_DEMAND_INTERVAL = 0
 
 # Built-in maintenance-task defaults, keyed by installation type. Each installation
-# is seeded with these on creation (see main.py); users can then enable/disable
-# them, change intervals, or add custom tasks. `builtin_key` lets clients localize
-# the task name (falling back to `label`). action_types[0] is what "mark done"
-# logs; the full list is what counts as completing the task (reusing the existing
-# action-type strings so history classification stays consistent).
+# is seeded with these on creation, and any built-in key it is missing is added on
+# boot (see main.py); users can then enable/disable them, change intervals, or add
+# custom tasks. `builtin_key` lets clients localize the task name (falling back to
+# `label`). action_types[0] is what "mark done"/"log maintenance" writes; the full
+# list is what counts as completing the task (reusing the existing action-type
+# strings so history classification and old rows stay consistent).
+#
+# Since issue #51 these tasks are the *only* taxonomy of loggable actions: the web
+# app's entry form offers "measurement" or "maintenance", and the maintenance
+# choices are exactly the installation's enabled tasks. Every action type the old
+# hardcoded picker offered therefore has a built-in task here.
+_PH_MEASUREMENT = {
+    "builtin_key": "ph_measurement",
+    "label": "pH measurement",
+    "action_types": ["Measurement", "pH Measurement"],
+    "icon": "mdi:test-tube",
+}
+_FILTER_MAINTENANCE = {
+    "builtin_key": "filter_maintenance",
+    "label": "Filter maintenance",
+    "action_types": ["Cartridge cleaning", "Skimmer filter cleaning", "Backwash"],
+    "icon": "mdi:air-filter",
+}
+_WATER_CHANGE = {
+    "builtin_key": "water_change",
+    "label": "Water change",
+    "action_types": ["Water change"],
+    "icon": "mdi:water-sync",
+}
+_PH_CALIBRATION = {
+    "builtin_key": "ph_calibration",
+    "label": "pH calibration",
+    "action_types": ["pH calibration"],
+    "icon": "mdi:tune-vertical",
+}
+_PURGE = {
+    "builtin_key": "purge",
+    "label": "Purge",
+    "action_types": ["Purge"],
+    "icon": "mdi:pipe-valve",
+}
+# On demand: logging a product addition is never something you're "late" for.
+_PRODUCT_ADDITION = {
+    "builtin_key": "product_addition",
+    "label": "Add product",
+    "action_types": ["Add product"],
+    "icon": "mdi:beaker-plus",
+}
+
 DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
     "pool": [
-        {
-            "builtin_key": "ph_measurement",
-            "label": "pH measurement",
-            "action_types": ["Measurement", "pH Measurement"],
-            "interval_days": 7,
-            "icon": "mdi:test-tube",
-        },
-        {
-            "builtin_key": "filter_maintenance",
-            "label": "Filter maintenance",
-            "action_types": ["Cartridge cleaning", "Skimmer filter cleaning", "Backwash"],
-            "interval_days": 14,
-            "icon": "mdi:air-filter",
-        },
-        {
-            "builtin_key": "water_change",
-            "label": "Water change",
-            "action_types": ["Water change"],
-            "interval_days": 90,
-            "icon": "mdi:water-sync",
-        },
+        {**_PH_MEASUREMENT, "interval_days": 7},
+        {**_FILTER_MAINTENANCE, "interval_days": 14},
+        {**_WATER_CHANGE, "interval_days": 90},
+        {**_PH_CALIBRATION, "interval_days": 90},
+        {**_PRODUCT_ADDITION, "interval_days": ON_DEMAND_INTERVAL},
     ],
     "spa": [
-        {
-            "builtin_key": "ph_measurement",
-            "label": "pH measurement",
-            "action_types": ["Measurement", "pH Measurement"],
-            "interval_days": 3,
-            "icon": "mdi:test-tube",
-        },
-        {
-            "builtin_key": "filter_maintenance",
-            "label": "Filter maintenance",
-            "action_types": ["Cartridge cleaning", "Skimmer filter cleaning", "Backwash"],
-            "interval_days": 7,
-            "icon": "mdi:air-filter",
-        },
-        {
-            "builtin_key": "water_change",
-            "label": "Water change",
-            "action_types": ["Water change"],
-            "interval_days": 30,
-            "icon": "mdi:water-sync",
-        },
+        {**_PH_MEASUREMENT, "interval_days": 3},
+        {**_FILTER_MAINTENANCE, "interval_days": 7},
+        {**_WATER_CHANGE, "interval_days": 30},
+        {**_PURGE, "interval_days": 90},
+        {**_PH_CALIBRATION, "interval_days": 90},
+        {**_PRODUCT_ADDITION, "interval_days": ON_DEMAND_INTERVAL},
     ],
 }
 
@@ -84,6 +94,12 @@ def default_maintenance_tasks(installation_type: str) -> List[Dict]:
     """Default task specs to seed a new installation of the given type with.
     Falls back to the pool set for unknown types."""
     return [dict(spec) for spec in DEFAULT_MAINTENANCE_TASKS.get(installation_type, DEFAULT_MAINTENANCE_TASKS["pool"])]
+
+
+def is_measurement_task(action_types: Optional[List[str]]) -> bool:
+    """True when completing this task means logging a water measurement — those
+    are logged through the measurement form/endpoint, not the maintenance one."""
+    return bool(set(action_types or []) & MEASURE_ACTION_TYPES)
 
 # Maps parsed-field name to the label ActionForm.tsx's toPayload writes into
 # Action.notes for that field (see toPayload in ActionForm.tsx:892-905). "ph"
@@ -314,15 +330,16 @@ def compute_task_status(tasks: List[MaintenanceTask], actions: List[Action]) -> 
     whose action_type is one of the task's action_types and derives
     days_until_due (interval_days minus days since that action; negative once
     overdue). days_until_due and last_date are both None when the task has never
-    been logged for this installation (no baseline to count from). Returns tasks
-    in (sort_order, id) order."""
+    been logged for this installation (no baseline to count from), and
+    days_until_due is always None for on-demand tasks (interval_days <= 0), which
+    are loggable but never scheduled. Returns tasks in (sort_order, id) order."""
     today = date_type.today()
     ordered = sorted(tasks, key=lambda t: (t.sort_order, t.id or 0))
     result: List[Dict] = []
     for task in ordered:
         matching = [a for a in actions if a.action_type in (task.action_types or [])]
         last_date = _last_matching_date(matching)
-        if last_date is None:
+        if last_date is None or task.interval_days <= ON_DEMAND_INTERVAL:
             days_until_due = None
         else:
             days_until_due = task.interval_days - (today - last_date).days

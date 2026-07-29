@@ -39,7 +39,8 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 
 - **Water status board** — mono-value param tiles with status dot, ideal range, and per-parameter trend sparkline
 - **Home Assistant integration** — sensors, maintenance-logging buttons, and a custom Lovelace card, installable via HACS. Already own a smart probe? Point any reading at your own HA entity, and optionally have its readings logged back into homepool
-- **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness
+- **One way to log** — an entry is either a **measurement** or a **maintenance** entry, and the maintenance choices are exactly the tasks you configured and enabled (no separate action/extra taxonomy to learn)
+- **AquaChek test strip input** — interactive color chart for pH, Alkalinity, Bromine, Chlorine and Hardness (manual entry is the default; the app remembers whichever you used last)
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
 - **Pool sharing** — give another account read-only or read-and-log access to one of your pools, for a partner, a housemate or the person who looks after it while you're away
@@ -163,13 +164,13 @@ Each installation gets a device with the following entities:
 | `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
-| `button.<installation>_log_cartridge_cleaning`, `_log_skimmer_filter_cleaning`, `_log_backwash`, `_log_ph_calibration`, `_log_purge`, `_log_water_change` | Press to log that maintenance action against homepool immediately, no app needed. |
+| `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled (including your own custom ones). Press to log it against homepool immediately, no app needed. |
 
 ![Home Assistant sensors](docs/screenshots/ha-sensors.png)
 
 #### 5. The homepool card
 
-A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus the six maintenance buttons and a "Log measurement" button that opens a popup form for logging a full measurement. The form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes.
+A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and a "Log measurement" button that opens a popup form for logging a full measurement. The form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes.
 
 Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
 

@@ -91,7 +91,14 @@ class MaintenanceTask(SQLModel, table=True):
     means logging an Action whose action_type is one of this task's
     action_types; "due" is derived (interval_days minus days since the last such
     action) and never stored. Built-in tasks carry a builtin_key so clients can
-    localize their name; custom tasks (builtin_key=None) use `label` verbatim."""
+    localize their name; custom tasks (builtin_key=None) use `label` verbatim.
+
+    Since issue #51 these tasks are also the only taxonomy of loggable actions:
+    "add entry" offers a measurement or a maintenance entry, and the maintenance
+    choices are exactly the installation's enabled tasks.
+
+    interval_days=0 means "on demand" — the task can be logged and its last
+    completion is tracked, but it never becomes due (e.g. "Add product")."""
     id: Optional[int] = Field(default=None, primary_key=True)
     installation_id: int = Field(foreign_key="installation.id", index=True)
     builtin_key: Optional[str] = Field(default=None)  # e.g. "ph_measurement"; None = custom

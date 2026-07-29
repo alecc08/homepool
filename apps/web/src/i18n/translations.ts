@@ -73,7 +73,6 @@ export const translations = {
     graph_no_ph_measurement: 'Aucune mesure pH enregistrée.',
 
     // Indicateur piscine
-    water_clear: 'Eau claire',
     water_cloudy: 'Eau trouble',
     water_green: 'Eau verte',
 
@@ -132,9 +131,13 @@ export const translations = {
     modal_delete_irreversible: 'Cette action est irréversible.',
     modal_delete_on: 'du',
     modal_date: 'Date',
-    modal_actions: 'Actions',
-    modal_add_action: '+ Ajouter une action',
-    modal_quick_status: 'Statut rapide',
+    modal_entry_type: 'Type d’entrée',
+    modal_kind_measurement: 'Mesure',
+    modal_kind_maintenance: 'Entretien',
+    modal_maintenance_type: 'Tâche d’entretien',
+    modal_maintenance_placeholder: 'Choisir une tâche…',
+    modal_select_maintenance: 'Choisissez une tâche d’entretien.',
+    modal_no_maintenance_tasks: 'Aucune tâche d’entretien active. Activez-en dans Entretien › Configurer.',
     modal_notes: 'Notes',
     modal_notes_placeholder: 'Ex: eau claire, niveau OK',
     modal_cancel: 'Annuler',
@@ -325,7 +328,6 @@ export const translations = {
     modal_ideal_prefix: 'Idéal :',
     modal_product_placeholder: 'Produit…',
     modal_qty_placeholder: 'Qté',
-    modal_delete_action_aria: 'Supprimer cette action',
     modal_install_name_placeholder: 'Ma piscine, Spa du jardin…',
     modal_install_create_error: "Erreur lors de la création de l'installation",
 
@@ -346,19 +348,6 @@ export const translations = {
     product_algaecide: 'Anti-algue',
     product_chlorine_shock: 'Chlore-choc',
     product_bromine_shock: 'Brome-choc',
-
-    // Statut rapide — tags
-    tag_level_ok: 'Niveau OK',
-    tag_skimmer_clean: 'Skimmer propre',
-    tag_basket_emptied: 'Panier vidé',
-    tag_robot_run: 'Robot passé',
-    tag_backwash_done: 'Backwash fait',
-    tag_vacuumed: 'Aspirateur passé',
-    tag_skimmed: 'Épuisette passée',
-    tag_filters_clean: 'Filtres propres',
-    tag_cover_replaced: 'Couvercle remis',
-    tag_drain_done: 'Purge faite',
-    tag_shell_cleaned: 'Nettoyage coque',
 
     // Historique — badges de type
     history_treatment_badge: 'Traitement',
@@ -408,9 +397,15 @@ export const translations = {
     maint_task_ph_measurement: 'Mesure du pH',
     maint_task_filter_maintenance: 'Entretien du filtre',
     maint_task_water_change: 'Changement d’eau',
+    maint_task_ph_calibration: 'Calibrage pH',
+    maint_task_purge: 'Purge',
+    maint_task_product_addition: 'Ajout de produit',
+    maint_on_demand: 'À la demande',
+    maint_log_entry: 'Enregistrer',
     // Configuration
     maint_config_title: 'Configurer l’entretien',
     maint_config_sub: 'Activez les tâches, ajustez leur fréquence ou ajoutez des tâches personnalisées.',
+    maint_config_interval_hint: 'Les tâches actives sont aussi les entretiens proposés à la saisie. Fréquence 0 = à la demande (jamais en retard).',
     maint_interval_label: 'Fréquence (jours)',
     maint_enabled_label: 'Active',
     maint_delete: 'Supprimer',
@@ -594,7 +589,6 @@ export const translations = {
     graph_no_ph_measurement: 'No pH measurement recorded.',
 
     // Indicateur piscine
-    water_clear: 'Clear water',
     water_cloudy: 'Cloudy water',
     water_green: 'Green water',
 
@@ -653,9 +647,13 @@ export const translations = {
     modal_delete_irreversible: 'This action cannot be undone.',
     modal_delete_on: 'on',
     modal_date: 'Date',
-    modal_actions: 'Actions',
-    modal_add_action: '+ Add action',
-    modal_quick_status: 'Quick status',
+    modal_entry_type: 'Entry type',
+    modal_kind_measurement: 'Measurement',
+    modal_kind_maintenance: 'Maintenance',
+    modal_maintenance_type: 'Maintenance task',
+    modal_maintenance_placeholder: 'Choose a task…',
+    modal_select_maintenance: 'Choose a maintenance task.',
+    modal_no_maintenance_tasks: 'No maintenance task is enabled. Enable one from Maintenance › Configure.',
     modal_notes: 'Notes',
     modal_notes_placeholder: 'E.g. clear water, level OK',
     modal_cancel: 'Cancel',
@@ -846,7 +844,6 @@ export const translations = {
     modal_ideal_prefix: 'Ideal:',
     modal_product_placeholder: 'Product…',
     modal_qty_placeholder: 'Qty',
-    modal_delete_action_aria: 'Remove this action',
     modal_install_name_placeholder: 'My pool, Backyard spa…',
     modal_install_create_error: 'Error creating installation',
 
@@ -867,19 +864,6 @@ export const translations = {
     product_algaecide: 'Algaecide',
     product_chlorine_shock: 'Shock chlorine',
     product_bromine_shock: 'Shock bromine',
-
-    // Statut rapide — tags
-    tag_level_ok: 'Level OK',
-    tag_skimmer_clean: 'Skimmer clean',
-    tag_basket_emptied: 'Basket emptied',
-    tag_robot_run: 'Robot run',
-    tag_backwash_done: 'Backwash done',
-    tag_vacuumed: 'Vacuumed',
-    tag_skimmed: 'Skimmed',
-    tag_filters_clean: 'Filters clean',
-    tag_cover_replaced: 'Cover replaced',
-    tag_drain_done: 'Drain done',
-    tag_shell_cleaned: 'Shell cleaned',
 
     // Historique — badges de type
     history_treatment_badge: 'Treatment',
@@ -929,9 +913,15 @@ export const translations = {
     maint_task_ph_measurement: 'pH measurement',
     maint_task_filter_maintenance: 'Filter maintenance',
     maint_task_water_change: 'Water change',
+    maint_task_ph_calibration: 'pH calibration',
+    maint_task_purge: 'Drain',
+    maint_task_product_addition: 'Add product',
+    maint_on_demand: 'On demand',
+    maint_log_entry: 'Log',
     // Configuration
     maint_config_title: 'Configure maintenance',
     maint_config_sub: 'Enable tasks, adjust how often they recur, or add custom tasks.',
+    maint_config_interval_hint: 'Enabled tasks are also the maintenance entries offered when logging. An interval of 0 means on demand (never due).',
     maint_interval_label: 'Every (days)',
     maint_enabled_label: 'Active',
     maint_delete: 'Delete',

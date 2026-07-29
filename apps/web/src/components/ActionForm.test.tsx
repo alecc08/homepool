@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ActionForm from './ActionForm'
-import type { Action, Installation } from '../types'
+import type { Action, Installation, MaintenanceTask } from '../types'
 import { translations } from '../i18n/translations'
 import { PARAM_RANGES, type DynamicRanges } from '../utils'
 import { convertRange, celsiusToFahrenheit } from '../units'
@@ -63,14 +63,47 @@ function makeMesureAction(overrides: Partial<Action> = {}): Action {
   }
 }
 
+// The form loads the installation's maintenance tasks to build its maintenance
+// choices; the default here covers the built-ins a pool is seeded with.
+const maintenanceTasks: MaintenanceTask[] = [
+  {
+    id: 1, key: 'ph_measurement', builtin_key: 'ph_measurement', label: 'pH measurement',
+    icon: 'mdi:test-tube', action_types: ['Measurement', 'pH Measurement'],
+    interval_days: 7, enabled: true, sort_order: 0, days_until_due: 3, last_date: '2026-07-25',
+  },
+  {
+    id: 2, key: 'filter_maintenance', builtin_key: 'filter_maintenance', label: 'Filter maintenance',
+    icon: 'mdi:air-filter', action_types: ['Cartridge cleaning', 'Skimmer filter cleaning', 'Backwash'],
+    interval_days: 14, enabled: true, sort_order: 1, days_until_due: 5, last_date: '2026-07-20',
+  },
+  {
+    id: 3, key: 'product_addition', builtin_key: 'product_addition', label: 'Add product',
+    icon: 'mdi:beaker-plus', action_types: ['Add product'],
+    interval_days: 0, enabled: true, sort_order: 2, days_until_due: null, last_date: null,
+  },
+]
+
+function mockMaintenanceFetch(tasks: MaintenanceTask[] = maintenanceTasks) {
+  return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+    ok: true,
+    json: async () => tasks,
+  } as Response)
+}
+
 beforeEach(() => {
   mockUseInstallation.mockReset()
   localStorage.clear()
-  localStorage.setItem('homepool_measure_mode', 'device')
+  // Left pending by default: the measurement half never needs the task list, and
+  // an unresolved fetch keeps those renders free of unrelated state updates.
+  vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}))
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('ActionForm', () => {
-  it('calls onAdd with structured payload when submitted', () => {
+  it('calls onAdd with a single structured measurement payload when submitted', () => {
     setActiveInstallation(makeInstallation())
     const onAdd = vi.fn()
     render(<ActionForm onAdd={onAdd} products={products} />)
@@ -80,12 +113,11 @@ describe('ActionForm', () => {
 
     expect(onAdd).toHaveBeenCalledTimes(1)
     expect(onAdd).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action_type: expect.any(String),
-          date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        }),
-      ])
+      expect.objectContaining({
+        action_type: 'Measurement',
+        qty: '7.4',
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      })
     )
   })
 
@@ -243,6 +275,113 @@ describe('ActionForm', () => {
 
       const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement
       expect(notes.value).toBe('Clear water. Level OK')
+    })
+  })
+  // ── Entry kinds: a measurement, or one of the configured maintenance tasks
+  // (issue #51 — no separate action/extra/quick-status taxonomy).
+
+  describe('entry kind', () => {
+    it('opens on the measurement half in manual entry by default', () => {
+      setActiveInstallation(makeInstallation())
+      render(<ActionForm onAdd={vi.fn()} products={products} />)
+
+      // Manual entry fields, not the AquaChek swatch panel.
+      expect(screen.getByPlaceholderText('7.2')).toBeInTheDocument()
+      expect(screen.queryByText(translations.fr.modal_compare)).not.toBeInTheDocument()
+    })
+
+    it('remembers the AquaChek strip choice across renders', () => {
+      setActiveInstallation(makeInstallation())
+      const { unmount } = render(<ActionForm onAdd={vi.fn()} products={products} />)
+
+      fireEvent.click(screen.getByText(translations.fr.modal_strip))
+      expect(localStorage.getItem('homepool_measure_mode')).toBe('strip')
+      unmount()
+
+      render(<ActionForm onAdd={vi.fn()} products={products} />)
+      expect(screen.getByText(translations.fr.modal_compare)).toBeInTheDocument()
+    })
+
+    it('no longer offers quick-status checkboxes', () => {
+      setActiveInstallation(makeInstallation())
+      render(<ActionForm onAdd={vi.fn()} products={products} />)
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Notes')).toBeInTheDocument()
+    })
+
+    it('rejects a measurement with no value at all', () => {
+      setActiveInstallation(makeInstallation())
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} products={products} />)
+
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(screen.getByText(translations.fr.modal_at_least_one)).toBeInTheDocument()
+    })
+
+    it('logs a maintenance entry with the task action type', async () => {
+      setActiveInstallation(makeInstallation())
+      mockMaintenanceFetch()
+      const onAdd = vi.fn()
+      render(
+        <ActionForm
+          onAdd={onAdd}
+          products={products}
+          initialKind="maintenance"
+          initialActionType="Cartridge cleaning"
+        />
+      )
+
+      await waitFor(() =>
+        expect(fetch).toHaveBeenCalledWith('/api/installations/1/maintenance', expect.any(Object))
+      )
+      // The picker is built from the installation's own tasks.
+      expect(screen.getByLabelText(translations.fr.modal_maintenance_type)).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Rincé' } })
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ action_type: 'Cartridge cleaning', notes: 'Rincé', product_id: null })
+      )
+    })
+
+    it('refuses a maintenance entry with no task chosen', async () => {
+      setActiveInstallation(makeInstallation())
+      mockMaintenanceFetch()
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} products={products} initialKind="maintenance" />)
+
+      await waitFor(() =>
+        expect(screen.getByText(translations.fr.modal_maintenance_placeholder)).toBeInTheDocument()
+      )
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(screen.getByText(translations.fr.modal_select_maintenance)).toBeInTheDocument()
+    })
+
+    it('tells the user when no maintenance task is enabled', async () => {
+      setActiveInstallation(makeInstallation())
+      mockMaintenanceFetch([])
+      render(<ActionForm onAdd={vi.fn()} products={products} initialKind="maintenance" />)
+
+      await waitFor(() =>
+        expect(screen.getByText(translations.fr.modal_no_maintenance_tasks)).toBeInTheDocument()
+      )
+    })
+
+    it('keeps an edited maintenance entry on the maintenance half, with no kind switcher', () => {
+      setActiveInstallation(makeInstallation())
+      const onEdit = vi.fn()
+      const editAction = makeMesureAction({ action_type: 'Backwash', qty: '', notes: 'Fait' })
+      render(<ActionForm products={products} editAction={editAction} onEdit={onEdit} />)
+
+      expect(screen.queryByText(translations.fr.modal_entry_type)).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText('Enregistrer les modifications'))
+
+      expect(onEdit).toHaveBeenCalledWith(1, expect.objectContaining({ action_type: 'Backwash', notes: 'Fait' }))
     })
   })
 })
