@@ -199,14 +199,16 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
 
   const rows = draft.filter(row => !row.deleted)
 
+  // Same wrapping rule as the treatment rows: the task name keeps a readable
+  // floor and the interval/delete group drops below it when the dialog is narrow.
   const rowStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 10,
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10,
     padding: '10px 0', borderBottom: '1px solid var(--border)',
   }
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
             {t('maint_config_title')}
@@ -250,41 +252,45 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                     value={row.label}
                     onChange={e => patchRow(row.id, { label: e.target.value })}
                     aria-label={t('maint_task_name')}
-                    style={{ flex: 1, minWidth: 0, opacity: row.enabled ? 1 : 0.5 }}
+                    style={{ flex: '1 1 150px', minWidth: 150, opacity: row.enabled ? 1 : 0.5 }}
                   />
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={String(row.interval_days)}
-                      onChange={e => patchRow(row.id, { interval_days: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                      aria-label={t('maint_interval_label')}
-                      style={{ width: 64, opacity: row.enabled ? 1 : 0.5 }}
-                    />
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--text-muted)' }}>
-                      {t('todo_day_abbr')}
-                    </span>
-                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={String(row.interval_days)}
+                        onChange={e => patchRow(row.id, { interval_days: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                        aria-label={t('maint_interval_label')}
+                        // Wide enough for a three-digit interval (a yearly task
+                        // is 365) without the last digit crowding the border.
+                        style={{ width: 72, opacity: row.enabled ? 1 : 0.5 }}
+                      />
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--text-muted)' }}>
+                        {t('todo_day_abbr')}
+                      </span>
+                    </div>
 
-                  <button
-                    type="button"
-                    onClick={() => patchRow(row.id, { deleted: true })}
-                    aria-label={t('maint_delete')}
-                    title={t('maint_delete')}
-                    style={{
-                      flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-                      background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => patchRow(row.id, { deleted: true })}
+                      aria-label={t('maint_delete')}
+                      title={t('maint_delete')}
+                      style={{
+                        flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
+                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               ))}
 
               {/* Add a task */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 12 }}>
                 <IconPicker
                   value={newIcon}
                   onChange={setNewIcon}
@@ -296,20 +302,22 @@ export default function MaintenanceConfig({ installationId, open, onClose, onSav
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
                   placeholder={t('maint_task_name_placeholder')}
                   aria-label={t('maint_task_name')}
-                  style={{ flex: 1, minWidth: 0 }}
+                  style={{ flex: '1 1 150px', minWidth: 150 }}
                 />
-                <Input
-                  type="number"
-                  min={0}
-                  value={newInterval}
-                  onChange={e => setNewInterval(e.target.value)}
-                  aria-label={t('maint_interval_label')}
-                  style={{ width: 64 }}
-                />
-                <Button type="button" variant="outline" size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
-                  <Plus size={14} strokeWidth={2} aria-hidden="true" />
-                  {t('maint_add')}
-                </Button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={newInterval}
+                    onChange={e => setNewInterval(e.target.value)}
+                    aria-label={t('maint_interval_label')}
+                    style={{ width: 72 }}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
+                    <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                    {t('maint_add')}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

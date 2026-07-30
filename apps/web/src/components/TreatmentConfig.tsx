@@ -204,10 +204,27 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
 
   const rows = draft.filter(row => !row.deleted)
 
+  // The name is the thing you read the row by, so it gets a floor it can't be
+  // squeezed below: on a narrow dialog (a phone) the unit/parameter/delete group
+  // drops to a second line rather than shaving the name down to a few letters.
   const rowStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 8,
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8,
     padding: '10px 0', borderBottom: '1px solid var(--border)',
   }
+
+  const nameStyle = (enabled: boolean): React.CSSProperties => ({
+    flex: '1 1 150px', minWidth: 150, opacity: enabled ? 1 : 0.5,
+  })
+
+  const trailingStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0,
+  }
+
+  // Floors, not fixed widths: they line the rows up into something close to
+  // columns while still letting a long value ("Stabilizer (CYA)") widen its own
+  // trigger rather than be clipped in it.
+  const unitTriggerStyle: React.CSSProperties = { minWidth: 72 }
+  const paramTriggerStyle: React.CSSProperties = { minWidth: 144 }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -247,54 +264,56 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
                 value={row.label}
                 onChange={e => patchRow(row.id, { label: e.target.value })}
                 aria-label={t('treat_product_name')}
-                style={{ flex: 1, minWidth: 0, opacity: row.enabled ? 1 : 0.5 }}
+                style={nameStyle(row.enabled)}
               />
 
-              <Select
-                value={row.default_unit}
-                onValueChange={v => patchRow(row.id, { default_unit: v })}
-              >
-                <SelectTrigger aria-label={t('treat_unit_label')} className="w-auto px-2 gap-1 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TREATMENT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div style={trailingStyle}>
+                <Select
+                  value={row.default_unit}
+                  onValueChange={v => patchRow(row.id, { default_unit: v })}
+                >
+                  <SelectTrigger aria-label={t('treat_unit_label')} className="w-auto px-2 gap-1 shrink-0" style={unitTriggerStyle}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TREATMENT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
 
-              <Select
-                value={row.param ?? NO_PARAM}
-                onValueChange={v => patchRow(row.id, { param: v === NO_PARAM ? null : v })}
-              >
-                <SelectTrigger aria-label={t('treat_param_label')} className="w-auto px-2 gap-1 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PARAM}>{t('treat_param_none')}</SelectItem>
-                  {PARAM_CHOICES.map(p => (
-                    <SelectItem key={p.value} value={p.value}>{t(p.labelKey)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Select
+                  value={row.param ?? NO_PARAM}
+                  onValueChange={v => patchRow(row.id, { param: v === NO_PARAM ? null : v })}
+                >
+                  <SelectTrigger aria-label={t('treat_param_label')} className="w-auto px-2 gap-1 shrink-0" style={paramTriggerStyle}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PARAM}>{t('treat_param_none')}</SelectItem>
+                    {PARAM_CHOICES.map(p => (
+                      <SelectItem key={p.value} value={p.value}>{t(p.labelKey)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-              <button
-                type="button"
-                onClick={() => patchRow(row.id, { deleted: true })}
-                aria-label={t('treat_delete')}
-                title={t('treat_delete')}
-                style={{
-                  flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-                  background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => patchRow(row.id, { deleted: true })}
+                  aria-label={t('treat_delete')}
+                  title={t('treat_delete')}
+                  style={{
+                    flexShrink: 0, width: 28, height: 28, borderRadius: 'var(--radius-sm)',
+                    background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           ))}
 
           {/* Add a product */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 12 }}>
             <IconPicker
               value={newIcon}
               onChange={setNewIcon}
@@ -306,20 +325,22 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
               placeholder={t('treat_product_name_placeholder')}
               aria-label={t('treat_product_name')}
-              style={{ flex: 1, minWidth: 0 }}
+              style={nameStyle(true)}
             />
-            <Select value={newUnit} onValueChange={setNewUnit}>
-              <SelectTrigger aria-label={t('treat_unit_label')} className="w-auto px-2 gap-1 shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TREATMENT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button type="button" variant="outline" size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
-              <Plus size={14} strokeWidth={2} aria-hidden="true" />
-              {t('treat_add')}
-            </Button>
+            <div style={trailingStyle}>
+              <Select value={newUnit} onValueChange={setNewUnit}>
+                <SelectTrigger aria-label={t('treat_unit_label')} className="w-auto px-2 gap-1 shrink-0" style={unitTriggerStyle}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TREATMENT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
+                <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                {t('treat_add')}
+              </Button>
+            </div>
           </div>
         </div>
       )}
