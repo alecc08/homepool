@@ -1,8 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "schedule": ["before 6am on monday"],
+  "timezone": "America/Toronto",
+  "schedule": ["after 11pm and before 6am on monday and thursday"],
   "minimumReleaseAge": "3 days",
+  "semanticCommits": "enabled",
+  "platformAutomerge": true,
   "description": "tools/ holds manual developer utilities (the screenshot pipeline) that ship with no release. Bumping their deps would still drag a release:* label onto the PR and version the whole product, so they are left alone.",
   "ignorePaths": ["tools/**"],
   "packageRules": [
@@ -10,6 +13,11 @@
       "description": "Non-breaking updates auto-merge once CI passes; major bumps always wait for manual review.",
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true
+    },
+    {
+      "description": "Group all patch-level bumps into one PR.",
+      "matchUpdateTypes": ["patch"],
+      "groupName": "patch updates"
     },
     {
       "description": "Every PR needs a release:* label before it can merge (see require-release-label.yml) — map Renovate's own semver classification onto ours.",

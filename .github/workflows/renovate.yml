@@ -1,0 +1,26 @@
+name: Renovate
+
+on:
+  schedule:
+    # Mon/Thu 23:00 America/Toronto — cron is UTC, DST shifts the offset twice a year,
+    # so both candidate UTC times are listed; renovate.json's own timezone-aware
+    # "schedule" restriction (see renovate.json) makes whichever one is currently
+    # wrong a harmless no-op instead of an early/late run.
+    - cron: '0 3 * * 2,5'  # 23:00 EDT (UTC-4)
+    - cron: '0 4 * * 2,5'  # 23:00 EST (UTC-5)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v46.1.21
+        with:
+          token: ${{ secrets.RELEASE_PR_TOKEN }}
