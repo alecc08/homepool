@@ -20,17 +20,9 @@
       "groupName": "patch updates"
     },
     {
-      "description": "Every PR needs a release:* label before it can merge (see require-release-label.yml) — map Renovate's own semver classification onto ours.",
-      "matchUpdateTypes": ["patch", "digest", "pin"],
+      "description": "Every PR needs a release:* label before it can merge (see require-release-label.yml). A dependency's own semver bump doesn't reflect a change to homepool itself, so every Renovate PR is versioned as a patch regardless of update type.",
+      "matchUpdateTypes": ["patch", "minor", "major", "digest", "pin"],
       "addLabels": ["release:patch"]
-    },
-    {
-      "matchUpdateTypes": ["minor"],
-      "addLabels": ["release:minor"]
-    },
-    {
-      "matchUpdateTypes": ["major"],
-      "addLabels": ["release:major"]
     }
   ]
 }
