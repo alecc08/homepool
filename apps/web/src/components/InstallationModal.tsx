@@ -205,7 +205,10 @@ export default function InstallationModal({ open, onClose, installation }: Props
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent className={isEdit ? 'sm:max-w-md' : 'sm:max-w-sm'}>
+      {/* Editing is the wide case: the Treatments and Water Chemistry tabs are
+          rows of controls (name + unit + parameter, four range fields) that get
+          squeezed to unreadable in a narrow dialog. Creating is one short form. */}
+      <DialogContent className={isEdit ? 'sm:max-w-2xl' : 'sm:max-w-sm'}>
         <DialogHeader>
           <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
             {isEdit ? t('modal_install_title_edit') : t('modal_install_title')}

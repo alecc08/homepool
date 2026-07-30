@@ -241,7 +241,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
 
       {/* Dialog — new entry */}
       <Dialog open={entryForm !== null} onOpenChange={open => { if (!open) setEntryForm(null) }}>
-        <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
+        <DialogContent className="sm:max-w-lg" onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
               {t('modal_title')}
@@ -261,7 +261,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
 
       {/* Dialog — edit */}
       <Dialog open={!!editingAction} onOpenChange={open => { if (!open) setEditingAction(null) }}>
-        <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
+        <DialogContent className="sm:max-w-lg" onOpenAutoFocus={e => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
               {t('modal_edit')}
