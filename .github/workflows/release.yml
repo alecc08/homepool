@@ -5,49 +5,59 @@ name: Release
 # version field in manifest.json, apps/web/package.json, apps/web/package-lock.json,
 # or apps/api/VERSION.
 #
-# Flow: adding a release:major/minor/patch label to an open PR (Renovate
-# applies its own via renovate.json; a separate required check blocks merging
-# anything without one) computes the next version — always relative to the
-# base branch's current manifest.json, never relative to whatever's already
-# on the PR branch, so relabeling recomputes cleanly instead of stacking
-# bumps — and pushes a bump commit onto the PR's own branch. That push uses
-# RELEASE_PR_TOKEN (a fine-grained PAT), not the default GITHUB_TOKEN — GitHub
-# does not trigger other workflows (like ci.yml) for commits pushed with the
-# default token, so without a real token the bump commit's checks would never
-# run and the required-checks branch protection on main would block the merge
-# forever. Once CI is green on that commit, the PR merges normally like
-# anything else; on merge, the "release" job just tags whatever version is
-# now in manifest.json and publishes the release — no recomputation needed,
-# it was already bumped pre-merge.
+# Flow: version bumps happen AFTER a PR merges, not before. Bumping on the PR
+# branch (the old approach) meant every open PR with a release label carried
+# its own edit to manifest.json/package.json/etc, computed relative to
+# whatever main looked like at label time — so the moment one PR merged, every
+# other open PR's bump commit was now stale and conflicted on the same lines.
+# Bumping only after merge, directly on main, means at most one bump is ever
+# in flight per PR and PRs never touch these files themselves.
+#
+# On merge: read the release:* label straight off the merge event (Renovate
+# applies its own via renovate.json; require-release-label.yml blocks merging
+# anything without one), compute the next version relative to main's current
+# manifest.json, and push the bump commit straight to main using
+# RELEASE_PR_TOKEN (a fine-grained PAT) — not the default GITHUB_TOKEN, so the
+# commit still triggers ci.yml for visibility. If two PRs merge close
+# together, the push can race against a main that moved underneath it; that's
+# handled by re-fetching and recomputing on each retry rather than assuming
+# main is still where it was at checkout. Once the bump commit is on main, the
+# same job tags it and publishes the release — no separate merge-time job
+# needed since there's nothing left to gate.
 
 on:
   pull_request:
-    types: [labeled, closed]
+    types: [closed]
     branches: [main, 'release/**']
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
-  bump:
-    name: Bump version on release label
-    if: github.event.action == 'labeled' && startsWith(github.event.label.name, 'release:')
+  release:
+    name: Bump version and publish release
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    # Serialize post-merge bumps per target branch — merges that land close together
+    # queue up here instead of racing to push the bump commit. The retry loop below
+    # is still kept as a defense-in-depth for anything that slips through (e.g. a
+    # concurrent push to the branch from outside this workflow).
+    concurrency:
+      group: release-bump-${{ github.event.pull_request.base.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.base.ref }}
           token: ${{ secrets.RELEASE_PR_TOKEN }}
 
       - name: Determine release level
         id: level
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
         run: |
-          labels=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
+          labels=$(echo "$LABELS_JSON" | jq -r '.[].name')
           level="none"
           if echo "$labels" | grep -qx "release:major"; then
             level="major"
@@ -58,64 +68,54 @@ jobs:
           fi
           echo "level=$level" >> "$GITHUB_OUTPUT"
 
-      - name: Compute next version
+      - name: Bump version on ${{ github.event.pull_request.base.ref }}
         if: steps.level.outputs.level != 'none'
-        id: version
+        id: bump
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          LEVEL: ${{ steps.level.outputs.level }}
         run: |
-          git fetch origin "${{ github.event.pull_request.base.ref }}" --tags
-          base_version=$(git show "origin/${{ github.event.pull_request.base.ref }}:custom_components/homepool/manifest.json" | jq -r .version)
-          IFS='.' read -r major minor patch <<< "$base_version"
-          case "${{ steps.level.outputs.level }}" in
-            major) major=$((major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((minor + 1)); patch=0 ;;
-            patch) patch=$((patch + 1)) ;;
-          esac
-          next_version="${major}.${minor}.${patch}"
-          next_tag="v${next_version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          current_version=$(jq -r '.version' custom_components/homepool/manifest.json)
-          if [ "$current_version" = "$next_version" ]; then
-            echo "already_bumped=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "already_bumped=false" >> "$GITHUB_OUTPUT"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "$BASE_REF" --tags
+            git reset --hard "origin/$BASE_REF"
 
-          if git ls-remote --tags --exit-code origin "refs/tags/${next_tag}" >/dev/null 2>&1; then
-            echo "::error::Tag ${next_tag} already exists on origin — refusing to overwrite it. Check for a version mismatch between manifest.json (currently ${base_version} on ${{ github.event.pull_request.base.ref }}) and existing tags." >&2
-            exit 1
-          fi
+            base_version=$(jq -r '.version' custom_components/homepool/manifest.json)
+            IFS='.' read -r major minor patch <<< "$base_version"
+            case "$LEVEL" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+            esac
+            next_version="${major}.${minor}.${patch}"
+            next_tag="v${next_version}"
 
-          echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
-          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+            if git ls-remote --tags --exit-code origin "refs/tags/${next_tag}" >/dev/null 2>&1; then
+              echo "::error::Tag ${next_tag} already exists on origin — refusing to overwrite it. Check for a version mismatch between manifest.json (currently ${base_version} on ${BASE_REF}) and existing tags." >&2
+              exit 1
+            fi
 
-      - name: Bump version across all components
-        if: steps.level.outputs.level != 'none' && steps.version.outputs.already_bumped == 'false'
-        run: |
-          next_version="${{ steps.version.outputs.next_version }}"
+            # HA integration manifest — the source of truth "base_version" reads from.
+            jq --arg v "$next_version" '.version = $v' \
+              custom_components/homepool/manifest.json > tmp.json
+            mv tmp.json custom_components/homepool/manifest.json
 
-          # HA integration manifest — the source of truth "Compute next version" reads from.
-          jq --arg v "$next_version" '.version = $v' \
-            custom_components/homepool/manifest.json > tmp.json
-          mv tmp.json custom_components/homepool/manifest.json
+            # Web app — metadata only, nothing reads this at runtime yet, kept in sync anyway.
+            jq --arg v "$next_version" '.version = $v' \
+              apps/web/package.json > tmp.json
+            mv tmp.json apps/web/package.json
+            jq --arg v "$next_version" '.packages[""].version = $v' \
+              apps/web/package-lock.json > tmp.json
+            mv tmp.json apps/web/package-lock.json
 
-          # Web app — metadata only, nothing reads this at runtime yet, kept in sync anyway.
-          jq --arg v "$next_version" '.version = $v' \
-            apps/web/package.json > tmp.json
-          mv tmp.json apps/web/package.json
-          jq --arg v "$next_version" '.packages[""].version = $v' \
-            apps/web/package-lock.json > tmp.json
-          mv tmp.json apps/web/package-lock.json
+            # API backend — no packaging metadata of its own, so a plain VERSION file
+            # (read by apps/api/main.py) is its version source.
+            echo "$next_version" > apps/api/VERSION
 
-          # API backend — no packaging metadata of its own, so a plain VERSION file
-          # (read by apps/api/main.py) is its version source.
-          echo "$next_version" > apps/api/VERSION
-
-      - name: Update changelog
-        if: steps.level.outputs.level != 'none' && steps.version.outputs.already_bumped == 'false'
-        run: |
-          today=$(date -u +%Y-%m-%d)
-          version="${{ steps.version.outputs.next_version }}"
-          python3 - "$version" "$today" <<'EOF'
+            today=$(date -u +%Y-%m-%d)
+            python3 - "$next_version" "$today" <<'EOF'
           import sys
 
           version, today = sys.argv[1], sys.argv[2]
@@ -125,71 +125,35 @@ jobs:
 
           heading = "## [Unreleased]"
           new_heading = f"## [{version}] - {today}"
-          if new_heading in content:
-              sys.exit(0)
-
-          idx = content.index(heading)
-          insert_at = idx + len(heading)
-          content = content[:insert_at] + f"\n\n{new_heading}" + content[insert_at:]
-
-          with open(path, "w") as f:
-              f.write(content)
+          if new_heading not in content:
+              idx = content.index(heading)
+              insert_at = idx + len(heading)
+              content = content[:insert_at] + f"\n\n{new_heading}" + content[insert_at:]
+              with open(path, "w") as f:
+                  f.write(content)
           EOF
 
-      - name: Commit and push bump
-        if: steps.level.outputs.level != 'none' && steps.version.outputs.already_bumped == 'false'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/homepool/manifest.json CHANGELOG.md \
-            apps/web/package.json apps/web/package-lock.json apps/api/VERSION
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
-            exit 0
-          fi
-          git commit -m "chore: release ${{ steps.version.outputs.next_tag }}"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git add custom_components/homepool/manifest.json CHANGELOG.md \
+              apps/web/package.json apps/web/package-lock.json apps/api/VERSION
+            git commit -m "chore: release ${next_tag}"
 
-  release:
-    name: Tag and publish release
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.base.ref }}
+            if git push origin "HEAD:$BASE_REF"; then
+              echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
+              echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
 
-      - name: Determine release level
-        id: level
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          labels=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
-          if echo "$labels" | grep -qx "release:no-release"; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+            echo "Push to $BASE_REF raced with another merge (attempt $attempt) — retrying against the latest tip."
+          done
 
-      - name: Skip release
-        if: steps.level.outputs.skip == 'true'
-        run: echo "release:no-release label set — skipping release."
+          echo "::error::Failed to push the version bump after multiple attempts — $BASE_REF kept moving underneath us." >&2
+          exit 1
 
       - name: Tag and publish release
-        if: steps.level.outputs.skip == 'false'
+        if: steps.bump.outputs.next_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version=$(jq -r '.version' custom_components/homepool/manifest.json)
-          next_tag="v${version}"
-
-          if git ls-remote --tags --exit-code origin "refs/tags/${next_tag}" >/dev/null 2>&1; then
-            echo "::error::Tag ${next_tag} already exists on origin — was a release:major/minor/patch label added before this PR merged, so the bump job could run?" >&2
-            exit 1
-          fi
-
-          git tag "$next_tag"
-          git push origin "$next_tag"
-          gh release create "$next_tag" --generate-notes
+          git tag "${{ steps.bump.outputs.next_tag }}"
+          git push origin "${{ steps.bump.outputs.next_tag }}"
+          gh release create "${{ steps.bump.outputs.next_tag }}" --generate-notes
