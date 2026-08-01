@@ -1,0 +1,20 @@
+# Build from source instead of pulling the published images.
+#
+# Use this for development, or if you would rather compile the code yourself
+# than trust a prebuilt artifact:
+#
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+#
+# `build` and `image` together mean the locally built result is tagged with the
+# same name compose.yaml refers to, so the two files stay consistent.
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      target: production
