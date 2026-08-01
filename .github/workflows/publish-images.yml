@@ -22,6 +22,10 @@ on:
       tag:
         description: 'Existing git tag to build and publish (e.g. v1.12.0)'
         required: true
+      mark_latest:
+        description: 'Also move the `latest` tag to this build'
+        type: boolean
+        default: false
 
 # Least privilege: read the source, write the package, and mint an OIDC token
 # for the provenance attestation. Nothing else.
@@ -75,8 +79,9 @@ jobs:
       # metadata-action generates the OCI annotations (source, revision, created)
       # rather than a hand-written labels block that silently rots.
       #
-      # `latest` moves only on a real tag push. A workflow_dispatch run exists to
-      # backfill an older release, and must never drag `latest` backwards.
+      # `latest` moves on a real tag push, or when a dispatch explicitly asks for
+      # it. A dispatch normally exists to backfill an older release and must not
+      # drag `latest` backwards, so it is opt-in rather than automatic.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v6
@@ -84,7 +89,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}
           tags: |
             type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' || inputs.mark_latest }}
 
       - name: Build and push
         id: build
