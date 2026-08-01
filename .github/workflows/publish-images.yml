@@ -1,0 +1,79 @@
+name: Publish images
+
+# Builds and pushes the web and API images to GHCR so deployments can pull a
+# pinned tag instead of building from source.
+#
+# Why this exists: the homelab (alecc08/homelab-config) used to keep a checkout
+# of this repo on the container host and run `docker compose build` there. That
+# rebuilt an npm/Vite bundle on an N100, grew a builder cache big enough to fill
+# the disk, and produced `homepool-web:latest` — the only unpinned image in that
+# repo, and the one thing Renovate could not manage. Publishing here moves the
+# build to CI and makes homepool an ordinary pinned dependency.
+#
+# Trigger is the version tag, not the merge, so an image exists for exactly the
+# commits that were released. release.yml pushes that tag with RELEASE_PR_TOKEN
+# (a PAT) rather than GITHUB_TOKEN, which is what allows this workflow to fire
+# at all — tags pushed with GITHUB_TOKEN do not trigger workflows.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to build and publish (e.g. v1.12.0)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: web
+            context: apps/web
+            target: production
+          - app: api
+            context: apps/api
+            target: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          ref="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # No `latest`. Consumers pin an exact version and let Renovate move it —
+      # a floating tag is how you end up not knowing what is running.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
