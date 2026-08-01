@@ -23,9 +23,9 @@ services:
 
   # ── API FastAPI ──────────────────────────────────────────────────────────────
   api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+    # Prebuilt and published by CI. To compile it yourself instead, add the
+    # build override: -f compose.yaml -f compose.build.yaml
+    image: ghcr.io/alecc08/homepool-api:${HOMEPOOL_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -51,11 +51,7 @@ services:
 
   # ── Frontend React + Nginx ───────────────────────────────────────────────────
   web:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-      target: production
-    image: homepool-web:latest
+    image: ghcr.io/alecc08/homepool-web:${HOMEPOOL_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8090}:80"

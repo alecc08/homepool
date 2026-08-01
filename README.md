@@ -106,6 +106,10 @@ and access list.
 
 **Requirements**: Docker and Docker Compose installed on your machine.
 
+homepool publishes prebuilt images to GitHub Container Registry, so you do not
+need to compile anything — `docker compose up -d` pulls the exact artifact CI
+built and tested.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/alecc08/homepool.git
@@ -115,11 +119,46 @@ cd homepool
 cp .env.example .env
 nano .env  # Set your passwords and secrets
 
-# 3. Start homepool
+# 3. Start homepool (pulls the published images)
 docker compose up -d
 
 # 4. Open in your browser
 open http://localhost:8090
+```
+
+#### Images
+
+| image | |
+|---|---|
+| `ghcr.io/alecc08/homepool-web` | frontend (React + Nginx) |
+| `ghcr.io/alecc08/homepool-api` | backend (FastAPI) |
+
+Both are built for `linux/amd64` and `linux/arm64`, so a Raspberry Pi works the
+same as an x86 server.
+
+By default compose uses `:latest`. **Pin a version instead** if you would rather
+decide when to upgrade — set `HOMEPOOL_TAG` in your `.env`:
+
+```bash
+HOMEPOOL_TAG=1.12.1
+```
+
+The web and API images always share a version number and are released together;
+do not mix tags between them.
+
+Every image carries a signed build provenance attestation, so you can verify
+where it came from before running it:
+
+```bash
+gh attestation verify oci://ghcr.io/alecc08/homepool-web:latest -R alecc08/homepool
+```
+
+#### Building from source instead
+
+Prefer to compile it yourself? Add the build override — no other changes needed:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
 The app is available at `http://localhost:8090`. Create your account on first login.
