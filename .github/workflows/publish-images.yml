@@ -23,14 +23,24 @@ on:
         description: 'Existing git tag to build and publish (e.g. v1.12.0)'
         required: true
 
+# Least privilege: read the source, write the package, and mint an OIDC token
+# for the provenance attestation. Nothing else.
 permissions:
   contents: read
   packages: write
+  attestations: write
+  id-token: write
+
+# Two pushes in quick succession should not race to publish the same tag.
+concurrency:
+  group: publish-images-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
     name: ${{ matrix.app }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -43,37 +53,60 @@ jobs:
             target: ''
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+          persist-credentials: false
 
       - name: Resolve version
         id: version
-        run: |
-          ref="${{ github.event.inputs.tag || github.ref_name }}"
-          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+        env:
+          REF: ${{ github.event.inputs.tag || github.ref_name }}
+        run: echo "version=${REF#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # No `latest`. Consumers pin an exact version and let Renovate move it —
+      # metadata-action generates the OCI annotations (source, revision, created,
+      # licenses) rather than hand-maintaining a labels block that silently rots.
+      # No `latest` tag: consumers pin an exact version and let Renovate move it —
       # a floating tag is how you end up not knowing what is running.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}
+          tags: type=raw,value=${{ steps.version.outputs.version }}
+
       - name: Build and push
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           target: ${{ matrix.target }}
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}:${{ steps.version.outputs.version }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          # Only what the homelab actually runs. Adding linux/arm64 would double
+          # every build for a host that will never pull it.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+      # Signed, verifiable statement of which workflow and commit produced this
+      # digest. Check it with:
+      #   gh attestation verify oci://ghcr.io/alecc08/homepool-web:<v> -R alecc08/homepool
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
