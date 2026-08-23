@@ -1,0 +1,154 @@
+blueprint:
+  name: Homepool Maintenance Due Notification
+  author: alecc08
+  homeassistant:
+    min_version: 2024.10.0
+  description: >
+    Notifies your phone when a homepool maintenance task is due (or
+    overdue), with an actionable button that logs it done right from the
+    notification — no need to open the app.
+
+    Checks once a day at the time you choose, and re-notifies every day a
+    task stays overdue until you mark it done (or ignore it via the button).
+
+    Select one or more of your homepool "Days Until ... Due" sensors below —
+    one automation instance covers all of them, each getting its own
+    notification and its own matching "Mark Done" button. Requires the
+    homepool Home Assistant integration and the official HA mobile app.
+  domain: automation
+  source_url: https://github.com/alecc08/homepool/blob/main/blueprints/automation/homepool_maintenance_due.yaml
+  input:
+    todo_sensors:
+      name: Maintenance Due Sensors
+      description: >
+        Your homepool "Days Until ... Due" sensors (Settings → Devices &
+        Services → homepool → your pool/spa device). Pick as many as you
+        want reminders for.
+      selector:
+        entity:
+          filter:
+          - integration: homepool
+            domain: sensor
+          multiple: true
+    notify_device:
+      name: Mobile Device
+      description: The device running the official Home Assistant app to notify.
+      selector:
+        device:
+          filter:
+          - integration: mobile_app
+          multiple: false
+    notify_time:
+      name: Check Time
+      description: What time of day to check for due/overdue tasks.
+      default: '09:00:00'
+      selector:
+        time: {}
+    days_before_due:
+      name: Notify This Many Days Before Due
+      description: >
+        0 only notifies once a task is actually due (or overdue). Raise this
+        for advance notice — e.g. 1 to be told the day before.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 30
+          mode: box
+    mark_done_label:
+      name: '"Mark Done" Button Text'
+      default: Mark Done
+      selector:
+        text: {}
+    base_url:
+      name: Base URL (Optional)
+      description: Your homepool web app's URL, used for the notification's tap action.
+      default: ''
+      selector:
+        text: {}
+trigger_variables:
+  threshold: !input days_before_due
+triggers:
+- trigger: time
+  at: !input notify_time
+  id: daily_check
+- trigger: event
+  event_type: mobile_app_notification_action
+  id: mark_done
+variables:
+  todo_sensors: !input todo_sensors
+  notify_device: !input notify_device
+  mark_done_label: !input mark_done_label
+  input_base_url: !input base_url
+  base_url: '{{ input_base_url.rstrip(''/'') if input_base_url else '''' }}'
+actions:
+- choose:
+  - alias: Daily due-task check
+    conditions:
+    - condition: trigger
+      id: daily_check
+    sequence:
+    - repeat:
+        for_each: '{{ todo_sensors }}'
+        sequence:
+        - variables:
+            todo_state: '{{ states[repeat.item] }}'
+            days: '{{ (todo_state.state if todo_state else none) | int(999) }}'
+        - if:
+          - '{{ todo_state is not none and days <= threshold }}'
+          then:
+          - variables:
+              task_key: '{{ todo_state.attributes.task_key }}'
+              label: '{{ todo_state.attributes.label | default(todo_state.name, true) }}'
+              dev_id: '{{ device_id(repeat.item) }}'
+              button_entity: >-
+                {% set candidates = device_entities(dev_id) | select('match', '^button\.') | list %}
+                {{ (candidates
+                    | expand
+                    | selectattr('attributes.task_key', 'defined')
+                    | selectattr('attributes.task_key', 'eq', task_key)
+                    | map(attribute='entity_id')
+                    | list
+                    | first) | default('', true) }}
+          - if:
+            - '{{ button_entity | length > 0 }}'
+            then:
+            - device_id: !input notify_device
+              domain: mobile_app
+              type: notify
+              title: '{{ label | title }} due'
+              message: >-
+                {{ label | title }} is {{ 'due today' if days == 0 else
+                (days | abs ~ ' day' ~ ('s' if days | abs != 1 else '') ~
+                ' overdue' if days < 0 else 'due in ' ~ days ~ ' day' ~
+                ('s' if days != 1 else '')) }}.
+              data:
+                tag: homepool-{{ task_key }}
+                group: homepool-maintenance
+                clickAction: '{{ base_url if base_url else "/lovelace" }}'
+                actions:
+                - action: HOMEPOOL_MARK_DONE::{{ button_entity }}::homepool-{{ task_key }}
+                  title: '{{ mark_done_label }}'
+  - alias: Mark done from notification
+    conditions:
+    - condition: trigger
+      id: mark_done
+    - condition: template
+      value_template: >-
+        {{ trigger.event.data.action is defined and
+        trigger.event.data.action.startswith('HOMEPOOL_MARK_DONE::') }}
+    sequence:
+    - variables:
+        action_parts: '{{ trigger.event.data.action.split(''::'') }}'
+        target_button: '{{ action_parts[1] }}'
+        notif_tag: '{{ action_parts[2] }}'
+    - action: button.press
+      target:
+        entity_id: '{{ target_button }}'
+    - device_id: !input notify_device
+      domain: mobile_app
+      type: notify
+      message: Logged.
+      data:
+        tag: '{{ notif_tag }}'
+mode: parallel

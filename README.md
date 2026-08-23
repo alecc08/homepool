@@ -362,6 +362,14 @@ data:
   date: "2026-07-24"
 ```
 
+#### 8. Get notified when maintenance is due
+
+The "days until due" sensors above are plain numbers so you can build any automation you want around them, but if you just want a push notification when something's due (or overdue) — with a button that logs it done right from the notification, no need to open the app — import the **[Homepool Maintenance Due Notification](blueprints/automation/homepool_maintenance_due.yaml)** blueprint:
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Falecc08%2Fhomepool%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fhomepool_maintenance_due.yaml)
+
+Pick your notification device and however many "Days Until ... Due" sensors you want covered (one blueprint instance handles all of them), and set what time of day to check. It re-notifies daily for as long as a task stays overdue, and stops as soon as you mark it done — either by tapping the notification's button or logging it any other way (the web app, the card, or the services above).
+
 ---
 
 ### ⚙️ Configuration
