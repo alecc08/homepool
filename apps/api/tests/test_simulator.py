@@ -38,9 +38,9 @@ def test_simulate_dosage_soda_ash_reports_ta_side_effect():
 def test_simulate_dosage_muriatic_reports_ta_side_effect():
     result = simulate_dosage("ph", current_value=8.2, target_value=7.4, volume_L=1000, sanitizer="chlorine")
     exact_option = next(o for o in result["options"] if o["exact"])
-    # delta -0.8 = 4 chunks of 0.2; -10 ppm TA/chunk => -40.0 ppm.
+    # delta -0.8 = 4 chunks of 0.2; -2.5 ppm TA/chunk => -10.0 ppm.
     assert exact_option["side_effect"] == {
-        "param": "tac", "delta": -40.0, "notes_key": "dosage_ph_lowers_ta_too",
+        "param": "tac", "delta": -10.0, "notes_key": "dosage_ph_lowers_ta_too",
     }
 
 

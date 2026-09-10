@@ -135,9 +135,14 @@ TREATMENT_TABLE: Dict[str, Dict] = {
         },
         "lower": {
             "options": [
+                # 31.45% (full-strength) muriatic acid. ~6.25 mL per 1,000 L per
+                # 0.2-pH step: the field rule is 8 fl oz per 10,000 US gal (37,854 L)
+                # per 0.2 pH = 237 mL / 37,854 L. An older constant of 25.0 here came
+                # from the equivalent ~25 mL per 1,000 US gal misread as liters,
+                # which overshot the dose ~4x (issue #74).
                 _exact_option(
-                    "muriatic_acid", "liquid", 25.0, 0.2, purity=0.3145,
-                    side_effect={"kind": "linear_ta", "delta_per_chunk": -10.0,
+                    "muriatic_acid", "liquid", 6.25, 0.2, purity=0.3145,
+                    side_effect={"kind": "linear_ta", "delta_per_chunk": -2.5,
                                  "notes_key": "dosage_ph_lowers_ta_too"},
                 ),
                 _inexact_option("dry_acid", "solid", notes_key="dosage_ph_lowers_ta_too"),
@@ -200,7 +205,8 @@ def _compute_side_effect(
     if kind == "linear_ta":
         # Stoichiometric, volume-independent: the TA shift scales with the same dose
         # multiplier the primary amount uses. soda ash: +5 ppm TA per 0.2-pH chunk;
-        # muriatic acid: -10 ppm TA per 0.2-pH chunk.
+        # muriatic acid: -2.5 ppm TA per 0.2-pH chunk (matches ~6.25 mL per 1,000 L
+        # per 0.2 pH at 31.45% -- the same source as the primary dose constant).
         multiplier = abs(delta) / dose_param_delta
         ta_shift = round(multiplier * spec["delta_per_chunk"], 1)
         return {"param": "tac", "delta": ta_shift, "notes_key": spec["notes_key"]}

@@ -69,15 +69,33 @@ def test_ph_lower_muriatic_acid_tagged_ta_side_effect():
     exact_option = next(o for o in ph_rec["options"] if o["exact"])
     assert exact_option["product_id"] == "muriatic_acid"
     assert exact_option["amount_ml"] is not None
-    # ph 8.2 -> target 7.4: delta -0.8 = 4 chunks of 0.2; -10 ppm TA/chunk => -40.0 ppm.
+    # ph 8.2 -> target 7.4: delta -0.8 = 4 chunks of 0.2; -2.5 ppm TA/chunk => -10.0 ppm.
     assert exact_option["side_effect"] == {
-        "param": "tac", "delta": -40.0, "notes_key": "dosage_ph_lowers_ta_too",
+        "param": "tac", "delta": -10.0, "notes_key": "dosage_ph_lowers_ta_too",
     }
     # dry acid is guidance-only but still carries the directional -TA note (no number).
     inexact_option = next(o for o in ph_rec["options"] if not o["exact"])
     assert inexact_option["notes_key"] == "dosage_ph_lowers_ta_too"
     assert inexact_option["amount_grams"] is None
     assert inexact_option["side_effect"] is None
+
+
+def test_ph_lower_muriatic_acid_dose_matches_field_rule():
+    # Issue #74: a 28,000 L pool at pH 7.8 toward 7.4. The field rule is 8 fl oz of
+    # 31.45% acid per 10,000 US gal per 0.2 pH; scaled to this pool (drop of 0.4)
+    # that is 350 mL. The old 25.0 constant overshot ~4x to 1,400 mL here, which is
+    # enough acid to wreck the pool's pH, so the amount itself is asserted.
+    installation = make_installation(sanitizer="chlorine", volume=28000, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(ph=7.8, chlorine=2.0, tac=100)
+    recs = compute_recommendations(current, ranges, installation)
+    ph_rec = next(r for r in recs if r["param"] == "ph")
+    exact_option = next(o for o in ph_rec["options"] if o["exact"])
+    assert exact_option["product_id"] == "muriatic_acid"
+    assert exact_option["amount_ml"] == 350.0
+    # 2x the field rule, sanity-checked against a real-world dose: the buggy 1,400 mL
+    # would have dropped this pH by ~1.3+ instead of the 0.4 we intend.
+    assert exact_option["amount_ml"] < 400.0
 
 
 def test_soda_ash_raise_reports_ta_side_effect():
@@ -146,7 +164,8 @@ def test_side_effect_present_without_volume():
     # No volume => no amount, but the stoichiometric TA side effect is still reported.
     assert exact_option["amount_ml"] is None
     assert exact_option["side_effect"]["param"] == "tac"
-    assert exact_option["side_effect"]["delta"] == -40.0
+    # ph 8.2 -> 7.4 = 4 chunks of 0.2 x -2.5 ppm TA/chunk.
+    assert exact_option["side_effect"]["delta"] == -10.0
 
 
 def test_no_side_effect_for_plain_products():
