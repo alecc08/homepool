@@ -112,7 +112,7 @@ jobs:
       #   gh attestation verify oci://ghcr.io/<owner>/homepool-web:<version> \
       #     -R <owner>/homepool
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/homepool-${{ matrix.app }}
           subject-digest: ${{ steps.build.outputs.digest }}
