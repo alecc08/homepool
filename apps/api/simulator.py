@@ -46,11 +46,14 @@ def simulate_dosage(
         )
 
     # The simulator only has the one param the user is adjusting. For a tac sim that value
-    # IS the current TA, so pass it through; otherwise leave TA/pH None and let
+    # IS the current TA, for a ph sim it IS the current pH; pass those through so the
+    # TA-dependent dose (PoolMath) gets a real reading. Otherwise leave TA/pH None and let
     # _compute_side_effect fall back to typical values (the caveat text covers the estimate).
     current_ta = current_value if param == "tac" else None
+    current_ph = current_value if param == "ph" else None
     options_out = _options_with_amounts(
-        direction_entry["options"], delta, volume_L, current_ta=current_ta, current_ph=None,
+        direction_entry["options"], delta, volume_L, current_ta=current_ta,
+        current_ph=current_ph,
     )
     return {
         "param": param,

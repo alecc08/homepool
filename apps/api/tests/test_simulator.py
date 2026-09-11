@@ -29,18 +29,20 @@ def test_simulate_dosage_lower_direction():
 def test_simulate_dosage_soda_ash_reports_ta_side_effect():
     result = simulate_dosage("ph", current_value=6.5, target_value=7.4, volume_L=1000, sanitizer="chlorine")
     option = next(o for o in result["options"] if o["product_id"] == "soda_ash")
-    # delta +0.9 = 4.5 chunks of 0.2; +5 ppm TA/chunk => +22.5 ppm.
+    # delta +0.9, TA falls back to the typical 100 ppm (a ph sim has no TA reading):
+    # the PoolMath-stoichiometric TA shift is +73.3 ppm.
     assert option["side_effect"] == {
-        "param": "tac", "delta": 22.5, "notes_key": "dosage_soda_ash_raises_ta_too",
+        "param": "tac", "delta": 73.3, "notes_key": "dosage_soda_ash_raises_ta_too",
     }
 
 
 def test_simulate_dosage_muriatic_reports_ta_side_effect():
     result = simulate_dosage("ph", current_value=8.2, target_value=7.4, volume_L=1000, sanitizer="chlorine")
     exact_option = next(o for o in result["options"] if o["exact"])
-    # delta -0.8 = 4 chunks of 0.2; -2.5 ppm TA/chunk => -10.0 ppm.
+    # delta -0.8, TA falls back to the typical 100 ppm (a ph sim has no TA reading):
+    # the PoolMath-stoichiometric TA shift is -8.0 ppm.
     assert exact_option["side_effect"] == {
-        "param": "tac", "delta": -10.0, "notes_key": "dosage_ph_lowers_ta_too",
+        "param": "tac", "delta": -8.0, "notes_key": "dosage_ph_lowers_ta_too",
     }
 
 
