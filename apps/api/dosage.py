@@ -6,11 +6,18 @@
 # add — and how much, when the installation's volume is known — to bring an
 # out-of-band parameter back toward its ideal midpoint. No DB access, so it's
 # trivially unit-testable in isolation from FastAPI/SQLModel.
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from models import Installation
 
 GAL_TO_L = 3.78541
+
+# PoolMath's unit model (troublefreepool.com/calc.html): 1 US gal = 3.78541 L,
+# 1 fl oz = 29.5735 mL, 1 oz (weight) = 28.3495 g.
+FL_OZ_ML = 29.5735
+OZ_WEIGHT_GRAMS = 28.3495
+# Typical pool alkalinity, used when the reading carries no TA.
+DEFAULT_TA_PPM = 100.0
 
 # extract_current_conditions() (water_params.py) keys its dict by the parsed
 # measurement-field names, which don't all match WATER_PARAMS' range keys
@@ -28,6 +35,70 @@ RANGE_TO_CURRENT_FIELD = {
     "hardness": "hardness",
 }
 
+# The two pH treatment options (muriatic acid, soda ash) dose from PoolMath's
+# (troublefreepool.com/calc.html) exact TA-dependent formula rather than a flat
+# "per step" constant, because pH sensitivity scales with the water's alkalinity:
+# a pool at TA 250 needs ~2x the product of one at TA 40 for the same pH move.
+# The old flat constants were anchored at low TA (~40 ppm) and under-dosed 20-45%
+# at typical TA.
+#
+# PoolMath model: dose is |ΔpH| × gallons × adj(mid-pH, TA) / K, where adj is a
+# cubic fit in mid-pH times the buffering factor (TA + 13.91)/114.6. Per-1,000-L
+# normalization uses the same 3.78541 L/US-gal as GAL_TO_L above.
+NOMINAL_MID_PH = 7.4  # mid-pH used when the reading carries no pH to steer from
+MURIATIC_OZ_PER_PH_PER_GAL = 240.15  # 31.45% acid: fl oz per pH unit per US gal
+SODA_ASH_OZ_PER_PH_PER_GAL = 218.68  # soda ash: oz (weight) per pH unit per US gal
+# TA side-effect constants from the same source (PoolMath's chemical table): ppm TA
+# shifted per oz per US gal. Volume-independent, so they reuse adj directly.
+MURIATIC_TA_PPM_PER_OZ_PER_GAL = 3911.47
+SODA_ASH_TA_PPM_PER_OZ_PER_GAL = 7072.46
+
+
+def _poolmath_adj(mid_ph: float, ta_ppm: float) -> float:
+    """PoolMath's buffering factor adj(mid-pH, TA): cubic fit in mid-pH times
+    (TA + 13.91)/114.6. One source for both the pH dose and the TA side effect."""
+    cubic = 192.1626 - 60.1221 * mid_ph + 6.0752 * mid_ph**2 - 0.1943 * mid_ph**3
+    return cubic * (ta_ppm + 13.91) / 114.6
+
+
+def _muriatic_acid_ml(delta_ph: float, volume_L: float,
+                      current_ta: Optional[float], current_ph: Optional[float]) -> float:
+    """mL of 31.45% muriatic acid to move pH by delta_ph, PoolMath's exact
+    TA-dependent dose (per-1,000-L normalized). Falls back to a typical TA /
+    nominal mid-pH when the reading lacks them."""
+    ta = _effective_ta(current_ta)
+    mid = _steer_mid_ph(current_ph, delta_ph)
+    gallons = volume_L / GAL_TO_L
+    return (
+        abs(delta_ph) * _poolmath_adj(mid, ta) * gallons
+        / MURIATIC_OZ_PER_PH_PER_GAL * FL_OZ_ML
+    )
+
+
+def _soda_ash_grams(delta_ph: float, volume_L: float,
+                    current_ta: Optional[float], current_ph: Optional[float]) -> float:
+    """Grams of soda ash to move pH by delta_ph, PoolMath's exact TA-dependent
+    dose (per-1,000-L normalized)."""
+    ta = _effective_ta(current_ta)
+    mid = _steer_mid_ph(current_ph, delta_ph)
+    gallons = volume_L / GAL_TO_L
+    return (
+        abs(delta_ph) * _poolmath_adj(mid, ta) * gallons
+        / SODA_ASH_OZ_PER_PH_PER_GAL * OZ_WEIGHT_GRAMS
+    )
+
+
+def _effective_ta(current_ta: Optional[float]) -> float:
+    return current_ta if current_ta is not None else DEFAULT_TA_PPM
+
+
+def _steer_mid_ph(current_ph: Optional[float], delta: float) -> float:
+    """Mid-pH of the move (PoolMath's `temp`); the nominal pool pH when the
+    reading has none."""
+    if current_ph is None:
+        return NOMINAL_MID_PH
+    return current_ph + delta / 2
+
 
 def _exact_option(
     product_id: str,
@@ -39,6 +110,7 @@ def _exact_option(
     notes_key: Optional[str] = None,
     amount_unit: Optional[str] = None,
     side_effect: Optional[Dict] = None,
+    dose_fn: Optional[Callable] = None,
 ) -> Dict:
     return {
         "product_id": product_id,
@@ -59,6 +131,9 @@ def _exact_option(
         # compute time by _compute_side_effect; None for products with no meaningful
         # secondary effect.
         "side_effect": side_effect,
+        # Optional water-chemistry-aware amount override (PoolMath formula, pH options
+        # only); None for linear dose_amount x delta x volume products.
+        "dose_fn": dose_fn,
     }
 
 
@@ -126,18 +201,34 @@ TREATMENT_TABLE: Dict[str, Dict] = {
     "ph": {
         "raise": {
             "options": [
+                # Soda ash, PoolMath's exact TA-dependent dose (nominal ~8.2 g per
+                # 1,000 L per 0.2 pH at 100 ppm TA, mid pH 7.4). The old flat 4.5 g
+                # constant under-dosed ~45% at typical TA because pH sensitivity
+                # scales with the water's buffering (TA).
                 _exact_option(
-                    "soda_ash", "solid", 4.5, 0.2, notes_key="dosage_ph_approximate",
-                    side_effect={"kind": "linear_ta", "delta_per_chunk": 5.0,
+                    "soda_ash", "solid", 8.2, 0.2, notes_key="dosage_ph_approximate",
+                    dose_fn=_soda_ash_grams,
+                    side_effect={"kind": "stoichiometric_ta", "sign": 1,
+                                 "oz_denom": SODA_ASH_OZ_PER_PH_PER_GAL,
+                                 "ta_ppm_per_oz": SODA_ASH_TA_PPM_PER_OZ_PER_GAL,
                                  "notes_key": "dosage_soda_ash_raises_ta_too"},
                 ),
             ]
         },
         "lower": {
             "options": [
+                # 31.45% (full-strength) muriatic acid, PoolMath's exact TA-dependent
+                # dose (nominal ~7.8 mL per 1,000 L per 0.2 pH at 100 ppm TA, mid pH
+                # 7.4). The flat 6.25 mL constant was the low-TA field rule (8 fl oz
+                # per 10,000 US gal per 0.2 pH), under-dosing ~20% at typical TA; an
+                # older constant of 25.0 misread ~25 mL per 1,000 US gal as liters,
+                # overshot ~4x (issue #74).
                 _exact_option(
-                    "muriatic_acid", "liquid", 25.0, 0.2, purity=0.3145,
-                    side_effect={"kind": "linear_ta", "delta_per_chunk": -10.0,
+                    "muriatic_acid", "liquid", 7.8, 0.2, purity=0.3145,
+                    dose_fn=_muriatic_acid_ml,
+                    side_effect={"kind": "stoichiometric_ta", "sign": -1,
+                                 "oz_denom": MURIATIC_OZ_PER_PH_PER_GAL,
+                                 "ta_ppm_per_oz": MURIATIC_TA_PPM_PER_OZ_PER_GAL,
                                  "notes_key": "dosage_ph_lowers_ta_too"},
                 ),
                 _inexact_option("dry_acid", "solid", notes_key="dosage_ph_lowers_ta_too"),
@@ -197,13 +288,21 @@ def _compute_side_effect(
         return None
     kind = spec["kind"]
 
-    if kind == "linear_ta":
-        # Stoichiometric, volume-independent: the TA shift scales with the same dose
-        # multiplier the primary amount uses. soda ash: +5 ppm TA per 0.2-pH chunk;
-        # muriatic acid: -10 ppm TA per 0.2-pH chunk.
-        multiplier = abs(delta) / dose_param_delta
-        ta_shift = round(multiplier * spec["delta_per_chunk"], 1)
-        return {"param": "tac", "delta": ta_shift, "notes_key": spec["notes_key"]}
+    if kind == "stoichiometric_ta":
+        # TA shift is stoichiometric with the dose, from the same PoolMath source as
+        # the amount (PoolMath's chemical table): ppm TA per oz per US gal. The dose
+        # itself is |ΔpH| x adj(mid) x gallons / oz_denom, so the TA shift is
+        # sign x |ΔpH| x adj(mid) x (ta_ppm_per_oz / oz_denom) -- volume-independent.
+        eff_ta = _effective_ta(current_ta)
+        mid_ph = _steer_mid_ph(current_ph, delta)
+        ta_shift = (
+            spec["sign"]
+            * abs(delta)
+            * _poolmath_adj(mid_ph, eff_ta)
+            * spec["ta_ppm_per_oz"]
+            / spec["oz_denom"]
+        )
+        return {"param": "tac", "delta": round(ta_shift, 1), "notes_key": spec["notes_key"]}
 
     if kind == "ph_toward_8_3":
         # Adding bicarbonate (baking soda) pulls pH toward its equilibrium ~8.3 by a
@@ -242,10 +341,17 @@ def _options_with_amounts(
     for opt in options:
         amount = None
         if opt["exact"] and volume_L is not None:
-            amount = round(
-                opt["dose_amount"] * (abs(delta) / opt["dose_param_delta"]) * (volume_L / opt["dose_volume_L"]),
-                2,
-            )
+            dose_fn = opt.get("dose_fn")
+            if dose_fn is not None:
+                # Water-chemistry-aware dose (PoolMath formula, pH options): TA-
+                # dependent and steered from the measured pH. dose_amount is the
+                # nominal per-step value at a typical TA, for display only.
+                amount = round(dose_fn(delta, volume_L, current_ta, current_ph), 2)
+            else:
+                amount = round(
+                    opt["dose_amount"] * (abs(delta) / opt["dose_param_delta"]) * (volume_L / opt["dose_volume_L"]),
+                    2,
+                )
         options_out.append({
             "product_id": opt["product_id"],
             "form": opt["form"],
