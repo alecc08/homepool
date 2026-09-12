@@ -532,6 +532,20 @@ export const translations = {
     dosage_product_dichlor: 'Dichlore',
     dosage_product_bromine_tablets: 'Pastilles de brome',
 
+    // Concentration/strength each dosage amount is calibrated for (issue #103) —
+    // shown under the product name so the amount is never a bare number.
+    dosage_conc_pool_salt: 'Sel de piscine (NaCl ≥ 99 %)',
+    dosage_conc_calcium_chloride: 'Chlorure de calcium — 77 % CaCl₂ anhydre',
+    dosage_conc_cya_granular: 'Acide cyanurique à 100 %',
+    dosage_conc_baking_soda: 'Bicarbonate de soude pur (97,4 %)',
+    dosage_conc_soda_ash: 'Carbonate de soude pur (Na₂CO₃)',
+    dosage_conc_muriatic_acid: 'Acide chlorhydrique à 31,45 % (20° Baumé)',
+    dosage_conc_dry_acid: 'Bisulfate de sodium à 100 %',
+    dosage_conc_liquid_chlorine: 'Chlore disponible à 12,5 %',
+    dosage_conc_cal_hypo: 'Hypochlorite de calcium (48 à 73 % selon la marque)',
+    dosage_conc_dichlor: 'Dichlore à 56 % de chlore disponible',
+    dosage_conc_bromine_tablets: 'Brome disponible à 100 %',
+
     dosage_follow_label: "Quantité variable selon le produit — suivez les instructions de l'étiquette.",
     dosage_ph_approximate: 'Quantité approximative — la réponse réelle dépend du TAC actuel. Ajoutez progressivement et remesurez.',
     dosage_ph_lowers_ta_too: "Cet ajout fait aussi baisser le TAC — remesurez le TAC après traitement.",
@@ -1094,6 +1108,20 @@ export const translations = {
     dosage_product_cal_hypo: 'Cal-hypo',
     dosage_product_dichlor: 'Dichlor',
     dosage_product_bromine_tablets: 'Bromine tablets',
+
+    // Concentration/strength each dosage amount is calibrated for (issue #103) —
+    // shown under the product name so the amount is never a bare number.
+    dosage_conc_pool_salt: 'Pool grade salt (≥ 99% NaCl)',
+    dosage_conc_calcium_chloride: 'Calcium chloride — 77% anhydrous CaCl₂',
+    dosage_conc_cya_granular: '100% cyanuric acid',
+    dosage_conc_baking_soda: 'Baking soda, 97.4% pure',
+    dosage_conc_soda_ash: 'Pure soda ash (Na₂CO₃)',
+    dosage_conc_muriatic_acid: 'Muriatic acid, 31.45% HCl (20° Baumé)',
+    dosage_conc_dry_acid: 'Dry acid (sodium bisulfate), 100%',
+    dosage_conc_liquid_chlorine: 'Liquid chlorine, 12.5% available chlorine',
+    dosage_conc_cal_hypo: 'Cal-hypo (48–73% available chlorine by brand)',
+    dosage_conc_dichlor: 'Dichlor, 56% available chlorine',
+    dosage_conc_bromine_tablets: 'Bromine tablets, 100% available bromine',
 
     dosage_follow_label: 'Amount varies by product — follow the label instructions.',
     dosage_ph_approximate: 'Approximate amount — the real response depends on your current TA. Dose gradually and retest.',

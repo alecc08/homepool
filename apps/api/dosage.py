@@ -111,6 +111,7 @@ def _exact_option(
     amount_unit: Optional[str] = None,
     side_effect: Optional[Dict] = None,
     dose_fn: Optional[Callable] = None,
+    concentration_key: Optional[str] = None,
 ) -> Dict:
     return {
         "product_id": product_id,
@@ -121,6 +122,10 @@ def _exact_option(
         "dose_param_delta": dose_param_delta,
         "dose_volume_L": dose_volume_L,
         "notes_key": notes_key,
+        # Translation key of the concentration/strength this dose is calibrated
+        # for, rendered under the product name (issue #103). None when the
+        # amount carries no strength assumption (e.g. grams of active ingredient).
+        "concentration_key": concentration_key,
         # Which output field the computed amount lands in. Defaults to the product's
         # physical form (solid -> grams, liquid -> mL), but can be overridden --
         # e.g. cya_liquid states its dose in grams of active ingredient, not a poured
@@ -142,6 +147,7 @@ def _inexact_option(
     form: str,
     notes_key: str,
     purity: Optional[float] = None,
+    concentration_key: Optional[str] = None,
 ) -> Dict:
     return {
         "product_id": product_id,
@@ -152,6 +158,7 @@ def _inexact_option(
         "dose_param_delta": None,
         "dose_volume_L": None,
         "notes_key": notes_key,
+        "concentration_key": concentration_key,
         "amount_unit": "grams" if form == "solid" else "ml",
     }
 
@@ -164,11 +171,17 @@ _DILUTION_GUIDANCE = {"guidance_only": True, "notes_key": "dosage_dilution_requi
 # are deliberately absent: no universal dosing guidance applies to either.
 TREATMENT_TABLE: Dict[str, Dict] = {
     "salt": {
-        "raise": {"options": [_exact_option("pool_salt", "solid", 1000.0, 1000.0)]},
+        "raise": {"options": [_exact_option(
+            "pool_salt", "solid", 1000.0, 1000.0,
+            concentration_key="dosage_conc_pool_salt",
+        )]},
         "lower": _DILUTION_GUIDANCE,
     },
     "hardness": {
-        "raise": {"options": [_exact_option("calcium_chloride", "solid", 15.0, 10.0, purity=0.77)]},
+        "raise": {"options": [_exact_option(
+            "calcium_chloride", "solid", 15.0, 10.0, purity=0.77,
+            concentration_key="dosage_conc_calcium_chloride",
+        )]},
         "lower": _DILUTION_GUIDANCE,
     },
     "cya": {
@@ -178,6 +191,7 @@ TREATMENT_TABLE: Dict[str, Dict] = {
                     "cya_granular", "solid", 9.7, 10.0,
                     notes_key="dosage_cya_granular_test_lag",
                     side_effect={"kind": "cya_lowers_ph", "notes_key": "dosage_cya_lowers_ph_too"},
+                    concentration_key="dosage_conc_cya_granular",
                 ),
                 # Same active-ingredient dose as granular -- liquid CYA is just cyanuric
                 # acid pre-dissolved at a brand-specific concentration, so we state the
@@ -195,6 +209,7 @@ TREATMENT_TABLE: Dict[str, Dict] = {
         "raise": {"options": [_exact_option(
             "baking_soda", "solid", 17.5, 10.0, purity=0.974,
             side_effect={"kind": "ph_toward_8_3", "notes_key": "dosage_baking_soda_raises_ph_too"},
+            concentration_key="dosage_conc_baking_soda",
         )]},
         "lower": _DILUTION_GUIDANCE,
     },
@@ -212,6 +227,7 @@ TREATMENT_TABLE: Dict[str, Dict] = {
                                  "oz_denom": SODA_ASH_OZ_PER_PH_PER_GAL,
                                  "ta_ppm_per_oz": SODA_ASH_TA_PPM_PER_OZ_PER_GAL,
                                  "notes_key": "dosage_soda_ash_raises_ta_too"},
+                    concentration_key="dosage_conc_soda_ash",
                 ),
             ]
         },
@@ -230,17 +246,24 @@ TREATMENT_TABLE: Dict[str, Dict] = {
                                  "oz_denom": MURIATIC_OZ_PER_PH_PER_GAL,
                                  "ta_ppm_per_oz": MURIATIC_TA_PPM_PER_OZ_PER_GAL,
                                  "notes_key": "dosage_ph_lowers_ta_too"},
+                    concentration_key="dosage_conc_muriatic_acid",
                 ),
-                _inexact_option("dry_acid", "solid", notes_key="dosage_ph_lowers_ta_too"),
+                _inexact_option(
+                    "dry_acid", "solid", notes_key="dosage_ph_lowers_ta_too",
+                    concentration_key="dosage_conc_dry_acid",
+                ),
             ]
         },
     },
     "cl": {
         "raise": {
             "options": [
-                _inexact_option("liquid_chlorine", "liquid", notes_key="dosage_chlorine_varies"),
-                _inexact_option("cal_hypo", "solid", notes_key="dosage_chlorine_varies"),
-                _inexact_option("dichlor", "solid", notes_key="dosage_chlorine_varies"),
+                _inexact_option("liquid_chlorine", "liquid", notes_key="dosage_chlorine_varies",
+                               concentration_key="dosage_conc_liquid_chlorine"),
+                _inexact_option("cal_hypo", "solid", notes_key="dosage_chlorine_varies",
+                               concentration_key="dosage_conc_cal_hypo"),
+                _inexact_option("dichlor", "solid", notes_key="dosage_chlorine_varies",
+                               concentration_key="dosage_conc_dichlor"),
             ]
         },
         "lower": _DILUTION_GUIDANCE,
@@ -248,7 +271,8 @@ TREATMENT_TABLE: Dict[str, Dict] = {
     "br": {
         "raise": {
             "options": [
-                _inexact_option("bromine_tablets", "solid", notes_key="dosage_chlorine_varies"),
+                _inexact_option("bromine_tablets", "solid", notes_key="dosage_chlorine_varies",
+                               concentration_key="dosage_conc_bromine_tablets"),
             ]
         },
         "lower": _DILUTION_GUIDANCE,
@@ -359,6 +383,7 @@ def _options_with_amounts(
             "amount_grams": amount if amount is not None and opt["amount_unit"] == "grams" else None,
             "amount_ml": amount if amount is not None and opt["amount_unit"] == "ml" else None,
             "notes_key": opt.get("notes_key"),
+            "concentration_key": opt.get("concentration_key"),
             "side_effect": _compute_side_effect(
                 opt.get("side_effect"), delta, opt.get("dose_param_delta"), current_ta, current_ph,
             ),
@@ -383,6 +408,7 @@ def _guidance_only_recommendation(
             "amount_grams": None,
             "amount_ml": None,
             "notes_key": notes_key,
+            "concentration_key": None,
             "side_effect": None,
         }],
     }
