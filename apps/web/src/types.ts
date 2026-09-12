@@ -165,6 +165,10 @@ export type DosageOption = {
   amount_grams: number | null
   amount_ml: number | null
   notes_key: string | null
+  /** The concentration/strength the amount is calibrated for (issue #103) —
+   * e.g. "31.5% HCl" for pool muriatic acid. Null when the amount carries no
+   * strength assumption (e.g. grams of active ingredient, follow-the-label). */
+  concentration_key: string | null
   /** Secondary parameter this product also shifts as a side effect (issue #40) —
    * e.g. muriatic acid also lowers TA. Null when the product has no meaningful
    * secondary effect. `delta` is signed; `param` picks the display unit (pH → none). */

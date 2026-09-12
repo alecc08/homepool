@@ -82,6 +82,47 @@ def test_ph_lower_muriatic_acid_tagged_ta_side_effect():
     assert inexact_option["side_effect"] is None
 
 
+def test_options_carry_concentration_key():
+    # Issue #103: every product option must state the concentration/strength its
+    # amount is calibrated for (a translation key), so the UI can render it under
+    # the product name. Options without a strength assumption (guidance-only)
+    # leave it null.
+    installation = make_installation(sanitizer="chlorine", volume=1000, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(ph=8.2, tac=100, stabilizer=70, chlorine=0.6)
+    recs = compute_recommendations(current, ranges, installation)
+
+    ph_rec = next(r for r in recs if r["param"] == "ph")
+    ph_by_product = {o["product_id"]: o for o in ph_rec["options"]}
+    assert ph_by_product["muriatic_acid"]["concentration_key"] == "dosage_conc_muriatic_acid"
+    assert ph_by_product["dry_acid"]["concentration_key"] == "dosage_conc_dry_acid"
+
+    cl_rec = next(r for r in recs if r["param"] == "cl")
+    cl_by_product = {o["product_id"]: o for o in cl_rec["options"]}
+    assert cl_by_product["liquid_chlorine"]["concentration_key"] == "dosage_conc_liquid_chlorine"
+    assert cl_by_product["cal_hypo"]["concentration_key"] == "dosage_conc_cal_hypo"
+    assert cl_by_product["dichlor"]["concentration_key"] == "dosage_conc_dichlor"
+
+    # Salt is only tracked by salt installations, so test its concentration key there.
+    salt_pool = make_installation(sanitizer="salt", volume=1000, volume_unit="L")
+    salt_recs = compute_recommendations(
+        current_of(ph=7.4, salt=2000, stabilizer=70, chlorine=4.0),
+        ranges_for(salt_pool), salt_pool,
+    )
+    salt_rec = next(r for r in salt_recs if r["param"] == "salt")
+    assert salt_rec["options"][0]["concentration_key"] == "dosage_conc_pool_salt"
+
+    # The high-salt dilution guidance has no product and no strength to state.
+    high_salt_recs = compute_recommendations(
+        current_of(ph=7.4, salt=5000, stabilizer=70, chlorine=4.0),
+        ranges_for(salt_pool), salt_pool,
+    )
+    salt_dilute = next(r for r in high_salt_recs if r["param"] == "salt")
+    assert salt_dilute["direction"] == "lower"
+    assert salt_dilute["options"][0]["product_id"] is None
+    assert salt_dilute["options"][0]["concentration_key"] is None
+
+
 def test_ph_lower_muriatic_acid_dose_is_ta_dependent():
     # Issue #74: a 28,000 L pool at pH 7.8 toward 7.4 (0.4 pH drop). The dose is
     # PoolMath's exact TA-dependent formula (per-1,000-L normalized), so it scales

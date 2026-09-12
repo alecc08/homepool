@@ -356,6 +356,11 @@ function DosageTab({
                   {t(`dosage_product_${opt.product_id}` as TranslationKey)}
                 </div>
               )}
+              {opt.concentration_key && (
+                <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
+                  {t(opt.concentration_key as TranslationKey)}
+                </div>
+              )}
               {(opt.amount_grams !== null || opt.amount_ml !== null) && (
                 <AmountLine grams={opt.amount_grams ?? undefined} mL={opt.amount_ml ?? undefined} volumeUnit={volumeUnit} />
               )}
