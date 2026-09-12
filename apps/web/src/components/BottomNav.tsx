@@ -7,12 +7,14 @@ type Props = {
   page: Page
   onNavigate: (p: Page) => void
   onAdd: () => void
+  /** Hidden while the settings sheet is open, so the sheet owns the screen. */
+  hidden?: boolean
 }
 
-export default function BottomNav({ page, onNavigate, onAdd }: Props) {
+export default function BottomNav({ page, onNavigate, onAdd, hidden }: Props) {
   const { t } = useT()
   return (
-    <nav className="bottom-nav">
+    <nav className={`bottom-nav${hidden ? ' mm-hidden' : ''}`}>
       <button
         className={`bn-item${page === 'log' ? ' active' : ''}`}
         onClick={() => onNavigate('log')}

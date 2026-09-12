@@ -747,6 +747,9 @@ input[type="checkbox"]:checked::after {
   height: 20px;
 }
 
+/* The primary action floats above the bar rather than squeezing into it —
+   in-row it was what crowded the five tabs. Hidden on desktop, where the
+   sidebar's "New entry" button does this job. */
 .bn-fab {
   width: 48px;
   height: 48px;
@@ -755,7 +758,7 @@ input[type="checkbox"]:checked::after {
   color: var(--accent-fg);
   border: none;
   cursor: pointer;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-pop);
@@ -765,6 +768,153 @@ input[type="checkbox"]:checked::after {
 
 .bn-fab:active {
   transform: scale(0.94);
+}
+
+/* ── Mobile settings sheet ───────────────────────────────── */
+/* Full-screen on a phone (like the installation dialog) — it is the phone's
+   replacement for the whole desktop sidebar. Sections stack with hairline
+   dividers; the body scrolls, the header is hidden behind the overlay. */
+.mm-content {
+  gap: 0;
+  padding-top: 20px !important;
+}
+
+.mm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mm-section:last-of-type {
+  border-bottom: none;
+}
+
+.mm-inst {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mm-inst-label {
+  font-family: "'IBM Plex Mono', monospace";
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.mm-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: "Sora", sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.mm-select:focus {
+  border-color: var(--accent);
+}
+
+.mm-inst-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mm-inst-controls .mm-select {
+  flex: 1;
+}
+
+.mm-inst-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mm-inst-name-text {
+  flex: 1;
+  min-width: 0;
+  font-family: "Sora", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-icon-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+}
+
+.mm-icon-btn:active {
+  background: var(--bg-raised);
+}
+
+.mm-add,
+.mm-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 11px 12px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: "Sora", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mm-add {
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+.mm-add:hover,
+.mm-row:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+.mm-row--danger {
+  color: var(--status-danger-text);
+}
+
+.mm-row--danger:hover {
+  background: color-mix(in srgb, var(--status-danger-text) 12%, transparent);
+}
+
+/* Hidden while the settings sheet is up, so the fullscreen dialog owns the
+   screen (and the translucent header can't bleed through the backdrop). */
+.mm-hidden {
+  visibility: hidden;
 }
 
 /* ── Install banner ──────────────────────────────────────── */
@@ -879,6 +1029,30 @@ input[type="checkbox"]:checked::after {
     color: var(--text-primary);
   }
 
+  /* The settings button is the phone's stand-in for the whole desktop sidebar
+     (pool selector, settings, theme, profile, logout) — one affordance that
+     opens the settings sheet. Icon-only so the header stays calm. */
+  .mobile-header-menu {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .mobile-header-menu:hover {
+    color: var(--text-primary);
+    background: var(--bg-raised);
+  }
+
   /* Mobile bottom nav */
   .mobile-nav {
     display: flex;
@@ -961,6 +1135,23 @@ input[type="checkbox"]:checked::after {
     padding: 0 8px;
     padding-bottom: env(safe-area-inset-bottom);
     z-index: 100;
+  }
+
+  /* The primary action floats above the bar instead of crowding into it, so
+     the five tabs get the full width. Overhang of the bar it sits on. */
+  .bn-fab {
+    position: absolute;
+    left: 50%;
+    bottom: calc(44px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    z-index: 101;
+  }
+
+  /* Five tabs share the full width now — a touch target is 44px, so the labels
+     stay short and the active tab is the only one that keeps a strong fill. */
+  .bn-item {
+    padding: 6px 0;
   }
 
   /* Main content adjustments */
