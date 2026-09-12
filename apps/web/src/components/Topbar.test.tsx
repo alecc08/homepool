@@ -68,3 +68,23 @@ describe('Topbar sidebar', () => {
     expect(screen.getByText(translations.fr.nav_measurements)).toBeInTheDocument()
   })
 })
+
+describe('Topbar mobile', () => {
+  it('has a settings button that opens the sheet (issue #72)', () => {
+    renderTopbar({ onAdd: vi.fn() })
+    const menu = screen.getByLabelText(translations.fr.nav_menu)
+    expect(menu).toBeInTheDocument()
+    // The sheet is closed until the button is tapped.
+    expect(screen.queryByRole('heading', { name: translations.fr.nav_menu })).not.toBeInTheDocument()
+    fireEvent.click(menu)
+    expect(screen.getByRole('heading', { name: translations.fr.nav_menu })).toBeInTheDocument()
+  })
+
+  it('steps the bottom nav aside behind the open settings sheet', () => {
+    renderTopbar({ onAdd: vi.fn() })
+    const nav = document.querySelector('.bottom-nav') as HTMLElement
+    expect(nav.className).not.toContain('mm-hidden')
+    fireEvent.click(screen.getByLabelText(translations.fr.nav_menu))
+    expect((document.querySelector('.bottom-nav') as HTMLElement).className).toContain('mm-hidden')
+  })
+})

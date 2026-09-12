@@ -24,4 +24,13 @@ describe('BottomNav — English locale', () => {
     renderEnglish()
     expect(screen.getByLabelText('New entry')).toBeInTheDocument()
   })
+
+  it('hides behind the settings sheet when asked', () => {
+    const { container } = render(
+      <LocaleContext.Provider value={{ locale: 'en', setLocale: vi.fn(), t: key => (translations.en as Record<string, string>)[key] ?? key }}>
+        <BottomNav page="log" onNavigate={vi.fn()} onAdd={vi.fn()} hidden />
+      </LocaleContext.Provider>
+    )
+    expect((container.querySelector('.bottom-nav') as HTMLElement).className).toContain('mm-hidden')
+  })
 })
