@@ -10,7 +10,8 @@ COPY package*.json ./
 RUN npm ci --frozen-lockfile --cache /tmp/.npm-cache
 
 COPY . .
-RUN npm run build
+RUN npm run build \
+    && node -e 'const fs=require("fs");const v=require("./package.json").version;const s=fs.readFileSync("dist/sw.js","utf8").split("\n").map(l=>l.startsWith("const SW_VERSION")?"const SW_VERSION = \""+v+"\";":l).join("\n");fs.writeFileSync("dist/sw.js",s)'
 
 # ── Stage 2 : Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS production

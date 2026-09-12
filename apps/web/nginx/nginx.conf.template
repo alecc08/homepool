@@ -30,6 +30,18 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate";
     }
 
+    # The service worker must never be served stale: a cached sw.js is what
+    # keeps an old version in place between deploys (stale index.html -> white
+    # page). Same for the PWA manifest.
+    location = /sw.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Expires "0" always;
+    }
+
+    location = /manifest.json {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+
     # ── Proxy API → backend FastAPI ────────────────────────────────────────────
 
     location /api/ {
