@@ -1,6 +1,6 @@
 fastapi==0.143.0
 uvicorn[standard]==0.54.0
-sqlmodel==0.0.42
+sqlmodel==0.0.48
 psycopg[binary]==3.3.6
 passlib==1.7.4
 email-validator==2.3.0
