@@ -1,7 +1,8 @@
-import { Waves, Bath, Pencil, Plus, Trash2, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react'
+import { Waves, Bath, Pencil, Plus, Trash2, LogOut, ShieldCheck, User as UserIcon, Snowflake } from 'lucide-react'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import { ThemeSwitch, LocaleSwitch } from './Switches'
+import { isSeasonOpen } from '../utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Props = {
@@ -64,7 +65,7 @@ export default function MobileMenu({
             >
               {installations.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.role === 'owner' ? i.name : `${i.name} · ${i.owner_name ?? ''}`}
+                  {`${i.role === 'owner' ? i.name : `${i.name} · ${i.owner_name ?? ''}`}${isSeasonOpen(i) ? '' : ` · ${t('season_badge_closed')}`}`}
                 </option>
               ))}
             </select>
@@ -88,6 +89,21 @@ export default function MobileMenu({
         <div className="mm-inst-name">
           <InstallationIcon size={15} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <span className="mm-inst-name-text">{active.name}</span>
+          {/* Closed for the season (see the desktop sidebar chip). */}
+          {!isSeasonOpen(active) && (
+            <span
+              title={t('season_badge_closed')}
+              style={{
+                flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, fontWeight: 600,
+                color: 'var(--text-muted)', background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border)', borderRadius: 4, padding: '1px 4px',
+              }}
+            >
+              <Snowflake size={9} strokeWidth={2} aria-hidden="true" />
+              {t('season_badge_closed')}
+            </span>
+          )}
           {onEditInstallation && (
             <button type="button" className="mm-icon-btn" onClick={onEditInstallation} aria-label={installationActionLabel} title={installationActionLabel}>
               <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />

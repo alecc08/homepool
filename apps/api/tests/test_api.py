@@ -579,7 +579,7 @@ def test_v1_installations_lists_owned_installations(client: TestClient):
     data = r.json()
     names = {i["name"]: i["type"] for i in data}
     assert names == {"Backyard Pool": "pool", "Hot Tub": "spa"}
-    assert set(data[0].keys()) == {"id", "name", "type", "sanitizer"}
+    assert set(data[0].keys()) == {"id", "name", "type", "sanitizer", "is_open"}
     sanitizers = {i["name"]: i["sanitizer"] for i in data}
     assert sanitizers["Backyard Pool"] == "salt"
 
@@ -788,6 +788,252 @@ def test_v1_todo_requires_api_key(client: TestClient):
     client.post("/installations", json={"name": "My pool"})
     r = client.get("/v1/todo")
     assert r.status_code == 401
+
+
+# ── Season: open / closed pools ─────────────────────────────────────────────
+#
+# "Due" is derived from the action log and never stored, so closing a pool is a
+# lens over the very same data: the countdown goes quiet, nothing is erased, and
+# reopening resumes it exactly where it stopped.
+
+
+def _close_pool(client: TestClient, installation_id: int, is_open: bool = False) -> None:
+    r = client.patch(f"/installations/{installation_id}", json={"is_open": is_open})
+    assert r.status_code == 200, r.text
+    assert r.json()["is_open"] is is_open
+
+
+def _installation_payload(client: TestClient, installation_id: int) -> dict:
+    """The season lives on the installation, which is where the clients read it."""
+    match = [i for i in client.get("/installations").json() if i["id"] == installation_id]
+    assert match, f"installation {installation_id} is not listed for this user"
+    return match[0]
+
+
+def _log_completion(client: TestClient, installation_id: int, days_ago: int) -> str:
+    """Backdates a filter cleaning, which is what drives filter_maintenance's
+    14-day countdown: `days_ago` greater than the interval leaves the task
+    overdue, so a pause has something visible to silence."""
+    logged = (date.today() - timedelta(days=days_ago)).isoformat()
+    client.post(
+        "/actions",
+        json={
+            "date": logged,
+            "action_type": "Cartridge cleaning",
+            "installation_id": installation_id,
+        },
+    )
+    return logged
+
+
+def test_installation_is_open_by_default(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    row = next(i for i in client.get("/installations").json() if i["id"] == installation_id)
+    assert row["is_open"] is True
+
+
+def test_installation_can_be_created_closed(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Winter pool", "type": "pool", "is_open": False}
+    ).json()["id"]
+    row = next(i for i in client.get("/installations").json() if i["id"] == installation_id)
+    assert row["is_open"] is False
+
+
+def test_closing_a_pool_pauses_maintenance(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    _log_completion(client, installation_id, days_ago=30)
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    assert all(t["paused"] is False for t in tasks)
+    overdue = _task_by_key(tasks, "filter_maintenance")
+    assert overdue["days_until_due"] == -16
+
+    _close_pool(client, installation_id)
+
+    paused = client.get(f"/installations/{installation_id}/maintenance").json()
+    assert all(t["paused"] is True for t in paused)
+    paused_filter = _task_by_key(paused, "filter_maintenance")
+    # Silent, not "overdue" and not "never done": a closed pool has nothing late.
+    assert paused_filter["days_until_due"] is None
+    # Pausing is not disabling and not archiving: configuration and history are
+    # untouched, so the only thing the owner loses is the alert.
+    assert paused_filter["enabled"] is True
+    assert paused_filter["interval_days"] == overdue["interval_days"]
+    assert paused_filter["last_date"] == overdue["last_date"] == (date.today() - timedelta(days=30)).isoformat()
+
+
+def test_reopening_a_pool_resumes_the_due_countdown(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    _log_completion(client, installation_id, days_ago=30)
+    before = _task_by_key(
+        client.get(f"/installations/{installation_id}/maintenance").json(), "filter_maintenance"
+    )["days_until_due"]
+    assert before == -16
+
+    _close_pool(client, installation_id)
+    assert _task_by_key(
+        client.get(f"/installations/{installation_id}/maintenance").json(), "filter_maintenance"
+    )["days_until_due"] is None
+
+    _close_pool(client, installation_id, is_open=True)
+    after = _task_by_key(
+        client.get(f"/installations/{installation_id}/maintenance").json(), "filter_maintenance"
+    )
+    assert after["days_until_due"] == before
+    assert after["paused"] is False
+
+
+def test_closing_one_pool_leaves_the_other_running(client: TestClient):
+    login(client)
+    closed_id = client.post("/installations", json={"name": "Closed pool"}).json()["id"]
+    open_id = client.post("/installations", json={"name": "Spa"}).json()["id"]
+    _log_completion(client, closed_id, days_ago=30)
+    _log_completion(client, open_id, days_ago=30)
+
+    _close_pool(client, closed_id)
+
+    closed_tasks = client.get(f"/installations/{closed_id}/maintenance").json()
+    open_tasks = client.get(f"/installations/{open_id}/maintenance").json()
+    assert all(t["paused"] is True for t in closed_tasks)
+    assert all(t["paused"] is False for t in open_tasks)
+    assert _task_by_key(open_tasks, "filter_maintenance")["days_until_due"] == -16
+
+
+def test_closed_pool_still_accepts_logging(client: TestClient):
+    """A closed pool is winterized, not deleted: closing chores and the odd
+    winter inspection still have to be recordable."""
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    _close_pool(client, installation_id)
+
+    r = client.post(
+        "/actions",
+        json={"date": TODAY, "action_type": "Measurement", "installation_id": installation_id, "qty": "7.4"},
+    )
+    assert r.status_code == 200, r.text
+
+    task_id = _task_by_key(
+        client.get(f"/installations/{installation_id}/maintenance").json(), "filter_maintenance"
+    )["id"]
+    assert client.post(f"/installations/{installation_id}/maintenance/{task_id}/complete").status_code == 200
+
+
+def test_closed_pool_returns_no_dosing_advice(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations",
+        json={"name": "My pool", "type": "pool", "sanitizer": "bromine", "volume": 10000, "volume_unit": "L"},
+    ).json()["id"]
+    client.post(
+        "/actions",
+        json={
+            "date": TODAY,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "notes": "pH 7.4 bromine 3 TAC 50 hardness 300",
+        },
+    )
+    open_rec = client.get(f"/installations/{installation_id}/recommendations").json()
+    assert open_rec["recommendations"]
+
+    _close_pool(client, installation_id)
+
+    closed_rec = client.get(f"/installations/{installation_id}/recommendations")
+    assert closed_rec.status_code == 200
+    data = closed_rec.json()
+    assert data["recommendations"] == []
+    # The volume warning is a property of the installation, not of the season.
+    assert data["volume_known"] is True
+    # The season is stated once, on the installation — clients read it there
+    # rather than getting a second copy in every payload.
+    assert _installation_payload(client, installation_id)["is_open"] is False
+
+
+def test_v1_todo_pauses_the_tasks_of_a_closed_pool(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    _log_completion(client, installation_id, days_ago=30)
+    assert _task_by_key(
+        client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key)).json(),
+        "filter_maintenance",
+    )["days_until_due"] == -16
+
+    _close_pool(client, installation_id)
+
+    todo = client.get(f"/v1/todo?installation_id={installation_id}", headers=auth_headers(key))
+    assert todo.status_code == 200
+    tasks = todo.json()
+    # Tasks stay listed, so an integration that built an entity per task keeps it
+    # and can show "paused" instead of losing the entity under the user.
+    assert _task_by_key(tasks, "filter_maintenance")["paused"] is True
+    assert all(t["paused"] is True for t in tasks)
+    assert all(t["days_until_due"] is None for t in tasks)
+
+
+def test_v1_season_patch_round_trips_to_the_apps(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+
+    r = client.patch(
+        f"/v1/installations/{installation_id}", json={"is_open": False}, headers=auth_headers(key)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["is_open"] is False
+    # Same row the web app and the HA device list read.
+    assert client.get("/installations").json()[0]["is_open"] is False
+    assert client.get("/v1/installations", headers=auth_headers(key)).json()[0]["is_open"] is False
+
+    back = client.patch(
+        f"/v1/installations/{installation_id}", json={"is_open": True}, headers=auth_headers(key)
+    )
+    assert back.status_code == 200
+    assert back.json()["is_open"] is True
+
+
+def test_v1_season_patch_requires_api_key(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    assert client.patch(f"/v1/installations/{installation_id}", json={"is_open": False}).status_code == 401
+
+
+def test_v1_season_patch_is_owner_only_for_viewers(client: TestClient):
+    """Winterizing is the owner's call, matching the web settings: a viewer is
+    told 403 — they can see the pool, they can't switch it."""
+    installation_id, _ = share_setup(client, "viewer")
+    key = get_api_key(client)
+    r = client.patch(f"/v1/installations/{installation_id}", json={"is_open": False}, headers=auth_headers(key))
+    assert r.status_code == 403
+
+
+def test_v1_season_patch_is_owner_only_for_editors(client: TestClient):
+    """...and an editor gets the same 404 the session PATCH at
+    /installations/{id} gives them for an owner-only setting."""
+    installation_id, _ = share_setup(client, "editor")
+    key = get_api_key(client)
+    r = client.patch(f"/v1/installations/{installation_id}", json={"is_open": False}, headers=auth_headers(key))
+    assert r.status_code == 404
+    # The pool is untouched, not merely refused.
+    shared = next(i for i in client.get("/installations").json() if i["id"] == installation_id)
+    assert shared["role"] == "editor"
+    assert shared["is_open"] is True
+
+
+def test_season_state_is_visible_to_a_share_viewer(client: TestClient):
+    """The banner a viewer sees must tell the truth, so the flag has to ride on
+    the shared row."""
+    installation_id, _ = share_setup(client, "viewer")
+    login(client)
+    _close_pool(client, installation_id)
+    login_as(client, "other@example.com")
+    shared = next(i for i in client.get("/installations").json() if i["id"] == installation_id)
+    assert shared["role"] == "viewer"
+    assert shared["is_open"] is False
 
 
 # ── /v1/measurements ─────────────────────────────────────────────────────

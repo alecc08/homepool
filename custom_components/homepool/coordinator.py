@@ -68,6 +68,10 @@ class HomepoolDataUpdateCoordinator(DataUpdateCoordinator[dict[int, dict]]):
                     "name": installation["name"],
                     "type": installation["type"],
                     "sanitizer": installation.get("sanitizer"),
+                    # Season state, read from /v1/installations. Servers without
+                    # the season switch omit the key, and "open" is the right
+                    # default for them: nothing on a pool is paused.
+                    "is_open": installation.get("is_open", True),
                     "fields": fields,
                     "todo": todo,
                     "history": history,

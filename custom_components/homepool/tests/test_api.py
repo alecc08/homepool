@@ -165,6 +165,31 @@ def test_create_treatment_drops_empty_fields_so_the_server_defaults_apply() -> N
     }
 
 
+def _capture_patch() -> tuple[HomepoolClient, MagicMock]:
+    """A client whose _patch is captured instead of hitting the network."""
+    client = HomepoolClient(MagicMock(), "https://example.test", "key")
+    patch = AsyncMock(return_value={})
+    client._patch = patch
+    return client, patch
+
+
+def test_set_installation_open_hits_the_season_route() -> None:
+    """/v1 has no other write route for an installation, so closing a pool for
+    the winter has to reach the season route with nothing extra in the body —
+    a stray field would be a partial update the server may not accept."""
+    client, patch = _capture_patch()
+    asyncio.run(client.set_installation_open(3, False))
+    assert patch.await_args.args == ("/v1/installations/3", {"is_open": False})
+
+
+def test_set_installation_open_carries_true_when_reopening() -> None:
+    """Reopening is the same route with the flag flipped: the server must not
+    read it as "close", which is what a missing/None flag would invite."""
+    client, patch = _capture_patch()
+    asyncio.run(client.set_installation_open(3, True))
+    assert patch.await_args.args == ("/v1/installations/3", {"is_open": True})
+
+
 def test_candidate_urls_bare_host_port_fans_out_scheme_and_path() -> None:
     assert build_candidate_base_urls("192.168.1.5:8090") == [
         "https://192.168.1.5:8090",

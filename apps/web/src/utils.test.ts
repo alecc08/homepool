@@ -12,6 +12,7 @@ import {
   getWaterStatus,
   extractMeasuredParams,
   installationParamsToRanges,
+  isSeasonOpen,
   getChemistryTodoItems,
   maintenanceTodoItems,
   maintenanceTaskLabel,
@@ -399,6 +400,35 @@ describe('maintenanceTodoItems', () => {
   it('marks non-pH tasks as maintenance kind', () => {
     const items = maintenanceTodoItems([makeTask({ builtin_key: 'filter_maintenance', days_until_due: -1 })], t)
     expect(items[0].kind).toBe('maintenance')
+  })
+
+  it('skips a paused task, even a never-done one that would read as overdue', () => {
+    const items = maintenanceTodoItems([makeTask({ paused: true, days_until_due: null })], t)
+    expect(items).toHaveLength(0)
+  })
+
+  it('keeps the other tasks of a pool whose closed one is skipped', () => {
+    const items = maintenanceTodoItems(
+      [
+        makeTask({ key: 'filter_cleaning', builtin_key: 'filter_cleaning', paused: true, days_until_due: null }),
+        makeTask({ key: 'winter_check', builtin_key: 'winter_check', paused: false, days_until_due: -2 }),
+      ],
+      t,
+    )
+    expect(items.map((i) => i.id)).toEqual(['maint-winter_check'])
+  })
+})
+
+describe('season state (open / closed pools)', () => {
+  it('reads a missing flag as open, so a server without the switch changes nothing', () => {
+    expect(isSeasonOpen(undefined)).toBe(true)
+    expect(isSeasonOpen(null)).toBe(true)
+    expect(isSeasonOpen({})).toBe(true)
+    expect(isSeasonOpen({ is_open: true })).toBe(true)
+  })
+
+  it('reads only false as closed', () => {
+    expect(isSeasonOpen({ is_open: false })).toBe(false)
   })
 })
 

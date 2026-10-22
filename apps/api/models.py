@@ -64,6 +64,12 @@ class Installation(SQLModel, table=True):
     # {"ph": {"ideal": [7.0, 7.6]}}. NULL/{} = no customization. Values are always
     # stored in canonical/metric units, independent of temp_unit/salt_unit/hardness_unit.
     range_overrides: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Season switch: a closed pool/spa is a winterized one. Nothing is
+    # deleted or archived — the history stays readable and loggable — but every
+    # scheduled obligation goes quiet: due dates stop counting down, chemistry
+    # alerts and dosing advice stop firing. Reopening resumes them from where they
+    # left off, because "due" is derived from the action log, never stored.
+    is_open: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
 

@@ -121,6 +121,11 @@ const STRINGS = {
     due_today: 'due today',
     due_overdue: (n) => `overdue by ${n}d`,
     due_in: (n) => `due in ${n}d`,
+    season_closed: 'closed for the season',
+    season_open: 'open',
+    season_paused: 'maintenance and alerts paused',
+    season_open_action: 'Open for the season',
+    season_close_action: 'Close for the season',
     quick_add: 'Quick add',
     log_measurement: 'Log measurement',
     log_treatment: 'Log treatment',
@@ -154,6 +159,11 @@ const STRINGS = {
     due_today: "aujourd'hui",
     due_overdue: (n) => `en retard de ${n}j`,
     due_in: (n) => `dans ${n}j`,
+    season_closed: 'fermée pour la saison',
+    season_open: 'ouverte',
+    season_paused: 'entretien et alertes en pause',
+    season_open_action: 'Ouvrir pour la saison',
+    season_close_action: 'Fermer pour la saison',
     quick_add: 'Ajout rapide',
     log_measurement: 'Enregistrer une mesure',
     log_treatment: 'Enregistrer un traitement',
@@ -238,6 +248,10 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
+// Season markers on the card: snowflake = closed, sun = open.
+const SEASON_GLYPH_CLOSED = '\u2744';
+const SEASON_GLYPH_OPEN = '\u2600';
+
 // Inlined from apps/web/src/assets/homepool-icon.svg — the card is a
 // single self-contained JS file, so no static-path registration/fetch.
 const HOMEPOOL_ICON_SVG = `
@@ -287,6 +301,7 @@ class HomepoolCard extends HTMLElement {
       installation_id: 1,
       show_buttons: true,
       show_due: true,
+      show_season: true,
       show_header: true,
       show_logo: true,
     };
@@ -302,6 +317,7 @@ class HomepoolCard extends HTMLElement {
       installation_id: config.installation_id ?? null,
       show_buttons: config.show_buttons !== false,
       show_due: config.show_due !== false,
+      show_season: config.show_season !== false,
       show_header: config.show_header !== false,
       show_logo: config.show_logo !== false,
       parameters: config.parameters ?? null,
@@ -350,6 +366,36 @@ class HomepoolCard extends HTMLElement {
     if (!hass) return null;
     const phEntity = hass.states[this._entityId(FIELD_SUFFIXES.ph)];
     return (phEntity && phEntity.attributes && phEntity.attributes.sanitizer) || null;
+  }
+
+  // The season switch (`switch.<prefix>_open`, switch.py) — "off" means the pool
+  // is closed for the winter. Derived from entity_prefix the same way the task
+  // buttons are (taskButtonPrefix). Absent on an integration without the season
+  // switch, which reads as open.
+  _seasonEntityId() {
+    return `switch.${(this._config.entity_prefix || '').replace(/^sensor\./, '')}_open`;
+  }
+
+  // Resolve the season switch to { entityId, closed }. A null entityId means the
+  // integration predates the season switch, which reads as open.
+  _seasonState() {
+    const entityId = this._seasonEntityId();
+    const st = entityId ? this._hass?.states?.[entityId] : undefined;
+    return { entityId: st ? entityId : null, closed: !!st && st.state === 'off' };
+  }
+
+  // Flip the season switch (switch.py → PATCH /v1/installations/{id}). Closing
+  // pauses all maintenance and chemistry alerts; reopening resumes the exact
+  // countdowns. HA re-pushes the entity states, so the card repaints itself.
+  _setSeasonOpen(open) {
+    const entityId = this._seasonEntityId();
+    if (!this._hass || !entityId) return;
+    try {
+      const result = this._hass.callService('switch', open ? 'turn_on' : 'turn_off', { entity_id: entityId });
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch (err) {
+      console.error('homepool: season toggle failed', err);
+    }
   }
 
   _paramEntities() {
@@ -450,16 +496,25 @@ class HomepoolCard extends HTMLElement {
     const params = this._paramEntities();
     const buttons = config.show_buttons ? this._buttonEntities() : [];
     const dues = config.show_due ? this._dueEntities() : [];
+    const season = this._seasonState();
+    const showSeason = config.show_season !== false && season.entityId;
+
+    // Closed shows in the title bar as well as the season row: the header is the
+    // one part of the card every layout shows, so it is where "not open" lives.
+    const headerHtml = config.show_header ? `
+      <div class="hp-header">
+        ${config.show_logo ? HOMEPOOL_ICON_SVG : ''}
+        <span>${config.title}</span>
+        ${showSeason && season.closed
+          ? `<span class="hp-chip hp-chip-season">${SEASON_GLYPH_CLOSED} ${escapeHtml(t(hass, 'season_closed'))}</span>`
+          : ''}
+      </div>
+    ` : '';
 
     if (params.length === 0 && buttons.length === 0) {
       this._cardMount.innerHTML = `
         <ha-card>
-          ${config.show_header ? `
-            <div class="hp-header">
-              ${config.show_logo ? HOMEPOOL_ICON_SVG : ''}
-              <span>${config.title}</span>
-            </div>
-          ` : ''}
+          ${headerHtml}
           <div class="hp-empty">${t(hass, 'no_data')}</div>
         </ha-card>
       `;
@@ -504,11 +559,29 @@ class HomepoolCard extends HTMLElement {
       `;
     }).join('');
 
+    // Season row: says in plain words whether the pool is open, with the toggle
+    // right there. Overdue chips are suppressed while closed — a pool that is
+    // closed for the winter is not behind on maintenance.
+    const seasonRowHtml = showSeason ? `
+      <div class="hp-season-row">
+        <span class="hp-season-state">
+          <span class="hp-chip ${season.closed ? 'hp-chip-season' : 'hp-chip-open'}">
+            ${season.closed ? SEASON_GLYPH_CLOSED : SEASON_GLYPH_OPEN} ${escapeHtml(t(hass, season.closed ? 'season_closed' : 'season_open'))}
+          </span>
+          ${season.closed ? `<span class="hp-season-hint">${escapeHtml(t(hass, 'season_paused'))}</span>` : ''}
+        </span>
+        <button class="hp-btn ${season.closed ? 'hp-btn-season-open' : 'hp-btn-season-close'}"
+          id="hp-season-toggle"
+          aria-pressed="${season.closed ? 'true' : 'false'}"
+          aria-label="${escapeHtml(t(hass, season.closed ? 'season_open_action' : 'season_close_action'))}">${escapeHtml(t(hass, season.closed ? 'season_open_action' : 'season_close_action'))}</button>
+      </div>
+    ` : '';
     const dueHtml = dues.map(({ label, entityId }) => {
       const st = hass.states[entityId];
       const days = st.state === 'unavailable' || st.state === 'unknown' ? null : parseFloat(st.state);
       if (days === null || Number.isNaN(days)) return '';
       const overdue = days < 0;
+      if (overdue && season.closed) return '';
       const dueSoon = days >= 0 && days <= 3;
       const chipClass = overdue ? 'hp-chip-danger' : dueSoon ? 'hp-chip-warn' : 'hp-chip-neutral';
       const text = overdue ? t(hass, 'due_overdue', Math.abs(Math.round(days)))
@@ -539,12 +612,8 @@ class HomepoolCard extends HTMLElement {
 
     this._cardMount.innerHTML = `
       <ha-card>
-        ${config.show_header ? `
-          <div class="hp-header">
-            ${config.show_logo ? HOMEPOOL_ICON_SVG : ''}
-            <span>${config.title}</span>
-          </div>
-        ` : ''}
+        ${headerHtml}
+        ${seasonRowHtml}
         ${dueHtml ? `<div class="hp-due-row">${dueHtml}</div>` : ''}
         ${params.length ? `<div class="hp-grid">${tilesHtml}</div>` : ''}
         ${buttons.length || showFormToggle || showTreatmentToggle ? `
@@ -563,6 +632,8 @@ class HomepoolCard extends HTMLElement {
     if (toggle) toggle.addEventListener('click', () => this._openModal());
     const treatmentToggle = this._cardMount.querySelector('#hp-treatment-toggle');
     if (treatmentToggle) treatmentToggle.addEventListener('click', () => this._openTreatmentModal());
+    const seasonToggle = this._cardMount.querySelector('#hp-season-toggle');
+    if (seasonToggle) seasonToggle.addEventListener('click', () => this._setSeasonOpen(season.closed));
     // A tile's chart icon opens HA's native more-info dialog for that sensor;
     // tapping the tile body opens the log modal focused on the field.
     this._cardMount.querySelectorAll('.hp-tile-info[data-info]').forEach((btn) => {
@@ -825,6 +896,22 @@ class HomepoolCard extends HTMLElement {
           font-family: monospace;
         }
         .hp-chip-neutral { background: var(--hp-bg-2); color: var(--hp-text-muted); }
+        .hp-season-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 10px;
+          padding: 7px 10px;
+          border: 1px solid var(--hp-border);
+          border-radius: 10px;
+          background: var(--hp-bg-2);
+        }
+        .hp-season-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .hp-season-hint { font-size: 11px; color: var(--hp-text-muted); }
+        .hp-chip-season { background: var(--hp-bg-2); color: var(--hp-text-muted); border: 1px solid var(--hp-border); }
+        .hp-chip-open { background: rgba(63,182,139,0.14); color: var(--homepool-ok, #3FB68B); }
         .hp-chip-warn { background: rgba(217,161,59,0.15); color: #D9A13B; }
         .hp-chip-danger { background: rgba(229,100,95,0.15); color: #E5645F; }
         .hp-grid {
@@ -951,6 +1038,13 @@ class HomepoolCard extends HTMLElement {
           border: none;
           font-weight: 700;
         }
+        .hp-btn-season-open {
+          background: rgba(63,182,139,0.16);
+          color: var(--homepool-ok, #3FB68B);
+          border: 1px solid rgba(63,182,139,0.4);
+          font-weight: 700;
+        }
+        .hp-btn-season-close { color: var(--hp-text-muted); }
         .hp-tile-top-right {
           display: flex;
           align-items: center;
@@ -1171,6 +1265,9 @@ class HomepoolCardEditor extends HTMLElement {
         <label><input id="show_due" type="checkbox" /> Show due chips</label>
       </div>
       <div class="row">
+        <label><input id="show_season" type="checkbox" /> Show open / closed for the season row</label>
+      </div>
+      <div class="row">
         <label>Quick add actions</label>
         <div class="chip-row" id="quick-add-chips">${quickAddChipsHtml}</div>
       </div>
@@ -1189,7 +1286,7 @@ class HomepoolCardEditor extends HTMLElement {
     this.shadowRoot.getElementById('installation_id').addEventListener('input', (e) => {
       this._update('installation_id', e.target.value ? parseInt(e.target.value, 10) : null);
     });
-    ['show_header', 'show_logo', 'show_buttons', 'show_due'].forEach((id) => {
+    ['show_header', 'show_logo', 'show_buttons', 'show_due', 'show_season'].forEach((id) => {
       this.shadowRoot.getElementById(id).addEventListener('change', (e) => this._update(id, e.target.checked));
     });
     this.shadowRoot.querySelectorAll('#quick-add-chips .chip').forEach((chip) => {
@@ -1219,6 +1316,8 @@ class HomepoolCardEditor extends HTMLElement {
     if (showButtons && showButtons !== active) showButtons.checked = c.show_buttons !== false;
     const showDue = this.shadowRoot.getElementById('show_due');
     if (showDue && showDue !== active) showDue.checked = c.show_due !== false;
+    const showSeason = this.shadowRoot.getElementById('show_season');
+    if (showSeason && showSeason !== active) showSeason.checked = c.show_season !== false;
 
     // Chips aren't focusable text inputs with in-progress typed state, so
     // it's safe to just re-sync their visual state unconditionally.

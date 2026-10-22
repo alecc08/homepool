@@ -87,8 +87,22 @@ class HomepoolClient:
     async def _post(self, path: str, json: dict) -> object:
         return await self._request("POST", path, json=json)
 
+    async def _patch(self, path: str, json: dict) -> object:
+        return await self._request("PATCH", path, json=json)
+
     async def list_installations(self) -> list[dict]:
         return await self._get("/v1/installations")
+
+    async def set_installation_open(self, installation_id: int, is_open: bool) -> dict:
+        # Winterizing a pool (is_open=False) pauses its maintenance and silences
+        # chemistry alerts and dosing advice; reopening resumes them exactly where
+        # they stopped. History stays readable and loggable in both states, so
+        # logging the closing and opening chores keeps working. Season state is
+        # owner-only: a shared viewer's call comes back as a 403, which
+        # _request surfaces as a plain HomepoolApiError.
+        return await self._patch(
+            f"/v1/installations/{installation_id}", {"is_open": is_open}
+        )
 
     async def get_current(self, installation_id: int) -> dict:
         return await self._get("/v1/current", params={"installation_id": installation_id})

@@ -56,5 +56,12 @@
     "abort": {
       "no_installations": "Aucune piscine ni aucun spa n'est disponible pour l'instant — vérifiez que l'intégration est bien connectée à votre serveur homepool, puis réessayez"
     }
+  },
+  "entity": {
+    "switch": {
+      "pool_open": {
+        "name": "Ouvert"
+      }
+    }
   }
 }
