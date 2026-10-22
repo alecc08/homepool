@@ -47,6 +47,7 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 - **Digital device input** — decimal inputs with range validation
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
 - **Pool sharing** — give another account read-only or read-and-log access to one of your pools, for a partner, a housemate or the person who looks after it while you're away
+- **Closed for the season** — winterize a pool with one toggle and every maintenance countdown, chemistry alert and dosing recommendation goes quiet for the winter, in the app and in Home Assistant alike; history stays readable and loggable (the closing chores included), and reopening picks every countdown up exactly where it stopped
 - **Bromine, chlorine or salt** — differentiated ideal ranges per sanitizer, including a full salt water generator (SWG) profile: higher CYA, a matching free-chlorine target, and a lower total alkalinity target to slow the pH rise SWG cells cause
 - **Configurable ideal ranges** — override any water-parameter range per installation, right from the UI
 - **Dosage recommendations** — out-of-range params get a targeted dosing suggestion (liquid CYA now gets a real active-ingredient estimate instead of just "check the bottle"), plus a what-if simulator with slider inputs bounded by your installation's own acceptable ranges and prefilled from your latest reading
@@ -184,9 +185,9 @@ the other person's homepool email address and pick their level of access:
 | **Read and log** | The above, plus log measurements, treatments and mark maintenance done |
 
 The pool's **owner** keeps everything else: renaming it, capacity and units, target ranges,
-maintenance task configuration, managing shares, and deleting it. Sharing is by account, so
-the other person needs to have signed up on your instance first — there are no invitation
-emails to configure.
+maintenance task configuration, managing shares, closing it for the season, and deleting it.
+Sharing is by account, so the other person needs to have signed up on your instance first —
+there are no invitation emails to configure.
 
 Shared pools show up in the recipient's installation picker labelled with the owner's name,
 and in their **Home Assistant integration** too: their API key lists shared pools alongside
@@ -200,7 +201,7 @@ Either side can end a share: the owner revokes it from the Sharing tab, the reci
 
 ### 🏠 Home Assistant Integration
 
-homepool ships a full Home Assistant integration: sensors for every water parameter, maintenance-due tracking, one-tap maintenance buttons, and a custom **homepool card** for your dashboard.
+homepool ships a full Home Assistant integration: sensors for every water parameter, maintenance-due tracking, one-tap maintenance buttons, a season switch that winterizes a pool, and a custom **homepool card** for your dashboard.
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=homepool)
 
@@ -228,12 +229,13 @@ Each installation gets a device with the following entities:
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
 | `sensor.<installation>_treatments` | The products you can log a treatment with — state is the product count, with the catalog itself (`key`, `label`, `icon`, `default_unit`, `param`) on the `treatments` attribute. Powers the card's "Log treatment" picker, and the `key` values are what `homepool.log_treatment` accepts. |
 | `button.<installation>_log_<task>` — e.g. `_log_filter_maintenance`, `_log_water_change`, `_log_ph_calibration` | One button per maintenance task you enabled, whether it came with the pool or you added it. Press to log it against homepool immediately, no app needed. To log one for a *past* day, use the `homepool.log_maintenance` service instead. |
+| `switch.<installation>_open` | The season switch: **on** = open for the season, **off** = winterized. Turning it off pauses that pool's maintenance and silences its alerts and dosing advice — the "days until due" sensors report no value while it's off, so automations go quiet on their own. Turning it back on resumes every countdown exactly where it stopped. Same state as the web app's **Season** control, and the owner's call: a switch on a pool someone else shared with you is refused. |
 
 #### 5. The homepool card
 
 A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and "Log measurement" / "Log treatment" buttons that open a popup form. The measurement form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes; the treatment form offers your installation's own product catalog, with the amount, unit (pre-filled from the product) and an optional brand. Either button can be hidden from the card's visual editor.
 
-Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
+Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation. Below the title sits a season row that states the pool's season state in words — ❄ **closed for the season** (with "maintenance and alerts paused") or ☀ **open** — with **Open for the season** / **Close for the season** on the right, so winterizing a pool is one tap from the dashboard; a closed pool also marks its title bar, and its due chips stay out of sight (overdue is not a thing while a pool is closed). The chemistry tiles stay factual throughout, so you can still read and log the water.
 
 <div align="center">
 
@@ -263,7 +265,8 @@ Everything the visual editor exposes has a YAML equivalent:
 | `title` | `homepool` | Card heading. Also what's stripped off the front of each tile's label, so setting it to the pool's name keeps the tiles reading `PH`, `CHLORINE`, … |
 | `show_header` | `true` | The title row. |
 | `show_logo` | `true` | The homepool mark beside the title. |
-| `show_due` | `true` | The "due in N days" chips along the top. |
+| `show_due` | `true` | The "due in N days" chips along the top. A pool closed for the season shows no due chips at all. |
+| `show_season` | `true` | The season row (state chip + open/close button). Needs the integration's `switch.<installation>_open`, so a card pointing at an older integration hides itself. |
 | `show_buttons` | `true` | The whole **Quick add** row. |
 | `parameters` | all | Restrict which tiles render, e.g. `[ph, chlorine, temp]`. |
 | `quick_add` | all shown | Hide individual quick-add buttons: `{ log_treatment: false }` drops the Log treatment button, and a maintenance task's own key drops its button. |
@@ -370,6 +373,8 @@ The "days until due" sensors above are plain numbers so you can build any automa
 
 Pick your notification device and however many "Days Until ... Due" sensors you want covered (one blueprint instance handles all of them), and set what time of day to check. It re-notifies daily for as long as a task stays overdue, and stops as soon as you mark it done — either by tapping the notification's button or logging it any other way (the web app, the card, or the services above).
 
+Closing a pool for the season mutes this automation by itself: a paused task's due sensor reports no value, and the blueprint skips sensors with no value. Nothing to unpair when winter comes — flip `switch.<installation>_open` off and the notifications stop, flip it back on and they resume.
+
 ---
 
 ### ⚙️ Configuration
@@ -389,6 +394,18 @@ Copy `.env.example` to `.env` and adjust the values:
 #### Customizing ideal water-parameter ranges
 
 Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm), a matching free-chlorine band, and a lower total alkalinity target (60-80 ppm, vs. 80-180 ppm for manually-dosed pools) since SWG cells raise pH over time and a lower TA slows that rise — following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. If your setup runs differently, open an installation's edit modal → **Water Chemistry Targets** tab to customize any band per installation, right from the UI — no env vars or restarts required.
+
+#### Closing a pool for the season
+
+A winterized pool has no business sending reminders. In an installation's edit modal, the **Season** row offers ☀️ **Open** / ❄️ **Closed**; on **Closed**:
+
+- every maintenance task reads **Paused** instead of due or overdue — on the dashboard, the maintenance list and Home Assistant alike, and nothing is added to the "Needs attention" list
+- chemistry alerts and dosing advice go silent, and the Recommendations page says *"Closed for the season: no dosing advice."*
+- Home Assistant mirrors all of it: `switch.<installation>_open` reads off, the "days until due" sensors report no value, the homepool card says **closed for the season** and offers **Open for the season** on the spot, and the [maintenance-due blueprint](#8-get-notified-when-maintenance-is-due) has nothing left to notify about
+
+Closing is a lens, not a deletion: nothing is archived, reset or hidden, and logging stays open — record the closing chores, a winter inspection or a measurement whenever you want. The water-parameter tiles keep reporting what your last reading said; only the alert-generating surfaces go quiet.
+
+Reopen the pool with the ☀️ pill, the banner's **Open for the season** button, or by turning the HA switch back on, and every countdown resumes exactly where it stopped — due dates are derived from your log and a pause stores nothing, so a pool closed for five months is due the day it reopens if it was due the day it closed. Season state belongs to the pool's **owner**: a shared pool tells its viewers and editors that it is closed, read-only.
 
 ---
 

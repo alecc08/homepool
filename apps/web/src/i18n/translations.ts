@@ -84,6 +84,7 @@ export const translations = {
     // Tableau de bord (redesign)
     attention_title: "Points d'attention",
     attention_all_ok: 'Tout est à jour',
+    attention_closed: 'Fermée pour la saison — entretien en pause',
     dash_empty_title: 'Aucune donnée pour le moment',
     dash_empty_sub: "Enregistrez votre première mesure pour suivre l'état de l'eau.",
     dash_log_first: 'Enregistrer une première mesure',
@@ -166,6 +167,11 @@ export const translations = {
     modal_install_type: 'Type',
     modal_install_pool: '🏊 Piscine',
     modal_install_spa: '🛁 Spa',
+    modal_install_season: 'Saison',
+    modal_install_season_open: 'Ouverte',
+    modal_install_season_closed: 'Fermée',
+    modal_install_season_hint_open: "Ouverte : l'entretien, les alertes et les conseils de dosage s'affichent normalement.",
+    modal_install_season_hint_closed: "Fermée : l'entretien est en pause et les alertes sont silencieuses. L'historique reste consultable et consignable, hivernage compris. À la réouverture, tout reprend où vous l'avez laissé.",
     modal_install_sanitizer: 'Désinfectant',
     modal_install_bromine: 'Brome',
     modal_install_chlorine: 'Chlore',
@@ -185,6 +191,12 @@ export const translations = {
     modal_install_name_required: 'Le nom est requis.',
     modal_install_creating: "Création…",
     modal_install_create: "Créer l'installation",
+
+    // Saison (bassin fermé / hiverné)
+    season_badge_closed: 'Fermée',
+    season_closed_title: 'Fermée pour la saison',
+    season_closed_body: "L'entretien est en pause, les alertes et les conseils de dosage sont silencieux. L'historique reste consultable et consignable.",
+    season_open_pool: 'Ouvrir pour la saison',
 
     // Profil
     profile_title: 'Mon profil',
@@ -410,6 +422,7 @@ export const translations = {
     maint_task_purge: 'Purge',
     maint_task_product_addition: 'Ajout de produit',
     maint_on_demand: 'À la demande',
+    maint_paused: 'En pause',
     maint_log_entry: 'Enregistrer',
     // Configuration
     maint_config_title: 'Configurer l’entretien',
@@ -512,6 +525,7 @@ export const translations = {
     nav_recommendations: 'Recommandations',
     recommendations_page_title: 'Recommandations',
     recommendations_empty: 'Tout est dans les normes',
+    recommendations_closed: 'Fermée pour la saison : aucun conseil de dosage.',
     recommendations_volume_unknown_banner: "Renseignez le volume de votre bassin dans les réglages pour obtenir des quantités précises.",
     recommendations_raise: 'Augmenter',
     recommendations_lower: 'Diminuer',
@@ -662,6 +676,7 @@ export const translations = {
     // Dashboard (redesign)
     attention_title: 'Needs attention',
     attention_all_ok: 'All up to date',
+    attention_closed: 'Closed for the season — maintenance paused',
     dash_empty_title: 'No data yet',
     dash_empty_sub: 'Log your first measurement to start tracking your water.',
     dash_log_first: 'Log first measurement',
@@ -744,6 +759,11 @@ export const translations = {
     modal_install_type: 'Type',
     modal_install_pool: '🏊 Pool',
     modal_install_spa: '🛁 Spa',
+    modal_install_season: 'Season',
+    modal_install_season_open: 'Open',
+    modal_install_season_closed: 'Closed',
+    modal_install_season_hint_open: 'Open: maintenance, alerts and dosing advice run as usual.',
+    modal_install_season_hint_closed: 'Closed: maintenance is paused and the alerts go quiet. History stays readable and loggable — the closing chores included. Reopening picks up exactly where it left off.',
     modal_install_sanitizer: 'Sanitizer',
     modal_install_bromine: 'Bromine',
     modal_install_chlorine: 'Chlorine',
@@ -763,6 +783,12 @@ export const translations = {
     modal_install_name_required: 'Name is required.',
     modal_install_creating: 'Creating…',
     modal_install_create: 'Create installation',
+
+    // Season (pool/spa closed for the winter)
+    season_badge_closed: 'Closed',
+    season_closed_title: 'Closed for the season',
+    season_closed_body: 'Maintenance is paused, and the alerts and dosing advice are silenced. History stays readable and loggable.',
+    season_open_pool: 'Open for the season',
 
     // Profil
     profile_title: 'My profile',
@@ -988,6 +1014,7 @@ export const translations = {
     maint_task_purge: 'Drain',
     maint_task_product_addition: 'Add product',
     maint_on_demand: 'On demand',
+    maint_paused: 'Paused',
     maint_log_entry: 'Log',
     // Configuration
     maint_config_title: 'Configure maintenance',
@@ -1090,6 +1117,7 @@ export const translations = {
     nav_recommendations: 'Recommendations',
     recommendations_page_title: 'Recommendations',
     recommendations_empty: "Everything's in range",
+    recommendations_closed: 'Closed for the season: no dosing advice.',
     recommendations_volume_unknown_banner: 'Set your pool volume in Settings for exact dosage amounts.',
     recommendations_raise: 'Raise',
     recommendations_lower: 'Lower',

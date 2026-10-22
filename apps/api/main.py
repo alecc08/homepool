@@ -263,6 +263,18 @@ def _ensure_contact_columns(session: Session) -> None:
     session.commit()
 
 
+def _ensure_is_open_column(session: Session) -> None:
+    # Booted OPEN: an instance upgrading from a release without the
+    # season switch keeps swimming exactly where it left off, and the owner closes
+    # each pool when the frost comes.
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text(
+        "ALTER TABLE installation ADD COLUMN IF NOT EXISTS is_open BOOLEAN NOT NULL DEFAULT TRUE"
+    ))
+    session.commit()
+
+
 def _ensure_treatment_columns(session: Session) -> None:
     # The treatmentproduct table itself comes from create_all; these are the
     # columns treatments added to the pre-existing action table.
@@ -316,9 +328,9 @@ def _migrate_installations(session: Session) -> None:
         session.exec(
             text("""
                 INSERT INTO installation
-                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, hardness_unit, created_at)
+                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, hardness_unit, is_open, created_at)
                 VALUES
-                    (:uid, 'My pool', 'pool', 'bromine', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
+                    (:uid, 'My pool', 'pool', 'bromine', 'L', 'C', 'ppm', 'mg/L', 'ppm', TRUE, NOW())
             """).bindparams(uid=uid)
         )
     if users_without:
@@ -500,6 +512,7 @@ async def lifespan(app: FastAPI):
         _ensure_measurement_unit_columns(session)
         _ensure_range_overrides_column(session)
         _ensure_contact_columns(session)
+        _ensure_is_open_column(session)
         _ensure_treatment_columns(session)
         insert_seeds(session)
         _backfill_first_admin(session)
@@ -626,6 +639,8 @@ class InstallationIn(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    # A pool created mid-winter can start closed. See Installation.is_open.
+    is_open: bool = True
 
 
 class InstallationPatchIn(BaseModel):
@@ -643,6 +658,9 @@ class InstallationPatchIn(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    # Optional[bool] (not bool) so the PATCH's `is not None` copying can tell
+    # "leave the season state alone" from "close the pool".
+    is_open: Optional[bool] = None
 
 
 class InstallationOut(BaseModel):
@@ -665,6 +683,9 @@ class InstallationOut(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    # False = winterized. Maintenance is paused, chemistry alerts and
+    # dosing advice are suppressed, history stays readable and loggable.
+    is_open: bool = True
     created_at: datetime
 
 
@@ -718,6 +739,15 @@ class InstallationSummaryOut(BaseModel):
     name: str
     type: str
     sanitizer: str
+    # The Home Assistant integration reads its devices from this
+    # route, so the season state rides along on the same payload.
+    is_open: bool = True
+
+
+class InstallationSeasonPatchIn(BaseModel):
+    # The /v1 surface exposes the season state and nothing else: this
+    # is the one installation field Home Assistant is allowed to write.
+    is_open: bool
 
 
 class ShareIn(BaseModel):
@@ -757,6 +787,12 @@ class MaintenanceTaskOut(BaseModel):
     sort_order: int
     days_until_due: Optional[int] = None
     last_date: Optional[date] = None
+    # True when the installation is closed for the season, which pauses
+    # this task. It is derived from the installation, never configured on the task,
+    # and travels with the task because the maintenance routes answer with a flat
+    # task list. Clients must test `paused` BEFORE `days_until_due`: a null due date
+    # means "never logged" to them, which they render as overdue.
+    paused: bool = False
 
 
 class MaintenanceTaskIn(BaseModel):
@@ -1467,6 +1503,7 @@ def create_installation(
         phone=payload.phone,
         email=payload.email,
         notes=payload.notes,
+        is_open=payload.is_open,
     )
     session.add(installation)
     session.commit()
@@ -1513,6 +1550,8 @@ def update_installation(
         installation.email = payload.email
     if payload.notes is not None:
         installation.notes = payload.notes
+    if payload.is_open is not None:
+        installation.is_open = payload.is_open
     session.add(installation)
     session.commit()
     session.refresh(installation)
@@ -1756,9 +1795,16 @@ def get_installation_recommendations(
     current = extract_current_conditions(actions, installation)
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     ranges = _merge_range_overrides(defaults, installation.range_overrides)
+    # A closed pool isn't dosed, so there is no advice to give. The web app says
+    # why from the installation's own season state, so the empty list needs no
+    # second flag to explain itself.
     return {
         "volume_known": installation.volume is not None,
-        "recommendations": compute_recommendations(current, ranges, installation),
+        "recommendations": (
+            compute_recommendations(current, ranges, installation)
+            if installation.is_open
+            else []
+        ),
     }
 
 
@@ -1861,7 +1907,41 @@ def _maintenance_status(session: Session, installation_id: int) -> List[Dict]:
         select(MaintenanceTask).where(MaintenanceTask.installation_id == installation_id)
     ).all()
     actions = _installation_actions_for_status(session, installation_id)
-    return compute_task_status(tasks, actions)
+    return _apply_season_state(session, installation_id, compute_task_status(tasks, actions))
+
+
+def _installation_is_open(session: Session, installation_id: int) -> bool:
+    """True when the pool/spa is in season. A missing installation is
+    treated as open — every caller here has already resolved it, so this never
+    silently pauses a pool that exists."""
+    installation = session.get(Installation, installation_id)
+    return installation is None or installation.is_open
+
+
+def _apply_season_state(
+    session: Session, installation_id: int, status: List[Dict]
+) -> List[Dict]:
+    """A closed pool/spa carries no scheduled obligations, so this is
+    where winter silences the app: every derived due date goes quiet in one place,
+    for every consumer at once — the web dashboard, the maintenance page, and the
+    Home Assistant "days until due" sensors, all of which read this same list.
+
+    `paused` is carried as an explicit flag rather than only blanking
+    days_until_due, because clients already read a null as "never logged, therefore
+    overdue" (apps/web maintenanceTodoItems / statusFor) — blanking alone would make
+    a closed pool come back shouting that every task is overdue. days_until_due is
+    still nulled, so consumers that understand nothing but the due number go quiet
+    too.
+
+    The due *math* is untouched and nothing is stored: reopening resumes the
+    countdown exactly where it stopped.
+    """
+    if _installation_is_open(session, installation_id):
+        return status
+    for task in status:
+        task["paused"] = True
+        task["days_until_due"] = None
+    return status
 
 
 def _loggable_action_types(session: Session, installation_id: int) -> set:
@@ -2448,6 +2528,29 @@ def api_installations(
     # someone a pool was shared with picks them up as devices. Writes through the
     # /v1 routes still respect the role — a viewer gets 403.
     return _accessible_installations(user, session)
+
+
+@app.patch("/v1/installations/{installation_id}", response_model=InstallationSummaryOut)
+@limiter.limit("60/minute")
+def api_set_installation_season(
+    request: Request,
+    installation_id: int,
+    payload: InstallationSeasonPatchIn,
+    user: User = Depends(get_current_user_by_api_key),
+    session: Session = Depends(get_session),
+):
+    # Home Assistant's "Open" switch. Winterizing is the owner's call,
+    # so this follows the same access rule the web settings use: require_write
+    # answers a viewer with 403 (they can see the pool, they can't switch it), and
+    # _get_owned_installation answers an editor with 404, exactly as the session
+    # PATCH at /installations/{id} does.
+    _resolve_installation_for_api_key(installation_id, user, session, require_write=True)
+    installation = _get_owned_installation(installation_id, user, session)
+    installation.is_open = payload.is_open
+    session.add(installation)
+    session.commit()
+    session.refresh(installation)
+    return installation
 
 
 @app.get("/v1/current", response_model=CurrentConditionsOut)

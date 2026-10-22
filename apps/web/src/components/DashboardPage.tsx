@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check } from 'lucide-react'
+import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, Snowflake } from 'lucide-react'
 import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -20,6 +20,7 @@ import {
   getDaysSince,
   getChemistryTodoItems,
   maintenanceTodoItems,
+  isSeasonOpen,
   translateLabel,
   type TodoItem,
   type ParamStatus,
@@ -27,6 +28,7 @@ import {
   type DynamicRanges,
 } from '../utils'
 import { ACTION_TYPE_LABELS } from './ActionForm'
+import SeasonBanner from './SeasonBanner'
 
 function formatDateLong(d: Date, locale: Locale): string {
   return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -86,12 +88,22 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       .then((data: MaintenanceTask[] | null) => setMaintenanceTasks(data ?? []))
       .catch(() => setMaintenanceTasks([]))
     // Refetch when the action log changes so completed maintenance clears its
-    // due status here too.
-  }, [active?.id, actions])
+    // due status here too, and when the season flips, because that is what
+    // sets the paused flags on these rows.
+  }, [active?.id, actions, active?.is_open])
+
+  // A closed pool is winterized, so nothing on it is coming due and
+  // nothing on it needs dosing. maintenanceTodoItems drops the paused tasks the
+  // API marks for us; the chemistry items are derived here from the last reading,
+  // so the season has to be checked at this call site.
+  const closed = !!active && !isSeasonOpen(active)
 
   const todoItems = useMemo<TodoItem[]>(
-    () => [...maintenanceTodoItems(maintenanceTasks, t), ...getChemistryTodoItems(params, t)],
-    [maintenanceTasks, params, t],
+    () => [
+      ...maintenanceTodoItems(maintenanceTasks, t),
+      ...(closed ? [] : getChemistryTodoItems(params, t)),
+    ],
+    [maintenanceTasks, params, closed, t],
   )
 
   const [recommendationsCount, setRecommendationsCount] = useState<number | null>(null)
@@ -101,7 +113,9 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       .then(r => r.ok ? r.json() : null)
       .then((data: RecommendationsResponse | null) => setRecommendationsCount(data?.recommendations.length ?? null))
       .catch(() => setRecommendationsCount(null))
-  }, [active?.id])
+    // Keyed on the season too: reopening is exactly the moment the count
+    // stops being zero.
+  }, [active?.id, active?.is_open])
 
   const [hoveredRowId, setHoveredRowId] = useState<number | null>(null)
 
@@ -231,6 +245,9 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
       </div>
 
+      {/* Says why the panels below are quiet. Renders nothing mid-season. */}
+      <SeasonBanner />
+
       {actions.length === 0 ? (
         /* ── Empty state ─────────────────────────────────────────────────── */
         <div className="card" style={{ padding: '48px 24px', textAlign: 'center' }}>
@@ -262,6 +279,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             <AttentionPanel
               todoItems={todoItems}
               recommendationsCount={recommendationsCount}
+              closed={closed}
               onNavigate={onNavigate}
             />
 
@@ -415,10 +433,15 @@ function ParamTile({ tile, actions, onClick }: { tile: TileDef; actions: Action[
 function AttentionPanel({
   todoItems,
   recommendationsCount,
+  closed = false,
   onNavigate,
 }: {
   todoItems: TodoItem[]
   recommendationsCount: number | null
+  /** The installation is closed for the season. A paused pool and a
+   * meticulously kept one are indistinguishable in this panel — both are empty —
+   * so the panel says which of the two it is. */
+  closed?: boolean
   onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
 }) {
   const { t } = useT()
@@ -434,7 +457,12 @@ function AttentionPanel({
     <div className="card" style={{ padding: 16 }}>
       <div className="section-title" style={{ marginBottom: 12 }}>{t('attention_title')}</div>
 
-      {isEmpty ? (
+      {closed ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontFamily: '"Sora", sans-serif', fontSize: 13, padding: '8px 0' }}>
+          <Snowflake size={16} strokeWidth={1.75} aria-hidden="true" />
+          {t('attention_closed')}
+        </div>
+      ) : isEmpty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--status-ok-text)', fontFamily: '"Sora", sans-serif', fontSize: 13, padding: '8px 0' }}>
           <Check size={16} strokeWidth={1.75} aria-hidden="true" />
           {t('attention_all_ok')}

@@ -100,6 +100,14 @@ export function isOnDemandTask(task: { interval_days: number }): boolean {
   return task.interval_days <= 0
 }
 
+/** Is the pool/spa in its open season? A closed one is winterized:
+ * maintenance is paused and chemistry alerts and dosing advice are suppressed,
+ * while history stays readable and loggable. A missing flag means the server
+ * predates the season switch, which is the same as open. */
+export function isSeasonOpen(installation: { is_open?: boolean } | null | undefined): boolean {
+  return installation?.is_open !== false
+}
+
 /** The raw action_type every treatment is stored under. It predates the
  * treatment catalog (it used to be the "Add product" maintenance task), and
  * keeping the string means every treatment ever logged stays classified as one.
@@ -460,7 +468,8 @@ export function maintenanceTaskLabel(
  * dashboard attention-panel items, keeping only enabled, scheduled tasks that
  * are never-done, overdue, or due within the warn window. On-demand tasks
  * (interval_days = 0, e.g. adding a product) are never "late", so they never
- * appear here.
+ * appear here. Paused tasks — those of an installation closed for the season —
+ * are skipped too: a closed pool has nothing coming due.
  */
 export function maintenanceTodoItems(
   tasks: MaintenanceTask[],
@@ -468,6 +477,7 @@ export function maintenanceTodoItems(
 ): TodoItem[] {
   const items: TodoItem[] = []
   for (const task of tasks) {
+    if (task.paused) continue
     if (!task.enabled || isOnDemandTask(task)) continue
     const days = task.days_until_due
     if (days !== null && days > MAINTENANCE_WARN_WITHIN_DAYS) continue

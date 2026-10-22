@@ -103,6 +103,10 @@ export type Installation = {
   phone?: string | null
   email?: string | null
   notes?: string | null
+  /** False = closed for the season (winterized). Maintenance is
+   * paused, chemistry alerts and dosing advice are suppressed, history stays
+   * readable and loggable. Absent on payloads from an older server. */
+  is_open?: boolean
   created_at: string
 }
 
@@ -126,6 +130,11 @@ export type MaintenanceTask = {
   sort_order: number
   days_until_due: number | null
   last_date: string | null
+  /** True when the installation is closed for the season, which
+   * pauses this task. Derived server-side from the installation, never
+   * configured on the task. Test it BEFORE days_until_due: a null due date means
+   * "never logged" here, and that renders as overdue. */
+  paused?: boolean
 }
 
 export type InstallationWaterParams = {

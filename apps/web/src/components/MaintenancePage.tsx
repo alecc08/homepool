@@ -13,6 +13,7 @@ import type { EntryKind } from './ActionForm'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import MaintenanceConfig from './MaintenanceConfig'
+import SeasonBanner from './SeasonBanner'
 
 type Translate = (key: TranslationKey) => string
 
@@ -28,6 +29,10 @@ const sectionCardStyle: React.CSSProperties = {
 type StatusTone = 'ok' | 'warn' | 'danger' | 'neutral'
 
 function statusFor(task: MaintenanceTask, t: Translate): { label: string; tone: StatusTone } {
+  // The installation is closed for the season. Checked first, and
+  // before the days_until_due test below: the API nulls the due date of a paused
+  // task, which this function would otherwise read as "never done".
+  if (task.paused) return { label: t('maint_paused'), tone: 'neutral' }
   // On-demand tasks (interval 0) are loggable but never scheduled, so they never
   // read as "never done" / overdue.
   if (isOnDemandTask(task)) return { label: t('maint_on_demand'), tone: 'neutral' }
@@ -75,7 +80,9 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
       .then((data: MaintenanceTask[]) => setTasks(data))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-  }, [active?.id])
+    // The season is part of what this endpoint answers (paused flags), so
+    // reopening a pool has to reload the rows instead of leaving "Paused" up.
+  }, [active?.id, active?.is_open])
 
   useEffect(() => { load() }, [load])
 
@@ -121,6 +128,9 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
           </div>
         )}
       </div>
+
+      {/* The whole list below is paused, so say so above it. */}
+      <SeasonBanner />
 
       {active && isOwner && (
         <MaintenanceConfig

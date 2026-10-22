@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Waves, Bath } from 'lucide-react'
+import { Waves, Bath, Sun, Snowflake } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,6 +8,7 @@ import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
 import type { Installation } from '../types'
+import { isSeasonOpen } from '../utils'
 import WaterChemistryTargets from './WaterChemistryTargets'
 import TreatmentConfig from './TreatmentConfig'
 import SharingTab from './SharingTab'
@@ -53,6 +54,14 @@ function SharedInstallationView({
         <span style={{ color: 'var(--text-secondary)' }}>{t('share_your_access')}</span>
         <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{roleLabel}</span>
       </div>
+      {/* The season state is the owner's to set, but a share needs to
+          read it — it is what makes the dashboard's "closed" banner truthful. */}
+      <div style={row}>
+        <span style={{ color: 'var(--text-secondary)' }}>{t('modal_install_season')}</span>
+        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+          {isSeasonOpen(installation) ? t('modal_install_season_open') : t('modal_install_season_closed')}
+        </span>
+      </div>
       <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
         {roleHint} {t('share_owner_configures')}
       </p>
@@ -90,6 +99,8 @@ export default function InstallationModal({ open, onClose, installation }: Props
   const [phone, setPhone] = useState(installation?.phone ?? '')
   const [email, setEmail] = useState(installation?.email ?? '')
   const [notes, setNotes] = useState(installation?.notes ?? '')
+  // Season state. `?? true` keeps an older server's missing flag open.
+  const [isOpen, setIsOpen] = useState(installation?.is_open ?? true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -108,6 +119,7 @@ export default function InstallationModal({ open, onClose, installation }: Props
     setPhone('')
     setEmail('')
     setNotes('')
+    setIsOpen(true)
     setTab('general')
   }
 
@@ -151,6 +163,7 @@ export default function InstallationModal({ open, onClose, installation }: Props
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         notes: notes.trim() || undefined,
+        is_open: isOpen,
         ...(parsedVolume !== undefined && !isNaN(parsedVolume) ? { volume: parsedVolume, volume_unit: volumeUnit } : {}),
       }
       if (isEdit && installation) {
@@ -285,6 +298,38 @@ export default function InstallationModal({ open, onClose, installation }: Props
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Season state: closing the pool/spa pauses maintenance and
+              silences chemistry alerts and dosing advice. Nothing is archived —
+              history stays readable and loggable, including the closing chores. */}
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Label>{t('modal_install_season')}</Label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {([['open', Sun, t('modal_install_season_open')], ['closed', Snowflake, t('modal_install_season_closed')]] as const).map(([state, Icon, label]) => {
+                const active = (state === 'open') === isOpen
+                return (
+                  <button
+                    key={state}
+                    type="button"
+                    onClick={() => setIsOpen(state === 'open')}
+                    aria-pressed={active}
+                    style={{
+                      ...cardBase,
+                      borderColor: active ? 'color-mix(in srgb, var(--accent) 35%, transparent)' : 'var(--border)',
+                      background: active ? 'var(--accent-dim)' : 'var(--bg-surface-2)',
+                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <Icon size={20} strokeWidth={1.75} aria-hidden="true" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+              {isOpen ? t('modal_install_season_hint_open') : t('modal_install_season_hint_closed')}
+            </p>
           </div>
 
           {/* Sanitizer */}

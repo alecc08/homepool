@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bath, Waves, Pencil, Plus, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon, Settings } from 'lucide-react'
+import { Bath, Waves, Pencil, Plus, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon, Settings, Snowflake } from 'lucide-react'
 import homepoolLogo from '@/assets/homepool-logo.svg'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
 import type { User } from '../types'
@@ -7,6 +7,7 @@ import type { Theme } from '../hooks/useTheme'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import { ThemeSwitch, LocaleSwitch } from './Switches'
+import { isSeasonOpen } from '../utils'
 import BottomNav from './BottomNav'
 import MobileMenu from './MobileMenu'
 
@@ -143,6 +144,23 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                     <span style={{ fontFamily: 'Sora, sans-serif', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                       {active?.name ?? '…'}
                     </span>
+                    {/* Closed for the season. The sidebar is the one
+                        place that always names the installation, so the winter
+                        state belongs here — the pages themselves say it in full. */}
+                    {!isSeasonOpen(active) && (
+                      <span
+                        title={t('season_badge_closed')}
+                        style={{
+                          flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
+                          fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, fontWeight: 600,
+                          color: 'var(--text-muted)', background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border)', borderRadius: 4, padding: '1px 4px',
+                        }}
+                      >
+                        <Snowflake size={9} strokeWidth={2} aria-hidden="true" />
+                        {t('season_badge_closed')}
+                      </span>
+                    )}
                     {onEditInstallation && (
                       <button
                         type="button"
@@ -180,7 +198,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                   >
                     {installations.map(i => (
                       <option key={i.id} value={i.id}>
-                        {i.role === 'owner' ? i.name : `${i.name} · ${i.owner_name ?? ''}`}
+                        {`${i.role === 'owner' ? i.name : `${i.name} · ${i.owner_name ?? ''}`}${isSeasonOpen(i) ? '' : ` · ${t('season_badge_closed')}`}`}
                       </option>
                     ))}
                   </select>

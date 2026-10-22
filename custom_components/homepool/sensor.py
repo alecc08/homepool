@@ -260,6 +260,8 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
     A plain numeric sensor (not a binary_sensor) so users can build their own
     automation thresholds (e.g. "notify at <=3 days" vs "notify only when
     overdue") via a templated trigger instead of a hardcoded due-soon window.
+    While the installation is closed for the season the state is `None` and the
+    `paused` attribute says why.
     """
 
     _attr_has_entity_name = True
@@ -328,7 +330,14 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
     @property
     def native_value(self) -> int | None:
         value = self._task_value
-        return value["days_until_due"] if value else None
+        if not value:
+            return None
+        # A pool closed for the season has nothing coming due. None rather than a
+        # number is the point: a "notify me at <= 3 days" automation stays silent
+        # all winter instead of firing on a frozen pool.
+        if value.get("paused"):
+            return None
+        return value["days_until_due"]
 
     @property
     def extra_state_attributes(self) -> dict | None:
@@ -345,6 +354,11 @@ class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], Senso
             attrs["last_date"] = value["last_date"]
         if value.get("interval_days") is not None:
             attrs["interval_days"] = value["interval_days"]
+        # Only carried when paused: the state is already null then, so this is
+        # what tells an automation (or the card) that the blank means "closed for
+        # the winter" and not "this task has never been logged".
+        if value.get("paused"):
+            attrs["paused"] = True
         return attrs
 
 

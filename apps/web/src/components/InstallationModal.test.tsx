@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import InstallationModal from './InstallationModal'
 import { translations } from '../i18n/translations'
+import type { Installation } from '../types'
 
 vi.mock('../context/LocaleContext', () => ({
   useT: () => ({
@@ -12,6 +13,7 @@ vi.mock('../context/LocaleContext', () => ({
 }))
 
 const mockAddInstallation = vi.fn()
+const mockRefresh = vi.fn()
 vi.mock('../context/InstallationContext', () => ({
   useInstallation: () => ({
     installations: [],
@@ -20,11 +22,29 @@ vi.mock('../context/InstallationContext', () => ({
     isOwner: true,
     canEdit: true,
     setActive: vi.fn(),
-    refresh: vi.fn(),
+    refresh: mockRefresh,
     addInstallation: mockAddInstallation,
     leaveInstallation: vi.fn(),
   }),
 }))
+
+const makeInstallation = (overrides: Partial<Installation> = {}): Installation => ({
+  id: 3,
+  role: 'owner',
+  name: 'Backyard pool',
+  type: 'pool',
+  sanitizer: 'chlorine',
+  created_at: '2026-01-01T00:00:00',
+  ...overrides,
+})
+
+/** Submits and reads back the body of the PATCH the edit form posts. */
+const submitEdit = async (fetchMock: ReturnType<typeof vi.fn>) => {
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  const [url, init] = fetchMock.mock.calls[0]
+  return { url, method: init.method, body: JSON.parse(init.body) }
+}
 
 beforeEach(() => {
   mockAddInstallation.mockReset()
@@ -93,5 +113,69 @@ describe('InstallationModal', () => {
     expect(arg.phone).toBeUndefined()
     expect(arg.email).toBeUndefined()
     expect(arg.notes).toBeUndefined()
+  })
+})
+
+describe('season state', () => {
+  const createPayload = async () => {
+    fireEvent.click(screen.getByText("Créer l'installation"))
+    await waitFor(() => expect(mockAddInstallation).toHaveBeenCalledTimes(1))
+    return mockAddInstallation.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  beforeEach(() => {
+    mockRefresh.mockReset()
+  })
+
+  it('creates a new pool open for the season', async () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+
+    const payload = await createPayload()
+    expect(payload.is_open).toBe(true)
+  })
+
+  it('creates a pool closed for the season when that is picked first', async () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Fermée' }))
+
+    const payload = await createPayload()
+    expect(payload.is_open).toBe(false)
+  })
+
+  it('preselects the season of the pool being edited', () => {
+    render(<InstallationModal open onClose={vi.fn()} installation={makeInstallation({ is_open: false })} />)
+
+    expect(screen.getByRole('button', { name: 'Fermée' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Ouverte' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('patches the season state and refreshes the installations when it changes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<InstallationModal open onClose={vi.fn()} installation={makeInstallation({ is_open: true })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fermée' }))
+
+    const { url, method, body } = await submitEdit(fetchMock)
+    expect(url).toBe('/api/installations/3')
+    expect(method).toBe('PATCH')
+    expect(body.is_open).toBe(false)
+    expect(body.name).toBe('Backyard pool')
+    expect(mockRefresh).toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('shows a shared pool\'s season read-only, with no switch to press', () => {
+    render(
+      <InstallationModal
+        open
+        onClose={vi.fn()}
+        installation={makeInstallation({ role: 'viewer', is_open: false })}
+      />,
+    )
+
+    expect(screen.getByText('Fermée')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Fermée' })).toBeNull()
   })
 })

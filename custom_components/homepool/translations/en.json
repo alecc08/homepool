@@ -56,5 +56,12 @@
     "abort": {
       "no_installations": "No pools or spas are available yet — make sure the integration is connected to your homepool server, then try again"
     }
+  },
+  "entity": {
+    "switch": {
+      "pool_open": {
+        "name": "Open"
+      }
+    }
   }
 }

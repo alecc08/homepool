@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
 import { gramsToDisplay, mlToDisplay } from '../units'
+import { isSeasonOpen } from '../utils'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TranslationKey } from '../i18n/translations'
 import type { TreatmentPrefill } from './ActionForm'
 import SimulatorModal from './SimulatorModal'
+import SeasonBanner from './SeasonBanner'
 
 const sectionCardStyle: React.CSSProperties = {
   background: 'var(--bg-surface)',
@@ -40,6 +42,9 @@ type Props = {
 export default function RecommendationsPage({ actions, onLogTreatment }: Props) {
   const { active } = useInstallation()
   const { t } = useT()
+  // The season gate is the installation's, not the payload's — the banner above
+  // reads the same flag, so the page can never say "closed" under an open banner.
+  const closed = !!active && !isSeasonOpen(active)
   const [data, setData] = useState<RecommendationsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSimulator, setShowSimulator] = useState(false)
@@ -55,7 +60,9 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       .then(r => r.ok ? r.json() : null)
       .then(setData)
       .finally(() => setLoading(false))
-  }, [active?.id])
+    // The season changes what this endpoint returns, so it belongs in the key:
+    // reopening a pool has to replace the closed-season page, not leave it up.
+  }, [active?.id, active?.is_open])
 
   const canLog = !!onLogTreatment
   useEffect(() => {
@@ -86,6 +93,10 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
 
       <SimulatorModal open={showSimulator} onClose={() => setShowSimulator(false)} actions={actions} />
 
+      {/* A closed pool gets an empty recommendation list from the API,
+          which is not the same thing as "everything's in range". */}
+      <SeasonBanner />
+
       {!loading && data && !data.volume_known && (
         <div style={{
           background: 'var(--status-warn-bg)', color: 'var(--status-warn-text)',
@@ -105,8 +116,8 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
 
       {!loading && data && data.recommendations.length === 0 && (
         <div style={{ ...sectionCardStyle, textAlign: 'center' }}>
-          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-ok-text)', margin: 0 }}>
-            {t('recommendations_empty')}
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, margin: 0, color: closed ? 'var(--text-muted)' : 'var(--status-ok-text)' }}>
+            {closed ? t('recommendations_closed') : t('recommendations_empty')}
           </p>
         </div>
       )}
