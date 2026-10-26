@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.16.12] - 2026-10-26
+
 ### Security
 
 - Cleared all five npm advisories in `apps/web`: browserslist 4.28.1 → 4.29.5
