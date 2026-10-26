@@ -70,7 +70,9 @@ class Installation(SQLModel, table=True):
     # alerts and dosing advice stop firing. Reopening resumes them from where they
     # left off, because "due" is derived from the action log, never stored.
     is_open: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.now)
+    # SQLModel 0.0.48 stores datetimes as UTC (and rejects naive ones), so every
+    # created_at here is built tz-aware, exactly like the other models.
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class InstallationShare(SQLModel, table=True):
