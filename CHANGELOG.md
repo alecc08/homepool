@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Cleared all five npm advisories in `apps/web`: browserslist 4.28.1 → 4.29.5
+  (GHSA-73wf-gq98-2v4g, high), zod 4.3.6 → 4.6.7 (GHSA-mrhx-c7xc-m3w5,
+  memory exhaustion while validating oversized collections, high), @humanfs/node 0.16.7 → 0.16.8 (GHSA-p498-v437-472g,
+  moderate), baseline-browser-mapping 2.10.0 → 2.11.33 (GHSA-w5vr-8v7q-w6rv,
+  moderate) and @babel/core 7.29.0 → 7.29.7 (GHSA-4x5r-pxfx-6jf8, low). All
+  five are transitive — they come in through eslint, eslint-plugin-react-hooks
+  and the browserslist chain — so `package.json` is unchanged and nothing in
+  the served bundle or the API moved.
+
 ## [1.16.11] - 2026-10-26
 
 ## [1.16.10] - 2026-10-26
